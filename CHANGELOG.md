@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.1.1 – 03.11.2026 – Ergebnisse Link-Test
+
+Getestet vom Nutzer auf Android 10, Chrome 156, Claude-App installiert.
+
+- 1 `claude://claude.ai/new?q=`: funktioniert, öffnet die Claude-App mit eingefügtem Prompt. Bei 1.000 und 12.000 Zeichen (ca. 16.600 Zeichen im Link) kam der Prompt vollständig an (Ende-Marke vorhanden).
+- 2 `https://claude.ai/new?q=`: funktioniert, öffnet ebenfalls die App mit Prompt (1.000 Zeichen).
+- 3 / 4 Kopieren + Chat/Projekt per ID: nicht getestet. Links öffnen immer die App, daher keine ID greifbar. Wird nicht gebraucht.
+- Z Kopieren + `claude://claude.ai/new`: funktioniert, Kopieren per Clipboard-API.
+- 6a Google Maps `https://www.google.com/maps/search/?api=1&query=…`: funktioniert.
+- 6b `geo:`-Link: funktioniert.
+
+### Entscheidungen für v0.2 ff.
+
+- Übergabe an Claude (Abschnitt 9): Methode 1 `claude://claude.ai/new?q=` als Standard, Notlösung „Prompt kopieren + Claude-App öffnen“.
+- Karten-App (Abschnitt 7): Google-Maps-Web-Link als Standard, `geo:` als Einstellung.
+- Chat-/Projekt-ID wird nicht benötigt.
+- Versionsnummer in `docs/diag.html`, `docs/index.html` und `docs/version.json` auf 0.1.1 erhöht (keine Funktionsänderung).
+
 ## v0.1.0 – 03.11.2026 – Link-Test (Diagnose)
 
 - Neu: `docs/diag.html` (mobil optimiert) mit den Link-Tests aus PROJEKT.md, Etappe v0.1:
