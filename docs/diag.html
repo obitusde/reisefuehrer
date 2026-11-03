@@ -1,0 +1,497 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Reiseführer – Diagnose</title>
+<style>
+  :root {
+    --bg: #f6f6f4; --card: #ffffff; --text: #1d1d1b; --muted: #6b6b66;
+    --border: #d9d9d4; --accent: #1f6feb; --accent-text: #ffffff;
+    --ok: #1a7f37; --bad: #cf222e; --warn: #9a6700; --sel: #e7efff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141413; --card: #1e1e1c; --text: #ecece8; --muted: #a3a39c;
+      --border: #3a3a36; --accent: #4c8dff; --accent-text: #0b0b0a;
+      --ok: #3fb950; --bad: #ff6b6b; --warn: #d29922; --sel: #1f2a3d;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
+  body {
+    font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: 12px 16px 32px; max-width: 720px; margin: 0 auto;
+  }
+  h1 { font-size: 1.35rem; margin: 4px 0 4px; }
+  h2 { font-size: 1.05rem; margin: 0 0 6px; }
+  p { margin: 6px 0; }
+  .muted { color: var(--muted); font-size: 0.9rem; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px; margin: 12px 0;
+  }
+  .num {
+    display: inline-block; min-width: 1.6em; padding: 0 6px; margin-right: 6px;
+    border-radius: 6px; background: var(--accent); color: var(--accent-text);
+    text-align: center; font-weight: 600;
+  }
+  .btn, button {
+    display: flex; align-items: center; justify-content: center;
+    width: 100%; min-height: 48px; margin: 8px 0; padding: 10px 14px;
+    border: 0; border-radius: 10px; background: var(--accent); color: var(--accent-text);
+    font: inherit; font-weight: 600; text-decoration: none; text-align: center;
+    cursor: pointer; -webkit-tap-highlight-color: transparent;
+  }
+  .btn.secondary, button.secondary {
+    background: transparent; color: var(--accent); border: 1px solid var(--accent);
+  }
+  button:active, .btn:active { opacity: 0.75; }
+  label { display: block; font-weight: 600; margin: 8px 0 4px; }
+  input[type=text] {
+    width: 100%; min-height: 44px; padding: 8px 10px; font: inherit;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text);
+  }
+  input[type=range] { width: 100%; min-height: 44px; }
+  textarea {
+    width: 100%; min-height: 110px; padding: 8px 10px; font: 14px/1.4 ui-monospace, Menlo, Consolas, monospace;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text);
+    user-select: text; -webkit-user-select: text;
+  }
+  code, .url {
+    font: 13px/1.4 ui-monospace, Menlo, Consolas, monospace; word-break: break-all;
+    user-select: text; -webkit-user-select: text;
+  }
+  .url { display: block; color: var(--muted); margin: 4px 0; max-height: 4.2em; overflow: hidden; }
+  .results { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+  .results label {
+    display: flex; align-items: center; gap: 8px; margin: 0; min-height: 44px;
+    padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px;
+    font-weight: 500; font-size: 0.92rem; cursor: pointer;
+  }
+  .results label:has(input:checked) { background: var(--sel); border-color: var(--accent); }
+  .results input { width: 20px; height: 20px; margin: 0; flex: none; }
+  .note { margin-top: 6px; }
+  .status { min-height: 1.4em; font-size: 0.92rem; margin: 4px 0; }
+  .status.ok { color: var(--ok); } .status.bad { color: var(--bad); } .status.warn { color: var(--warn); }
+  .row { display: flex; gap: 8px; } .row > * { flex: 1; }
+  .stat { display: flex; justify-content: space-between; gap: 8px; font-size: 0.95rem; }
+  .stat b { font-variant-numeric: tabular-nums; }
+  footer { text-align: center; color: var(--muted); font-size: 0.85rem; margin-top: 24px; }
+  @media (max-width: 380px) { .results { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<h1>Diagnose: Link-Test</h1>
+<p class="muted">Prüft, welche Links auf diesem Handy funktionieren. Jeden Knopf antippen, zurück in den Browser wechseln, Ergebnis ankreuzen. Alles wird auf diesem Gerät gespeichert. Am Ende die Zusammenfassung kopieren und an Claude Code zurückmelden.</p>
+
+<!-- 5: Prompt length -->
+<section class="card" id="prompt-card">
+  <h2>Testprompt</h2>
+  <label for="len">Länge: <span id="lenLabel">1000</span> Zeichen</label>
+  <input type="range" id="len" min="500" max="12000" step="500" value="1000">
+  <div class="stat"><span>Prompt-Länge (Zeichen)</span><b id="statChars">–</b></div>
+  <div class="stat"><span>Länge im Link (URL-kodiert)</span><b id="statEncoded">–</b></div>
+  <p class="muted">Claude kürzt bei ca. 14.000 Zeichen. Am Ende des Prompts steht eine Ende-Marke. Kommt der Prompt in Claude an, sieh nach, ob die Ende-Marke noch da ist.</p>
+  <details>
+    <summary>Prompt ansehen</summary>
+    <textarea id="promptPreview" readonly></textarea>
+  </details>
+</section>
+
+<!-- 1 -->
+<section class="card test" data-test="t1">
+  <h2><span class="num">1</span>claude:// mit Text (neuer Chat)</h2>
+  <p class="muted">Öffnet die Claude-App mit dem Prompt im Eingabefeld. Kopiert nichts.</p>
+  <a class="btn" id="link1" href="#">Test 1 öffnen</a>
+  <span class="url" id="url1"></span>
+</section>
+
+<!-- 2 -->
+<section class="card test" data-test="t2">
+  <h2><span class="num">2</span>https://claude.ai mit Text (neuer Chat)</h2>
+  <p class="muted">Gleicher Test über einen normalen Web-Link. Kopiert nichts.</p>
+  <a class="btn" id="link2" href="#">Test 2 öffnen</a>
+  <span class="url" id="url2"></span>
+</section>
+
+<!-- 3 -->
+<section class="card test" data-test="t3">
+  <h2><span class="num">3</span>Kopieren + bestehenden Chat öffnen</h2>
+  <p class="muted">Kopiert den Prompt in die Zwischenablage und öffnet einen vorhandenen Chat. In Claude dann lange ins Eingabefeld tippen und „Einfügen“.</p>
+  <label for="chatId">Chat-ID (oder ganzen Chat-Link einfügen)</label>
+  <input type="text" id="chatId" placeholder="z. B. 1a2b3c4d-…" autocomplete="off" autocapitalize="off" spellcheck="false">
+  <button id="btn3">Kopieren und Chat öffnen</button>
+  <span class="url" id="url3"></span>
+  <div class="status" id="status3"></div>
+</section>
+
+<!-- 4 -->
+<section class="card test" data-test="t4">
+  <h2><span class="num">4</span>Kopieren + Projekt öffnen</h2>
+  <p class="muted">Kopiert den Prompt und öffnet ein Claude-Projekt (z. B. „Reiseführer“).</p>
+  <label for="projectId">Projekt-ID (oder ganzen Projekt-Link einfügen)</label>
+  <input type="text" id="projectId" placeholder="z. B. 019a…" autocomplete="off" autocapitalize="off" spellcheck="false">
+  <button id="btn4">Kopieren und Projekt öffnen</button>
+  <span class="url" id="url4"></span>
+  <div class="status" id="status4"></div>
+</section>
+
+<!-- Extra: fallback from section 9, method 3 -->
+<section class="card test" data-test="t5">
+  <h2><span class="num">Z</span>Zusatz: Kopieren + Claude-App öffnen</h2>
+  <p class="muted">Notlösung: Prompt kopieren und nur die App öffnen (neuer Chat ohne Text), dann selbst einfügen.</p>
+  <button id="btn5">Kopieren und Claude öffnen</button>
+  <span class="url" id="url5"></span>
+  <div class="status" id="status5"></div>
+</section>
+
+<!-- 6 -->
+<section class="card test" data-test="m1">
+  <h2><span class="num">6a</span>Google Maps (Web-Link)</h2>
+  <p class="muted">Sollte Google Maps mit dem Manchester Rathaus öffnen.</p>
+  <a class="btn" id="linkM1" href="#">Maps-Test A öffnen</a>
+  <span class="url" id="urlM1"></span>
+</section>
+
+<section class="card test" data-test="m2">
+  <h2><span class="num">6b</span>Android geo:-Link</h2>
+  <p class="muted">Sollte eine Karten-App (Auswahl möglich) mit einem Pin öffnen.</p>
+  <a class="btn" id="linkM2" href="#">Maps-Test B öffnen</a>
+  <span class="url" id="urlM2"></span>
+</section>
+
+<!-- 7 -->
+<section class="card" id="summary-card">
+  <h2>Zusammenfassung</h2>
+  <p class="muted">Diesen Text kopieren und in die Claude-Code-Session einfügen.</p>
+  <textarea id="summary" readonly rows="12"></textarea>
+  <div class="row">
+    <button id="btnCopySummary">Kopieren</button>
+    <button id="btnShareSummary" class="secondary">Teilen</button>
+  </div>
+  <div class="status" id="statusSummary"></div>
+  <button id="btnReset" class="secondary">Ergebnisse löschen</button>
+</section>
+
+<footer>Reiseführer · Diagnose · <span id="version"></span></footer>
+
+<script>
+(function () {
+  'use strict';
+
+  var VERSION = '0.1.0';
+  var KEY = 'rf.diag.v1';
+
+  var TESTS = [
+    { id: 't1', name: '1 claude://claude.ai/new?q=' },
+    { id: 't2', name: '2 https://claude.ai/new?q=' },
+    { id: 't3', name: '3 Kopieren + claude://claude.ai/chat/<ID>' },
+    { id: 't4', name: '4 Kopieren + claude://claude.ai/project/<ID>' },
+    { id: 't5', name: 'Z Kopieren + claude://claude.ai/new' },
+    { id: 'm1', name: '6a Google Maps https' },
+    { id: 'm2', name: '6b geo:' }
+  ];
+  var CLAUDE_TESTS = { t1: 1, t2: 1, t3: 1, t4: 1, t5: 1 };
+
+  var OPTIONS = [
+    { v: 'ok', t: 'funktioniert' },
+    { v: 'fail', t: 'funktioniert nicht' },
+    { v: 'browser', t: 'öffnet Browser statt App' },
+    { v: 'notext', t: 'App öffnet, Text fehlt/gekürzt' }
+  ];
+
+  var MAPS_WEB = 'https://www.google.com/maps/search/?api=1&query=Manchester%20Town%20Hall';
+  var MAPS_GEO = 'geo:53.4792,-2.2442?q=53.4792,-2.2442(Manchester%20Town%20Hall)';
+
+  // ---------- storage ----------
+  function load() {
+    try {
+      var s = JSON.parse(localStorage.getItem(KEY) || '{}');
+      return (s && typeof s === 'object') ? s : {};
+    } catch (e) { return {}; }
+  }
+  var state = load();
+  state.results = state.results || {};
+  state.notes = state.notes || {};
+  state.lens = state.lens || {};
+  state.clip = state.clip || {};
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* private mode */ }
+  }
+
+  function $(id) { return document.getElementById(id); }
+
+  // ---------- test prompt ----------
+  var FILLER = [
+    'Manchester war die erste Industriestadt der Welt.',
+    'Baumwolle wurde hier in großen Spinnereien verarbeitet.',
+    'Das Rathaus wurde im neugotischen Stil errichtet.',
+    'Die Kathedrale steht nahe am Fluss Irwell.',
+    'Kanäle verbanden die Stadt mit dem Hafen von Liverpool.',
+    'Die erste Personeneisenbahn fuhr zwischen Manchester und Liverpool.',
+    'Die John Rylands Library ist ein Bau aus rotem Sandstein.',
+    'Viele alte Lagerhäuser sind heute Wohnungen und Büros.'
+  ];
+
+  function buildPrompt(n) {
+    var mark = 'ENDE-MARKE-' + n;
+    var head = 'Das ist ein Link-Test der Reiseführer-App (v' + VERSION + '). ' +
+      'Bitte antworte nur mit einem Satz: „Link-Test angekommen, Länge ' + n +
+      ' Zeichen, letzte Marke: …“ und nenne dabei die letzte Marke, die du ganz am Ende dieses Textes siehst ' +
+      '(ENDE-MARKE-Zahl oder, falls die fehlt, die höchste Satznummer). ' +
+      'Der folgende Fülltext dient nur dazu, die Länge zu testen.\n\n';
+    var tail = '\n\n' + mark;
+    var body = '';
+    var i = 0;
+    var room = n - head.length - tail.length;
+    while (body.length < room) {
+      body += 'Satz ' + (i + 1) + ': ' + FILLER[i % FILLER.length] + ' ';
+      i++;
+    }
+    body = body.slice(0, Math.max(0, room));
+    return head + body + tail;
+  }
+
+  function currentLen() { return parseInt($('len').value, 10) || 1000; }
+  function currentPrompt() { return buildPrompt(currentLen()); }
+
+  // ---------- id parsing ----------
+  // Accepts a bare ID or a full link like https://claude.ai/chat/<id>
+  function extractId(raw, kind) {
+    var s = String(raw || '').trim();
+    if (!s) return '';
+    var re = new RegExp('/' + kind + '/([^/?#\\s]+)');
+    var m = s.match(re);
+    if (m) return m[1];
+    return s.replace(/[\s/?#]/g, '');
+  }
+
+  // ---------- clipboard ----------
+  function copyFallback(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed'; ta.style.top = '0'; ta.style.left = '0'; ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    try { ta.setSelectionRange(0, text.length); } catch (e) {}
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+
+  // Resolves to the method that worked: 'clipboard-api', 'execCommand' or '' (failed)
+  function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text).then(function () { return 'clipboard-api'; },
+        function () { return copyFallback(text) ? 'execCommand' : ''; });
+    }
+    return Promise.resolve(copyFallback(text) ? 'execCommand' : '');
+  }
+
+  function setStatus(el, text, cls) {
+    el.textContent = text;
+    el.className = 'status' + (cls ? ' ' + cls : '');
+  }
+
+  // ---------- URLs ----------
+  function urls() {
+    var q = encodeURIComponent(currentPrompt());
+    var chat = extractId($('chatId').value, 'chat');
+    var proj = extractId($('projectId').value, 'project');
+    return {
+      t1: 'claude://claude.ai/new?q=' + q,
+      t2: 'https://claude.ai/new?q=' + q,
+      t3: chat ? 'claude://claude.ai/chat/' + encodeURIComponent(chat) : '',
+      t4: proj ? 'claude://claude.ai/project/' + encodeURIComponent(proj) : '',
+      t5: 'claude://claude.ai/new',
+      m1: MAPS_WEB,
+      m2: MAPS_GEO,
+      qLen: q.length
+    };
+  }
+
+  function shortUrl(u) {
+    if (!u) return '';
+    return u.length > 140 ? u.slice(0, 140) + '… (' + u.length + ' Zeichen)' : u;
+  }
+
+  function refresh() {
+    var n = currentLen();
+    var p = currentPrompt();
+    var u = urls();
+    $('lenLabel').textContent = n.toLocaleString('de-DE');
+    $('statChars').textContent = p.length.toLocaleString('de-DE');
+    $('statEncoded').textContent = u.qLen.toLocaleString('de-DE');
+    $('promptPreview').value = p;
+
+    $('link1').href = u.t1; $('url1').textContent = shortUrl(u.t1);
+    $('link2').href = u.t2; $('url2').textContent = shortUrl(u.t2);
+    $('url3').textContent = u.t3 || 'Bitte zuerst Chat-ID eintragen.';
+    $('url4').textContent = u.t4 || 'Bitte zuerst Projekt-ID eintragen.';
+    $('url5').textContent = u.t5;
+    $('linkM1').href = u.m1; $('urlM1').textContent = u.m1;
+    $('linkM2').href = u.m2; $('urlM2').textContent = u.m2;
+    renderSummary();
+  }
+
+  // ---------- result fields ----------
+  function buildResultFields() {
+    var cards = document.querySelectorAll('.test');
+    Array.prototype.forEach.call(cards, function (card) {
+      var id = card.getAttribute('data-test');
+      var box = document.createElement('div');
+      box.className = 'results';
+      OPTIONS.forEach(function (o) {
+        // "text missing" only makes sense for Claude tests
+        if (o.v === 'notext' && !CLAUDE_TESTS[id]) return;
+        var lab = document.createElement('label');
+        var inp = document.createElement('input');
+        inp.type = 'radio'; inp.name = 'res-' + id; inp.value = o.v;
+        if (state.results[id] === o.v) inp.checked = true;
+        inp.addEventListener('change', function () {
+          state.results[id] = o.v; save(); renderSummary();
+        });
+        lab.appendChild(inp);
+        lab.appendChild(document.createTextNode(o.t));
+        box.appendChild(lab);
+      });
+      var note = document.createElement('input');
+      note.type = 'text'; note.className = 'note';
+      note.placeholder = 'Notiz (optional), z. B. „Text ohne Ende-Marke“';
+      note.value = state.notes[id] || '';
+      note.addEventListener('input', function () {
+        state.notes[id] = note.value; save(); renderSummary();
+      });
+      card.appendChild(box);
+      card.appendChild(note);
+    });
+  }
+
+  function markTried(id) {
+    state.lens[id] = CLAUDE_TESTS[id] ? currentLen() : 0;
+    state.tried = state.tried || {};
+    state.tried[id] = new Date().toISOString();
+    save(); renderSummary();
+  }
+
+  // ---------- copy + open ----------
+  function copyAndOpen(id, url, statusEl, missingMsg) {
+    if (!url) { setStatus(statusEl, missingMsg, 'bad'); return; }
+    var text = currentPrompt();
+    markTried(id);
+    copyText(text).then(function (method) {
+      state.clip[id] = method || 'fehlgeschlagen'; save(); renderSummary();
+      if (method) {
+        setStatus(statusEl, 'Prompt kopiert (' + text.length + ' Zeichen, ' + method + '). Öffne Claude …', 'ok');
+      } else {
+        setStatus(statusEl, 'Kopieren fehlgeschlagen. Öffne trotzdem …', 'bad');
+      }
+      window.location.href = url;
+    });
+  }
+
+  // ---------- summary ----------
+  function label(v) {
+    for (var i = 0; i < OPTIONS.length; i++) if (OPTIONS[i].v === v) return OPTIONS[i].t;
+    return 'nicht getestet';
+  }
+
+  function renderSummary() {
+    var lines = [];
+    lines.push('Reiseführer Diagnose v' + VERSION + ' – Link-Test');
+    lines.push('Datum: ' + new Date().toLocaleString('de-DE'));
+    lines.push('Gerät: ' + navigator.userAgent);
+    lines.push('Clipboard-API vorhanden: ' + (navigator.clipboard ? 'ja' : 'nein') +
+      ', sicherer Kontext: ' + (window.isSecureContext ? 'ja' : 'nein'));
+    lines.push('');
+    TESTS.forEach(function (t) {
+      var l = t.name + ': ' + label(state.results[t.id]);
+      var extra = [];
+      if (CLAUDE_TESTS[t.id] && state.lens[t.id]) extra.push('Länge ' + state.lens[t.id]);
+      if (state.clip[t.id]) extra.push('Kopieren: ' + state.clip[t.id]);
+      if (state.notes[t.id]) extra.push('Notiz: ' + state.notes[t.id]);
+      if (extra.length) l += ' (' + extra.join('; ') + ')';
+      lines.push(l);
+    });
+    $('summary').value = lines.join('\n');
+  }
+
+  // ---------- wire up ----------
+  function init() {
+    $('version').textContent = 'v' + VERSION;
+
+    if (state.len) $('len').value = state.len;
+    $('chatId').value = state.chatId || '';
+    $('projectId').value = state.projectId || '';
+
+    buildResultFields();
+
+    $('len').addEventListener('input', function () {
+      state.len = currentLen(); save(); refresh();
+    });
+    $('chatId').addEventListener('input', function () {
+      state.chatId = $('chatId').value; save(); refresh();
+    });
+    $('projectId').addEventListener('input', function () {
+      state.projectId = $('projectId').value; save(); refresh();
+    });
+
+    // Plain links (1, 2, 6a, 6b): real <a> taps, only record that they were tried
+    [['link1', 't1'], ['link2', 't2'], ['linkM1', 'm1'], ['linkM2', 'm2']].forEach(function (p) {
+      $(p[0]).addEventListener('click', function () { markTried(p[1]); });
+    });
+
+    $('btn3').addEventListener('click', function () {
+      copyAndOpen('t3', urls().t3, $('status3'), 'Bitte zuerst eine Chat-ID eintragen.');
+    });
+    $('btn4').addEventListener('click', function () {
+      copyAndOpen('t4', urls().t4, $('status4'), 'Bitte zuerst eine Projekt-ID eintragen.');
+    });
+    $('btn5').addEventListener('click', function () {
+      copyAndOpen('t5', urls().t5, $('status5'), '');
+    });
+
+    $('btnCopySummary').addEventListener('click', function () {
+      renderSummary();
+      copyText($('summary').value).then(function (m) {
+        if (m) setStatus($('statusSummary'), 'Zusammenfassung kopiert.', 'ok');
+        else {
+          setStatus($('statusSummary'), 'Kopieren fehlgeschlagen – Text bitte lange antippen und markieren.', 'bad');
+          $('summary').focus(); $('summary').select();
+        }
+      });
+    });
+
+    var shareBtn = $('btnShareSummary');
+    if (!navigator.share) shareBtn.style.display = 'none';
+    shareBtn.addEventListener('click', function () {
+      renderSummary();
+      navigator.share({ title: 'Reiseführer Diagnose', text: $('summary').value })
+        .catch(function () { /* user cancelled */ });
+    });
+
+    $('btnReset').addEventListener('click', function () {
+      if (!confirm('Alle Ergebnisse löschen? (IDs bleiben erhalten)')) return;
+      state.results = {}; state.notes = {}; state.lens = {}; state.clip = {}; state.tried = {};
+      save();
+      Array.prototype.forEach.call(document.querySelectorAll('.results input'), function (i) { i.checked = false; });
+      Array.prototype.forEach.call(document.querySelectorAll('.note'), function (i) { i.value = ''; });
+      renderSummary();
+    });
+
+    refresh();
+  }
+
+  // exposed for automated checks only
+  window.__diag = { buildPrompt: buildPrompt, extractId: extractId, urls: urls };
+
+  init();
+})();
+</script>
+</body>
+</html>

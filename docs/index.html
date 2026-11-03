@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Reiseführer</title>
+<style>
+  :root { --bg: #f6f6f4; --text: #1d1d1b; --muted: #6b6b66; --accent: #1f6feb; --accent-text: #fff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #141413; --text: #ecece8; --muted: #a3a39c; --accent: #4c8dff; --accent-text: #0b0b0a; }
+  }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body { font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         padding: 24px 16px; max-width: 560px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; }
+  a.btn { display: flex; align-items: center; justify-content: center; min-height: 48px;
+          border-radius: 10px; background: var(--accent); color: var(--accent-text);
+          font-weight: 600; text-decoration: none; margin: 16px 0; }
+  footer { text-align: center; color: var(--muted); font-size: 0.85rem; margin-top: 32px; }
+</style>
+</head>
+<body>
+  <h1>Reiseführer</h1>
+  <p>Die App entsteht in Etappen. Aktuell gibt es nur die Diagnose-Seite (Link-Test).</p>
+  <a class="btn" href="diag.html">Zur Diagnose</a>
+  <footer>Reiseführer · <span id="version">v0.1.0</span></footer>
+</body>
+</html>
