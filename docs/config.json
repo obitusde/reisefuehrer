@@ -3,9 +3,22 @@
 
   "wikipedia": {
     "sprachen": ["de", "en"],
-    "limit": 500,
-    "radien_m": [300, 1000, 3000, 10000],
-    "radius_standard_m": 1000
+    "limit": 500
+  },
+
+  "suche": {
+    "_hinweis": "v0.5: „Hier suchen“ sucht im sichtbaren Kartenausschnitt. Ist der Ausschnitt größer (halbe Diagonale in Metern), kommt der Hinweis „näher heranzoomen“. Wikipedia erlaubt höchstens 10 000 m.",
+    "max_halbdiagonale_m": 10000,
+    "standort_zoom": 14
+  },
+
+  "gebiet": {
+    "_hinweis": "v0.6: Gebiet vorbereiten. max_km2 = größte Fläche, zelle_m = Kantenlänge der Teilbereiche für Wikipedia, texte_ab_sternen/artikel_ab_sternen = für welche Orte Kurzinfo und Artikel vorab geladen werden, veraltet_tage = ab wann „aktualisieren“ empfohlen wird.",
+    "max_km2": 400,
+    "zelle_m": 3000,
+    "texte_ab_sternen": 1,
+    "artikel_ab_sternen": 1,
+    "veraltet_tage": 30
   },
 
   "score": {
@@ -145,13 +158,14 @@
   ],
 
   "osm": {
-    "_hinweis": "OpenStreetMap über Overpass (PROJEKT.md 5d). Kacheln 0,05°, 30 Tage zwischengespeichert, höchstens 2 Anfragen gleichzeitig. filter = Overpass-Bedingungen (nur Objekte mit Namen). typen = OSM-Tag → Typ aus „typen“ unten. Bei Änderungen an filter: version um 1 erhöhen (leert den Zwischenspeicher).",
+    "_hinweis": "OpenStreetMap über Overpass (PROJEKT.md 5d). Kacheln 0,05°, 30 Tage zwischengespeichert, höchstens 2 Anfragen gleichzeitig. max_wartezeit_s = so lange wartet die Suche höchstens (Knopf „Ohne OSM weiter“ geht immer), server_timeout_s = Zeit je Server. filter = Overpass-Bedingungen (nur Objekte mit Namen). typen = OSM-Tag → Typ aus „typen“ unten. Bei Änderungen an filter: version um 1 erhöhen (leert den Zwischenspeicher).",
     "aktiv": true,
-    "version": 2,
+    "version": 3,
     "server": ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter"],
     "kachel_grad": 0.05,
-    "max_wartezeit_s": 20,
-    "server_timeout_s": 20,
+    "max_wartezeit_s": 120,
+    "vorbereiten_wartezeit_s": 600,
+    "server_timeout_s": 40,
     "cache_tage": 30,
     "parallel": 2,
     "filter": [
@@ -177,25 +191,44 @@
   },
 
   "karten_app_standard": "google",
+  "osmand_paket": "net.osmand.plus",
   "claude_uebergabe": "claude-new",
 
   "besucher": {
-    "_hinweis": "Prompt für den Knopf „Lohnt sich das?“: Claude sucht Bewertungen und Erfahrungen von Besuchern im Netz und fasst sie zusammen.",
+    "_hinweis": "Prompt für den Knopf „Übersicht und Bewertung“ (v0.5): zum Lesen, nicht zum Vorlesen. Claude sucht Infos und Bewertungen von Besuchern im Netz und antwortet in einer festen, gut lesbaren Gliederung mit Tabelle und Stichpunkten.",
+    "knopf": "📋 Übersicht und Bewertung",
     "vorlage": [
-      "Ich überlege, ob ich diese Sehenswürdigkeit besuchen soll.",
+      "Gib mir eine Übersicht zu dieser Sehenswürdigkeit, damit ich entscheiden kann, ob ich hingehe. Die Antwort ist zum Lesen auf dem Handy gedacht, nicht zum Vorlesen.",
       "",
       "Ort: {name}",
       "Wo: {lat}, {lon}",
       "Art: {typ}",
       "Wikipedia: {wikipedia_url}",
       "",
-      "Bitte suche im Internet nach aktuellen Bewertungen und Erfahrungen von Besuchern, zum Beispiel bei Google Maps, Tripadvisor und in Reiseforen oder Reiseblogs, und fasse alles zusammen:",
-      "- Wie wird der Ort bewertet? Nenne je Quelle die Sterne und die Zahl der Bewertungen, wenn du sie findest.",
-      "- Was loben Besucher am häufigsten, was kritisieren sie?",
-      "- Lohnt sich ein Besuch? Für wen besonders, für wen eher nicht?",
-      "- Praktische Tipps für den Besuch: beste Zeit, wie lange man braucht, Eintritt oder Tickets, Andrang, worauf man achten sollte.",
+      "Suche im Internet nach aktuellen Informationen und nach Bewertungen und Erfahrungen von Besuchern, zum Beispiel bei Google Maps, Tripadvisor, in Reiseforen, Reiseblogs und auf der offiziellen Website. Antworte genau in dieser Gliederung:",
       "",
-      "Regeln: Antworte auf Deutsch, kurz und so, dass man es gut vorlesen kann. Nenne bei Zahlen die Quelle. Wenn du nichts Aktuelles findest, sage das deutlich und erfinde nichts."
+      "## Was ist das?",
+      "Zwei bis drei kurze Sätze: was es ist und was man dort sieht.",
+      "",
+      "## Auf einen Blick",
+      "Eine Tabelle mit zwei Spalten (Punkt | Angabe) und diesen Zeilen: Bewertung Google (Sterne, Anzahl), Bewertung Tripadvisor (Sterne, Anzahl), weitere Bewertungen, Zeitbedarf, Eintritt, Öffnungszeiten, beste Besuchszeit, Andrang, für wen geeignet. Was du nicht findest: „–“.",
+      "",
+      "## Lohnt es sich?",
+      "**Ja**, **Bedingt** oder **Eher nicht**, dazu ein Satz Begründung.",
+      "",
+      "## 👍 Was Besucher loben",
+      "Drei bis fünf Stichpunkte.",
+      "",
+      "## 👎 Was Besucher kritisieren",
+      "Drei bis fünf Stichpunkte.",
+      "",
+      "## Praktische Tipps",
+      "Drei bis sechs Stichpunkte (Tickets, Anfahrt, worauf achten, was nicht verpassen).",
+      "",
+      "## Quellen",
+      "Stichpunkte: Quelle und Stand (Monat und Jahr).",
+      "",
+      "Regeln: Deutsch, knapp, keine langen Absätze. Nenne bei Zahlen die Quelle. Öffnungszeiten und Preise mit Stand angeben. Wenn du etwas nicht findest, sage es; erfinde nichts."
     ]
   },
 

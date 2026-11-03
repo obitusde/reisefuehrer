@@ -1,5 +1,5 @@
 /*
- * Reiseführer – core logic (v0.4.1)
+ * Reiseführer – core logic (v0.6.0)
  * Shared by the app (index.html), the diagnostics page (diag.html) and Node tests.
  * No DOM access here. Network access only through the injected fetch function.
  */
@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var CORE_VERSION = '0.4.1';
+  var CORE_VERSION = '0.6.0';
 
   // ---------------------------------------------------------------- helpers
 
@@ -194,8 +194,8 @@
 
   // Every request has a time limit, so that a hanging server never blocks the app (v0.4.1)
   function getJson(url, f, timeoutMs) {
-    // (in tests FETCH_TIMEOUT is lowered; longer explicit limits are capped at twice the default)
-    var ms = Math.min(timeoutMs || FETCH_TIMEOUT, FETCH_TIMEOUT * 2);
+    // (in tests FETCH_TIMEOUT is lowered; longer explicit limits are capped at three times the default)
+    var ms = Math.min(timeoutMs || FETCH_TIMEOUT, FETCH_TIMEOUT * 3);
     var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
     var timer = null;
     var req = Promise.resolve().then(function () {
@@ -402,8 +402,22 @@
     else if (n.local) first = (isLatin(n.en) && n.en) || n.de || n.local;   // e.g. Japanese: English first
     else first = n.de || n.en || '';                                        // local name unknown: German
 
-    var second = n.de && n.de.toLowerCase() !== first.toLowerCase() ? n.de : '';
+    // German only as a second line if it really is another name (v0.5: not just a variant with "de la" etc.)
+    var second = n.de && !sameName(n.de, first) ? n.de : '';
     return { name: first, name2: second };
+  }
+
+  /**
+   * True if two names are the same apart from small words, accents and punctuation, or one only
+   * adds words to the other: "Espace Horloger Vallée de Joux" = "Espace Horloger de la Vallée de Joux".
+   * "Château de Morges" ≠ "Schloss Morges", "Manchester Cathedral" ≠ "Kathedrale von Manchester".
+   */
+  function sameName(a, b) {
+    var wa = normName(a).split(' ').filter(Boolean), wb = normName(b).split(' ').filter(Boolean);
+    if (!wa.length || !wb.length) return String(a || '').toLowerCase() === String(b || '').toLowerCase();
+    var inB = wa.every(function (w) { return wb.indexOf(w) >= 0; });
+    var inA = wb.every(function (w) { return wa.indexOf(w) >= 0; });
+    return inA || inB;
   }
 
   function buildPlaces(langResults, wd, classes, cfg, center, localLang) {
@@ -482,6 +496,21 @@
     });
   }
 
+  /** Where places come from: only Wikipedia, only OpenStreetMap, both. */
+  function sourceCounts(places) {
+    var c = { w: 0, o: 0, wo: 0 };
+    places.forEach(function (p) {
+      var q = p.quellen || [], w = q.indexOf('W') >= 0, o = q.indexOf('O') >= 0;
+      if (w && o) c.wo++; else if (o) c.o++; else c.w++;
+    });
+    return c;
+  }
+  /** Short source tag for the list: "W", "OSM", "W+OSM". */
+  function sourceTag(p) {
+    var q = p.quellen || [], w = q.indexOf('W') >= 0, o = q.indexOf('O') >= 0;
+    return w && o ? 'W+OSM' : o ? 'OSM' : 'W';
+  }
+
   function sortPlaces(list) {
     return list.sort(function (a, b) {
       return (b.sterne - a.sterne) || (b.score - a.score) || ((a.dist || 0) - (b.dist || 0));
@@ -507,35 +536,134 @@
     return langs;
   }
 
+  // ---------------------------------------------------- areas (v0.5/v0.6)
+
+  /** Map section {south, west, north, east} -> width/height in metres. */
+  function bboxSize(b) {
+    var midLat = (b.south + b.north) / 2;
+    return {
+      w: haversine(midLat, b.west, midLat, b.east),
+      h: haversine(b.south, b.west, b.north, b.west)
+    };
+  }
+  function bboxCenter(b) { return { lat: (b.south + b.north) / 2, lon: (b.west + b.east) / 2 }; }
+  /** Smallest circle around the map section (centre and half diagonal). */
+  function circleFor(b) {
+    var c = bboxCenter(b);
+    return { lat: c.lat, lon: c.lon, radius: Math.ceil(haversine(c.lat, c.lon, b.north, b.east)) };
+  }
+  function inBbox(p, b) { return p.lat >= b.south && p.lat <= b.north && p.lon >= b.west && p.lon <= b.east; }
+  function bboxContains(outer, inner) {
+    return inner.south >= outer.south && inner.north <= outer.north && inner.west >= outer.west && inner.east <= outer.east;
+  }
+  function bboxOverlaps(a, b) { return a.south < b.north && a.north > b.south && a.west < b.east && a.east > b.west; }
+  /** Splits a map section into square cells of about `side` metres; returns the covering circles. */
+  function cellsFor(b, side) {
+    var s = bboxSize(b);
+    var ny = Math.max(1, Math.ceil(s.h / side)), nx = Math.max(1, Math.ceil(s.w / side));
+    var dLat = (b.north - b.south) / ny, dLon = (b.east - b.west) / nx, out = [];
+    for (var y = 0; y < ny; y++) {
+      for (var x = 0; x < nx; x++) {
+        out.push(circleFor({ south: b.south + y * dLat, north: b.south + (y + 1) * dLat, west: b.west + x * dLon, east: b.west + (x + 1) * dLon }));
+      }
+    }
+    return out;
+  }
+  function insideAny(circles, lat, lon) {
+    return circles.some(function (c) { return haversine(c.lat, c.lon, lat, lon) <= c.radius; });
+  }
+
   /**
-   * Full pipeline: Wikipedia (all languages) -> Wikidata items -> class labels -> places.
-   * opts: {lat, lon, radius, cfg, fetch, wdCache, langs, localLang, onProgress(text), retryDelays}
+   * Wikipedia for one language and several circles. Wikipedia gives at most 500 articles per query:
+   * a full circle is split into four smaller ones (twice at most), so dense city centres are complete.
+   */
+  function loadWikipediaArea(lang, circles, cfg, f, retryDelays, onCell) {
+    var limit = Math.min(500, cfg.wikipedia.limit || 500);
+    var pages = {}, requests = 0, done = 0;
+    function one(c, depth) {
+      return loadWikipedia(lang, c.lat, c.lon, c.radius, cfg, f, retryDelays).then(function (r) {
+        requests += r.requests;
+        r.pages.forEach(function (pg) {
+          var cur = pages[pg.pageid];
+          if (!cur) pages[pg.pageid] = pg;
+          else if ((pg.length || 0) > (cur.length || 0)) cur.length = pg.length;
+        });
+        if (r.pages.length >= limit && depth < 2 && c.radius > 300) {
+          var dLat = c.radius / 2 / 111320, dLon = c.radius / 2 / (111320 * Math.max(0.2, Math.cos(c.lat * Math.PI / 180)));
+          var subs = [[-1, -1], [-1, 1], [1, -1], [1, 1]].map(function (d) {
+            return { lat: c.lat + d[0] * dLat, lon: c.lon + d[1] * dLon, radius: Math.ceil(c.radius * 0.71) };
+          });
+          return runLimited(subs, 2, function (sc) { return one(sc, depth + 1); });
+        }
+      });
+    }
+    return runLimited(circles, 2, function (c) {
+      return one(c, 0).then(function () { done++; if (onCell) onCell(done, circles.length); });
+    }).then(function () {
+      return { lang: lang, requests: requests, pages: Object.keys(pages).map(function (k) { return pages[k]; }) };
+    });
+  }
+
+  /**
+   * Full pipeline: Wikipedia (all languages) -> Wikidata items -> class labels -> places, plus OpenStreetMap.
+   * opts: {lat, lon, radius | circles, bbox (only places inside), cfg, fetch, wdCache, osmCache, osm, langs, localLang,
+   *        onProgress(text, phase), retryDelays, control (gets control.skipOsm()), osmWaitS, onOsmLate(info)}
+   * phase: 'wiki' (Wikipedia loading), 'osm' (only OpenStreetMap missing), 'wd' (Wikidata).
    */
   function loadPlaces(opts) {
     var cfg = opts.cfg, f = opts.fetch, prog = opts.onProgress || function () {};
     var langs = opts.langs || cfg.wikipedia.sprachen || ['de', 'en'];
     var useOsm = !!(cfg.osm && cfg.osm.aktiv !== false && opts.osm !== false);
+    var circles = opts.circles || [{ lat: opts.lat, lon: opts.lon, radius: opts.radius }];
+    var centre = opts.lat != null ? { lat: opts.lat, lon: opts.lon } : opts.bbox ? bboxCenter(opts.bbox) : circles[0];
     var t0 = Date.now(), warnings = [], requests = 0;
-    prog('Lade Wikipedia (' + langs.join(', ') + ')' + (useOsm ? ' und OpenStreetMap' : '') + ' …');
-    // OpenStreetMap: wait at most max_wartezeit_s, then go on without it (loading continues in the
-    // background and fills the cache, so the next search has it)
-    var osmFull = useOsm ? loadOsm(opts.lat, opts.lon, opts.radius, cfg, f, opts.osmCache, null) : null;
+    var src = { wiki: { ms: null }, osm: { state: useOsm ? 'wait' : 'off', ms: null } };
+    var many = circles.length > 1;
+    prog('Lade Wikipedia (' + langs.join(', ') + ')' + (useOsm ? ' und OpenStreetMap' : '') + ' …', 'wiki');
+    // OpenStreetMap: wait at most osmWaitS (or until the user taps "Ohne OSM weiter"), then go on without it.
+    // Loading continues in the background and fills the cache; onOsmLate reports when it is done.
+    var osmDecided = false, skipFn = null;
+    var skipP = new Promise(function (res) { skipFn = res; });
+    if (opts.control) opts.control.skipOsm = function () { skipFn('skip'); };
+    var waitS = opts.osmWaitS || (cfg.osm && cfg.osm.max_wartezeit_s) || 120;
+    var osmFull = useOsm ? loadOsmArea(circles, cfg, f, opts.osmCache, null) : null;
+    var waitTimer = null;
+    var waitP = useOsm ? new Promise(function (res) { waitTimer = setTimeout(function () { res('timeout'); }, waitS * 1000); }) : null;
     var osmP = !useOsm ? Promise.resolve(null) : Promise.race([
-      osmFull.catch(function (e) { warnings.push('OpenStreetMap: ' + e.message); return null; }),
-      sleep((cfg.osm.max_wartezeit_s || 20) * 1000).then(function () { return 'timeout'; })
+      osmFull.then(function (r) {
+        if (!osmDecided) { src.osm.state = r.requests ? 'ok' : 'cache'; src.osm.ms = Date.now() - t0; src.osm.tiles = r.tiles; src.osm.cachedTiles = r.cachedTiles; src.osm.server = r.servers.join(', '); src.osm.els = r.els.length; }
+        return r;
+      }, function (e) {
+        if (!osmDecided) { src.osm.state = 'error'; src.osm.ms = Date.now() - t0; src.osm.error = e.message; warnings.push('OpenStreetMap: ' + e.message); }
+        return null;
+      }),
+      waitP,
+      skipP
     ]).then(function (r) {
-      if (r === 'timeout') { warnings.push('OpenStreetMap antwortet gerade langsam – Orte ohne OSM. Bei der nächsten Suche sind sie meist da.'); return null; }
+      osmDecided = true;
+      clearTimeout(waitTimer);
+      if (r === 'timeout' || r === 'skip') {
+        src.osm.state = r; src.osm.ms = Date.now() - t0;
+        if (r === 'timeout') warnings.push('OpenStreetMap: keine Antwort nach ' + waitS + ' s – Orte ohne OSM.');
+        osmFull.then(function (full) {
+          if (opts.onOsmLate) opts.onOsmLate({ ok: true, ms: Date.now() - t0, els: full.els.length });
+        }, function (e) {
+          if (opts.onOsmLate) opts.onOsmLate({ ok: false, ms: Date.now() - t0, error: e.message });
+        });
+        return null;
+      }
       return r;
     });
-    var wikiDone = false; // eslint-disable-line no-unused-vars
     var wikiP = Promise.all(langs.map(function (l) {
-      return loadWikipedia(l, opts.lat, opts.lon, opts.radius, cfg, f, opts.retryDelays).catch(function (e) {
+      return loadWikipediaArea(l, circles, cfg, f, opts.retryDelays, many ? function (d, n) {
+        prog('Lade Wikipedia ' + l + ': Bereich ' + d + '/' + n + ' …', 'wiki');
+      } : null).catch(function (e) {
         warnings.push('Wikipedia ' + l + ': ' + e.message);
         return null;
       });
     })).then(function (r) {
-      wikiDone = true;
-      if (useOsm) prog('Wikipedia fertig – warte auf OpenStreetMap …');
+      src.wiki.ms = Date.now() - t0;
+      if (useOsm && !osmDecided) prog('Wikipedia fertig – warte auf OpenStreetMap …', 'osm');
       return r;
     });
     return Promise.all([wikiP, osmP]).then(function (both) {
@@ -548,27 +676,28 @@
       ok.forEach(function (lr) { lr.pages.forEach(function (pg) { if (pg.wikidata) ids[pg.wikidata] = 1; }); });
       if (osm) osm.els.forEach(function (e) { if (e.wd) ids[e.wd] = 1; });
       var idList = Object.keys(ids);
-      prog('Lade Wikidata (' + idList.length + ' Einträge) …');
+      prog('Lade Wikidata (' + idList.length + ' Einträge) …', 'wd');
       var labelLangs = ['de', 'en'];
       if (opts.localLang && labelLangs.indexOf(opts.localLang) < 0) labelLangs.push(opts.localLang);
       return loadWikidata(idList, cfg, f, opts.wdCache, function (d, n) {
-        prog('Lade Wikidata ' + d + '/' + n + ' …');
+        prog('Lade Wikidata ' + d + '/' + n + ' …', 'wd');
       }, opts.retryDelays, labelLangs).then(function (wdr) {
         requests += wdr.requests;
         if (wdr.failedBatches) warnings.push('Wikidata: ' + wdr.failedBatches + ' Abfrage(n) fehlgeschlagen');
         var cls = {};
         Object.keys(wdr.info).forEach(function (k) { (wdr.info[k].p31 || []).forEach(function (q) { cls[q] = 1; }); });
-        prog('Lade Wikidata-Klassen …');
+        prog('Lade Wikidata-Klassen …', 'wd');
         return loadClassLabels(Object.keys(cls), f, opts.wdCache, opts.retryDelays).then(function (cr) {
           requests += cr.requests;
           if (cr.failedBatches) warnings.push('Wikidata-Klassen: ' + cr.failedBatches + ' Abfrage(n) fehlgeschlagen');
-          var center = { lat: opts.lat, lon: opts.lon };
-          var places = buildPlaces(ok, wdr.info, cr.info, cfg, center, opts.localLang || null);
+          var places = buildPlaces(ok, wdr.info, cr.info, cfg, centre, opts.localLang || null);
           var mstats = null;
           if (osm) {
-            var m = mergeOsm(places, osm.els, wdr.info, cr.info, cfg, center, opts.localLang || null);
+            var m = mergeOsm(places, osm.els, wdr.info, cr.info, cfg, centre, opts.localLang || null);
             places = m.places; mstats = m.stats;
           }
+          if (opts.bbox) places = places.filter(function (p) { return inBbox(p, opts.bbox); });
+          src.osm.neu = places.filter(function (p) { return p.quellen.join() === 'O'; }).length;
           return {
             places: sortPlaces(places),
             warnings: warnings,
@@ -578,8 +707,11 @@
               perLang: ok.map(function (lr) { return lr.lang + ':' + lr.pages.length; }).join(' ') + (osm ? ' osm:' + osm.els.length : ''),
               requests: requests,
               wdCached: wdr.cached,
+              wdTotal: idList.length,
               osm: mstats,
-              osmTiles: osm ? osm.tiles : 0
+              osmTiles: osm ? osm.tiles : 0,
+              src: src,
+              herkunft: sourceCounts(places)
             }
           };
         });
@@ -1001,14 +1133,15 @@
 
   // ---------------------------------------------- OpenStreetMap (v0.4)
 
-  /** Keys of the 0.1° tiles that cover a search circle, e.g. "53.4,-2.3". */
+  /** Keys of the tiles (default 0.1°) that cover a search circle, e.g. "53.450,-2.300". */
   function tileKeys(lat, lon, radius, size) {
     size = size || 0.1;
     var dLat = radius / 111320, dLon = radius / (111320 * Math.max(0.2, Math.cos(lat * Math.PI / 180)));
     var keys = [];
     var f = function (x) { return Math.floor(x / size + 1e-9); };
     for (var a = f(lat - dLat); a <= f(lat + dLat); a++) {
-      for (var b = f(lon - dLon); b <= f(lon + dLon); b++) keys.push((a * size).toFixed(1) + ',' + (b * size).toFixed(1));
+      // 3 decimals: with 0.05° tiles, toFixed(1) gave two tiles the same key (bug in v0.4.1)
+      for (var b = f(lon - dLon); b <= f(lon + dLon); b++) keys.push((a * size).toFixed(3) + ',' + (b * size).toFixed(3));
     }
     return keys;
   }
@@ -1052,9 +1185,10 @@
     return cached.catch(function () { return null; }).then(function (hit) {
       if (hit && Date.now() - hit.t < ttl) return { els: hit.els, cached: true };
       var q = overpassQuery(key, cfg), servers = cfg.osm.server || ['https://overpass-api.de/api/interpreter'];
-      var i = 0, lastErr = null;
+      var i = 0, lastErr = null, used = '';
       function next() {
         if (i >= servers.length) return Promise.reject(lastErr || new Error('Overpass nicht erreichbar'));
+        used = servers[i].replace(/^https?:\/\/([^/]+).*$/, '$1');
         var url = servers[i++] + '?data=' + encodeURIComponent(q);
         return getJson(url, f, ((cfg.osm.server_timeout_s || 20) + 5) * 1000).then(function (d) {
           if (d && d.remark && /runtime error|timed out|out of memory/i.test(d.remark)) throw new Error('Overpass: ' + d.remark);
@@ -1064,20 +1198,29 @@
       return next().then(function (d) {
         var els = (d.elements || []).map(compactOsm).filter(Boolean);
         if (cache) Promise.resolve(cache.set(ck, { t: Date.now(), els: els })).catch(function () {});
-        return { els: els, cached: false };
+        return { els: els, cached: false, server: used };
       });
     });
   }
 
   /** All OSM elements within the radius (tiles in parallel, max `parallel` at a time). */
   function loadOsm(lat, lon, radius, cfg, f, cache, onProgress) {
-    var keys = tileKeys(lat, lon, radius, cfg.osm.kachel_grad);
-    var seen = {}, out = [], done = 0, requests = 0, failed = 0;
+    return loadOsmArea([{ lat: lat, lon: lon, radius: radius }], cfg, f, cache, onProgress);
+  }
+
+  /** All OSM elements inside any of the circles; every tile is loaded once. */
+  function loadOsmArea(circles, cfg, f, cache, onProgress) {
+    var keys = [], have = {};
+    circles.forEach(function (c) {
+      tileKeys(c.lat, c.lon, c.radius, cfg.osm.kachel_grad).forEach(function (k) { if (!have[k]) { have[k] = 1; keys.push(k); } });
+    });
+    var seen = {}, out = [], done = 0, requests = 0, failed = 0, cachedTiles = 0, servers = {};
     return runLimited(keys, cfg.osm.parallel || 2, function (key) {
       return loadOsmTile(key, cfg, f, cache).then(function (r) {
-        if (!r.cached) requests++;
+        if (r.cached) cachedTiles++; else requests++;
+        if (r.server) servers[r.server] = 1;
         r.els.forEach(function (e) {
-          if (seen[e.id] || haversine(lat, lon, e.lat, e.lon) > radius) return;
+          if (seen[e.id] || !insideAny(circles, e.lat, e.lon)) return;
           seen[e.id] = 1; out.push(e);
         });
       }, function () { failed++; }).then(function () {
@@ -1086,7 +1229,7 @@
       });
     }).then(function () {
       if (failed === keys.length) throw new Error('OpenStreetMap nicht erreichbar');
-      return { els: out, tiles: keys.length, requests: requests, failedTiles: failed };
+      return { els: out, tiles: keys.length, requests: requests, cachedTiles: cachedTiles, failedTiles: failed, servers: Object.keys(servers) };
     });
   }
 
@@ -1251,6 +1394,21 @@
     var ll = p.lat.toFixed(6) + ',' + p.lon.toFixed(6);
     return 'geo:' + ll + '?q=' + ll + '(' + encodeURIComponent(p.name) + ')';
   }
+  // OsmAnd (v0.5). Three ways to open it; diag.html tests which one works on the phone.
+  function osmandWebUrl(p, z) {
+    var la = p.lat.toFixed(6), lo = p.lon.toFixed(6);
+    return 'https://osmand.net/map?pin=' + la + ',' + lo + '#' + (z || 17) + '/' + la + '/' + lo;
+  }
+  function osmandGoUrl(p, z) {
+    return 'https://osmand.net/go?lat=' + p.lat.toFixed(6) + '&lon=' + p.lon.toFixed(6) + '&z=' + (z || 17);
+  }
+  /** Android intent link: opens OsmAnd+ (package) directly; without the app the web map opens. */
+  function osmandIntentUrl(p, pkg, z) {
+    var web = osmandWebUrl(p, z);
+    return 'intent://' + web.replace(/^https:\/\//, '').replace(/#.*$/, '') + '#Intent;scheme=https;package=' + (pkg || 'net.osmand.plus') +
+      ';S.browser_fallback_url=' + encodeURIComponent(web) + ';end';
+  }
+
   function wikipediaUrl(p) {
     var lang = p.artikel && p.artikel.de ? 'de' : (p.wikipedia || 'en:').split(':')[0];
     var title = (p.artikel && p.artikel[lang]) || (p.wikipedia || '').replace(/^[a-z-]+:/, '');
@@ -1283,6 +1441,10 @@
     tileKeys: tileKeys, overpassQuery: overpassQuery, compactOsm: compactOsm, loadOsm: loadOsm,
     nameSimilarity: nameSimilarity, mergeOsm: mergeOsm, osmFacts: osmFacts,
     _resetTranslators: function () { chromeTranslators = {}; myMemoryBlocked = false; },
+    sameName: sameName, sourceCounts: sourceCounts, sourceTag: sourceTag,
+    bboxSize: bboxSize, bboxCenter: bboxCenter, circleFor: circleFor, inBbox: inBbox, bboxContains: bboxContains,
+    bboxOverlaps: bboxOverlaps, cellsFor: cellsFor, loadWikipediaArea: loadWikipediaArea, loadOsmArea: loadOsmArea,
+    osmandWebUrl: osmandWebUrl, osmandGoUrl: osmandGoUrl, osmandIntentUrl: osmandIntentUrl,
     nameWithPlace: nameWithPlace, gmapsSearchUrl: gmapsSearchUrl, gmapsPinUrl: gmapsPinUrl,
     geoSearchUrl: geoSearchUrl, geoPinUrl: geoPinUrl, wikipediaUrl: wikipediaUrl,
     tripadvisorUrl: tripadvisorUrl, merkZeile: merkZeile

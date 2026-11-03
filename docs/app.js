@@ -1,8 +1,8 @@
-/* Reiseführer – app (v0.4.1). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.6.0). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.4.1';
+  var VERSION = '0.6.0';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
@@ -45,7 +45,14 @@
     return {
       get: function (k) { return tx('readonly', function (s) { return s.get(k); }).catch(function () { return mem[k]; }); },
       set: function (k, v) { return tx('readwrite', function (s) { s.put(v, k); }).catch(function () { mem[k] = v; }); },
-      clear: function () { mem = {}; return tx('readwrite', function (s) { s.clear(); }).catch(function () {}); }
+      del: function (k) { delete mem[k]; return tx('readwrite', function (s) { s.delete(k); }).catch(function () {}); },
+      // deletes all keys that start with the prefix (e.g. "osm:" = OpenStreetMap tiles)
+      delPrefix: function (pre) {
+        Object.keys(mem).forEach(function (k) { if (k.indexOf(pre) === 0) delete mem[k]; });
+        return tx('readwrite', function (s) {
+          s.delete(IDBKeyRange.bound(pre, pre + '￿'));
+        }).catch(function () {});
+      }
     };
   })();
 
@@ -60,7 +67,10 @@
   var wdStore = LS.get(K.wd, {}) || {};
   var wdCache = { get: function (k) { return wdStore[k]; }, set: function (k, v) { wdStore[k] = v; } };
   var userPos = null, busy = false, selectedId = null;
-  var map, markerLayer, searchCircle, userMarker, userAcc;
+  var map, markerLayer, searchCircle, userMarker, userAcc, areaLayer;
+  var run = null;      // running search {t0, text, phase, control, cancelled, timer}
+  var areas = [];      // prepared areas (index; places are in IndexedDB "area:<id>")
+  var prep = null;     // running preparation
 
   function $(id) { return document.getElementById(id); }
   function esc(s) {
@@ -145,10 +155,11 @@
   }
 
   function start() {
-    var radien = cfg.wikipedia.radien_m;
-    if (radien.indexOf(settings.radius) < 0) settings.radius = cfg.wikipedia.radius_standard_m;
+    delete settings.radius; // v0.5: no radius any more, the search uses the visible map section
+    cfg.suche = cfg.suche || {};
+    cfg.gebiet = cfg.gebiet || {};
     if (typeof settings.minStars !== 'number') settings.minStars = 1;
-    if (!settings.kartenApp) settings.kartenApp = cfg.karten_app_standard || 'google';
+    if (['google', 'geo', 'osmand'].indexOf(settings.kartenApp) < 0) settings.kartenApp = cfg.karten_app_standard || 'google';
     if (settings.kat == null) settings.kat = '';
     if (['kurz', 'normal', 'ausfuehrlich'].indexOf(settings.level) < 0) settings.level = (cfg.erzaehlen && cfg.erzaehlen.standard_ausfuehrlichkeit) || 'kurz';
     if (settings.focus == null) settings.focus = '';
@@ -159,10 +170,6 @@
 
     // filters
     $('fStars').value = String(settings.minStars);
-    $('fRadius').innerHTML = radien.map(function (r) {
-      return '<option value="' + r + '">' + (r < 1000 ? r + ' m' : (r / 1000) + ' km') + '</option>';
-    }).join('');
-    $('fRadius').value = String(settings.radius);
     $('fKat').innerHTML = '<option value="">Alle Typen</option>' + cfg.kategorien.map(function (k) {
       return '<option value="' + esc(k.id) + '">' + esc(k.label) + '</option>';
     }).join('');
@@ -173,12 +180,9 @@
     bindUI();
     renderMerkCount();
 
-    if (last && last.places) {
-      drawSearchCircle(last.lat, last.lon, last.radius);
-      renderAll();
-    } else {
-      renderAll();
-    }
+    if (last && last.places && last.bbox) drawSearchArea(last.bbox);
+    renderAll();
+    loadAreas();
   }
 
   // ---------------------------------------------------------------- map
@@ -187,11 +191,13 @@
     map = L.map('map', { zoomControl: false, worldCopyJump: true })
       .setView(view ? [view.lat, view.lon] : [50.5, 8.5], view ? view.z : 5);
     map.attributionControl.setPrefix(false);
+    window.__rfMap = map; // for the automated UI test (tools/ui-test.mjs)
     map.attributionControl.setPosition('bottomleft');
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap-Mitwirkende</a>'
     }).addTo(map);
+    areaLayer = L.layerGroup().addTo(map);
     markerLayer = L.layerGroup().addTo(map);
     map.on('zoomend', renderMarkers);
     map.on('moveend', function () {
@@ -202,12 +208,28 @@
     window.addEventListener('resize', function () { map.invalidateSize(); });
   }
 
-  function drawSearchCircle(lat, lon, r) {
+  // Searched map section (dashed frame)
+  function drawSearchArea(b) {
     if (searchCircle) map.removeLayer(searchCircle);
-    searchCircle = L.circle([lat, lon], {
-      radius: r, color: '#0e6b7d', weight: 2, opacity: .7, dashArray: '6 6', fill: true, fillOpacity: .04, interactive: false
+    searchCircle = L.rectangle([[b.south, b.west], [b.north, b.east]], {
+      color: '#0e6b7d', weight: 2, opacity: .7, dashArray: '6 6', fill: true, fillOpacity: .03, interactive: false
     }).addTo(map);
   }
+  // Prepared areas (green frame)
+  function drawAreas() {
+    if (!areaLayer) return;
+    areaLayer.clearLayers();
+    areas.forEach(function (a) {
+      L.rectangle([[a.bbox.south, a.bbox.west], [a.bbox.north, a.bbox.east]], {
+        color: '#1a7f37', weight: 2, opacity: .6, dashArray: '2 6', fill: false, interactive: false
+      }).addTo(areaLayer);
+    });
+  }
+  function viewBbox() {
+    var b = map.getBounds();
+    return { south: b.getSouth(), west: b.getWest(), north: b.getNorth(), east: b.getEast() };
+  }
+  function kmText(m) { return (Math.round(m / 100) / 10).toString().replace('.', ',') + ' km'; }
 
   function drawUser() {
     if (!userPos) return;
@@ -349,38 +371,143 @@
     $('btnHere').textContent = b ? 'Suche …' : 'Hier suchen';
   }
 
-  function doSearch(lat, lon, fit, onDone) {
+  function secText(ms) { return ms == null ? '' : ms < 1000 ? '<1 s' : Math.round(ms / 1000) + ' s'; }
+
+  // Status line while searching: what is loading, seconds so far, and the buttons
+  function renderBusy() {
+    if (!run) return;
+    var s = Date.now() - run.t0;
+    var html = '<span>' + esc(run.text || 'Suche …') + '</span> <b class="secs">' + Math.floor(s / 1000) + ' s</b>';
+    if (s >= 3000) {
+      html += '<span class="st-btns">' +
+        (run.phase === 'osm' && run.control.skipOsm ? '<button type="button" class="st-btn" data-a="skiposm">Ohne OSM weiter</button>' : '') +
+        '<button type="button" class="st-btn" data-a="cancel">Abbrechen</button></span>';
+    }
+    var st = $('status');
+    st.innerHTML = html;
+    st.className = 'status busy';
+  }
+  function endRun() {
+    if (run && run.timer) clearInterval(run.timer);
+    run = null;
+    setBusy(false);
+  }
+  function cancelSearch() {
+    if (!run) return;
+    run.cancelled = true;
+    endRun();
+    renderList();
+    toast('Suche abgebrochen', 1800);
+  }
+
+  function findArea(b, overlapOnly) {
+    return areas.filter(function (a) {
+      return a.hasPlaces && (overlapOnly ? C.bboxOverlaps(a.bbox, b) : C.bboxContains(a.bbox, b));
+    })[0] || null;
+  }
+
+  /**
+   * Searches the map section b ({south, west, north, east}).
+   * o: {onDone, force (do not use a prepared area)}
+   */
+  function doSearch(b, o) {
+    o = o || {};
     if (busy) return;
+    var circle = C.circleFor(b);
+    var maxR = cfg.suche.max_halbdiagonale_m || 10000;
+    if (circle.radius > maxR) {
+      var sz = C.bboxSize(b);
+      toast('Ausschnitt zu groß (' + kmText(sz.w) + ' × ' + kmText(sz.h) + '). Bitte näher heranzoomen.', 4000);
+      return;
+    }
+    var area = !o.force && findArea(b);
+    if (!area && navigator.onLine === false) area = findArea(b, true);
+    if (area) { useArea(area, b, o); return; }
+
     setBusy(true);
-    var radius = settings.radius;
-    drawSearchCircle(lat, lon, radius);
-    if (fit) map.fitBounds(searchCircle.getBounds(), { padding: [12, 12] });
-    setStatus('Bestimme Ort und Sprache …', 'busy');
+    drawSearchArea(b);
+    var r = run = { t0: Date.now(), text: 'Bestimme Ort und Sprache …', phase: 'start', control: {}, cancelled: false };
+    r.timer = setInterval(renderBusy, 1000);
+    renderBusy();
     var ort = '';
-    getPlaceInfo(lat, lon).then(function (info) {
+    getPlaceInfo(circle.lat, circle.lon).then(function (info) {
+      if (r.cancelled) return null;
       ort = info.name || '';
       return C.loadPlaces({
-        lat: lat, lon: lon, radius: radius, cfg: cfg, wdCache: wdCache, osmCache: IDB, osm: settings.osm !== false,
+        lat: circle.lat, lon: circle.lon, radius: circle.radius, bbox: b,
+        cfg: cfg, wdCache: wdCache, osmCache: IDB, osm: settings.osm !== false,
         langs: C.languagesFor(info, cfg),
         localLang: C.localLanguage(info, cfg),
-        fetch: function (u, o) { return fetch(u, o); },
-        onProgress: function (t) { setStatus(t, 'busy'); }
+        fetch: function (u, op) { return fetch(u, op); },
+        control: r.control,
+        onProgress: function (t, phase) { if (r.cancelled) return; r.text = t; r.phase = phase || r.phase; renderBusy(); },
+        onOsmLate: function (info2) { osmLate(r, info2); }
       });
     }).then(function (res) {
-      return Promise.resolve().then(function () {
-        res.places.forEach(function (p) { p.ort = ort || ''; });
-        last = { version: VERSION, lat: lat, lon: lon, radius: radius, ort: ort || '', time: Date.now(), places: res.places, warnings: res.warnings };
-        if (!LS.set(K.last, last)) LS.del(K.last);
-        saveWd();
-        selectedId = null;
-        if (!$('sheet').hidden) closeSheet();
-        renderAll();
-        if (res.warnings.length) toast('Hinweis: ' + res.warnings.join('; '), 5000);
-        if (onDone) onDone();
-      });
+      if (!res || r.cancelled) return;
+      res.places.forEach(function (p) { p.ort = ort || ''; });
+      r.result = res;
+      last = {
+        version: VERSION, bbox: b, lat: circle.lat, lon: circle.lon, ort: ort || '', time: Date.now(),
+        places: res.places, warnings: res.warnings, src: res.stats.src, herkunft: res.stats.herkunft,
+        stats: { ms: res.stats.ms, requests: res.stats.requests, perLang: res.stats.perLang, wdCached: res.stats.wdCached, wdTotal: res.stats.wdTotal, osm: res.stats.osm, tiles: res.stats.osmTiles }
+      };
+      if (!LS.set(K.last, last)) LS.del(K.last);
+      saveWd();
+      selectedId = null;
+      if (!$('sheet').hidden) closeSheet();
+      endRun();
+      renderAll();
+      var warn = res.warnings.filter(function (w) { return !/^OpenStreetMap: keine Antwort/.test(w); }); // shown in the status line
+      if (warn.length) toast('Hinweis: ' + warn.join('; '), 5000);
+      if (o.onDone) o.onDone();
     }).catch(function (e) {
-      setStatus('Fehler: ' + e.message + (navigator.onLine === false ? ' – keine Internetverbindung' : ''), 'err');
-    }).then(function () { setBusy(false); });
+      if (r.cancelled) return;
+      endRun();
+      var off = navigator.onLine === false;
+      setStatus('Fehler: ' + e.message + (off ? ' – keine Internetverbindung' : ''), 'err');
+    }).then(function () { if (run === r) endRun(); });
+  }
+
+  // OpenStreetMap answered after the search had gone on without it
+  function osmLate(r, info) {
+    if (r.cancelled || !last || !last.src || last.src !== (r.result && r.result.stats.src)) return;
+    last.src.osm.late = { ok: info.ok, ms: info.ms };
+    LS.set(K.last, last);
+    if (!busy) renderList();
+    if (info.ok) toast('OpenStreetMap ist jetzt geladen (' + secText(info.ms) + '). Tippe „Hier suchen“, um die OSM-Orte zu ergänzen.', 6000);
+  }
+
+  // Places from a prepared area: instant, also offline
+  function useArea(a, b, o) {
+    setBusy(true);
+    setStatus('Lade vorbereitetes Gebiet „' + a.name + '“ …', 'busy');
+    IDB.get('area:' + a.id).then(function (all) {
+      if (!all || !all.length) throw new Error('Gebiet „' + a.name + '“ ist leer');
+      var c = C.bboxCenter(b);
+      var places = all.filter(function (p) { return C.inBbox(p, b); });
+      places.forEach(function (p) { p.dist = Math.round(C.haversine(c.lat, c.lon, p.lat, p.lon)); });
+      var partial = !C.bboxContains(a.bbox, b);
+      drawSearchArea(b);
+      last = {
+        version: VERSION, bbox: b, lat: c.lat, lon: c.lon, ort: a.name, time: Date.now(), places: C.sortPlaces(places),
+        warnings: partial ? ['Offline: nur der vorbereitete Teil des Ausschnitts'] : [],
+        src: { area: { id: a.id, name: a.name, updated: a.updated || a.created, partial: partial } },
+        herkunft: C.sourceCounts(places)
+      };
+      if (!LS.set(K.last, last)) LS.del(K.last);
+      selectedId = null;
+      if (!$('sheet').hidden) closeSheet();
+      setBusy(false);
+      renderAll();
+      if (partial) toast('Offline: nur der vorbereitete Teil des Ausschnitts', 4000);
+      if (o && o.onDone) o.onDone();
+    }).catch(function (e) {
+      setBusy(false);
+      a.hasPlaces = false;
+      doSearch(b, { force: true, onDone: o && o.onDone });
+      toast(e.message, 3000);
+    });
   }
 
   function locate() {
@@ -391,7 +518,8 @@
       $('btnLocate').disabled = false;
       userPos = { lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy };
       drawUser();
-      doSearch(userPos.lat, userPos.lon, true);
+      map.setView([userPos.lat, userPos.lon], cfg.suche.standort_zoom || 14, { animate: false });
+      doSearch(viewBbox());
     }, function (err) {
       $('btnLocate').disabled = false;
       var msg = err.code === 1 ? 'Standortzugriff verweigert. Bitte in den Browser-Einstellungen für diese Seite erlauben.'
@@ -434,16 +562,21 @@
     var ul = $('list');
     if (!last || !last.places) {
       ul.innerHTML = '<li class="empty">Tippe auf <b>◎ Mein Standort</b>, um Sehenswertes in deiner Nähe zu sehen.<br>' +
-        'Oder schiebe die Karte an einen Ort (z. B. Manchester) und tippe auf <b>Hier suchen</b>.</li>';
-      setStatus('');
+        'Oder schiebe die Karte an einen Ort (z. B. Manchester) und tippe auf <b>Hier suchen</b> – gesucht wird im sichtbaren Kartenausschnitt.</li>';
+      if (!run) setStatus('');
       return;
     }
     var all = last.places, vis = visiblePlaces();
     var cnt = [0, 0, 0, 0];
     all.forEach(function (p) { cnt[p.sterne]++; });
-    var txt = (last.ort ? last.ort + ': ' : '') + '★★★ ' + cnt[3] + ' · ★★ ' + cnt[2] + ' · ★ ' + cnt[1];
+    var txt = '★★★ ' + cnt[3] + ' · ★★ ' + cnt[2] + ' · ★ ' + cnt[1]; // place name is on the map (chip)
     if (settings.minStars > 0 && cnt[0]) txt += ' · ' + cnt[0] + ' ohne Stern';
-    setStatus(txt);
+    if (!run) { // while searching the status line shows the progress
+      var st = $('status');
+      st.innerHTML = '<button type="button" class="st-info" data-a="details"><span>' + esc(txt) + '</span>' +
+        '<span class="src-line">' + esc(srcLine(last)) + ' ›</span></button>';
+      st.className = 'status';
+    }
     if (!vis.length) {
       ul.innerHTML = '<li class="empty">Keine Orte mit diesen Filtern. Stelle oben „Alle Orte“ oder eine andere Kategorie ein.</li>';
       return;
@@ -453,18 +586,74 @@
       var d = distOf(p);
       var meta = [heard[p.id] ? '✓ gehört' : '', p.typ_label, d != null ? C.formatDistance(d) : '', dt[String(p.sterne)] || ''].filter(Boolean).join(' · ');
       var on = isMerk(p.id);
+      var tag = C.sourceTag(p);
       return '<li class="item' + (p.id === selectedId ? ' sel' : '') + (p.sterne ? '' : ' zero') + (heard[p.id] ? ' heard' : '') + '" data-id="' + esc(p.id) + '">' +
         '<div class="it-main">' +
           '<span class="it-stars s' + p.sterne + '">' + (p.sterne ? C.starsText(p.sterne) : '·') + '</span>' +
           '<span class="it-text"><span class="it-name">' + esc(p.name) + '</span>' +
           (p.name2 ? '<span class="it-name2">' + esc(p.name2) + '</span>' : '') +
-          '<span class="it-meta">' + esc(meta) + '</span>' +
+          '<span class="it-meta">' + esc(meta) + ' <span class="it-src src-' + (tag === 'W' ? 'w' : tag === 'OSM' ? 'o' : 'wo') + '">' + tag + '</span></span>' +
           '<span class="it-desc">' + esc(kurzText(p)) + '</span>' +
           '</span></div>' +
         '<button class="it-merk' + (on ? ' on' : '') + '" type="button" aria-label="Merken">' + (on ? '★' : '☆') + '</button>' +
         '</li>';
     }).join('');
     observeRows();
+  }
+
+  function dateText(t) { try { return new Date(t).toLocaleDateString('de-DE', { day: 'numeric', month: 'numeric', year: '2-digit' }); } catch (e) { return ''; } }
+
+  // Where the results come from, e.g. "Wikipedia ✓ 3 s · OSM ✓ 12 s, 6 neue"
+  function srcLine(l) {
+    var s = l && l.src;
+    if (!s) return 'Herkunft unbekannt (alte Suche)';
+    if (s.area) return '📥 Vorbereitet: „' + s.area.name + '“, Stand ' + dateText(s.area.updated) + (s.area.partial ? ', nur teilweise' : '');
+    var wFail = (l.warnings || []).some(function (w) { return /^Wikipedia /.test(w); });
+    var parts = ['Wikipedia ' + (s.wiki.ms != null ? (wFail ? '⚠ ' : '✓ ') + secText(s.wiki.ms) : '✗')];
+    var o = s.osm || {}, neu = o.neu != null ? ', ' + o.neu + ' neue' : '';
+    var osm = {
+      ok: 'OSM ✓ ' + secText(o.ms) + neu,
+      cache: 'OSM ✓ gespeichert' + neu,
+      timeout: 'OSM ✗ keine Antwort nach ' + secText(o.ms),
+      skip: 'OSM übersprungen nach ' + secText(o.ms),
+      error: 'OSM ✗ Fehler',
+      off: 'OSM aus'
+    }[o.state] || 'OSM ?';
+    if (o.late) osm = o.late.ok ? 'OSM jetzt da (' + secText(o.late.ms) + ') – „Hier suchen“ ergänzt' : 'OSM ✗ auch später keine Antwort';
+    parts.push(osm);
+    return parts.join(' · ');
+  }
+
+  // Details of the last search (tap on the status line)
+  function openSearchDetails() {
+    if (!last) return;
+    var s = last.src || {}, st = last.stats || {}, h = last.herkunft || C.sourceCounts(last.places || []);
+    var rows = [];
+    var sz = last.bbox ? C.bboxSize(last.bbox) : null;
+    rows.push(['Ort', last.ort || '–']);
+    if (sz) rows.push(['Ausschnitt', kmText(sz.w) + ' × ' + kmText(sz.h)]);
+    rows.push(['Gesucht', dateText(last.time) + ', ' + new Date(last.time).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })]);
+    if (s.area) {
+      rows.push(['Quelle', 'Vorbereitetes Gebiet „' + s.area.name + '“ (Stand ' + dateText(s.area.updated) + '), ohne Internet']);
+    } else {
+      rows.push(['Wikipedia', s.wiki && s.wiki.ms != null ? 'fertig nach ' + secText(s.wiki.ms) + (st.perLang ? ' (' + st.perLang.replace(/ ?osm:\d+/, '') + ' Artikel)' : '') : 'keine Antwort']);
+      if (st.wdTotal != null) rows.push(['Wikidata', st.wdTotal + ' Einträge, davon ' + (st.wdCached || 0) + ' gespeichert']);
+      var o = s.osm || {};
+      var ot = { ok: 'geladen nach ' + secText(o.ms), cache: 'aus dem Speicher (schon einmal geladen)', timeout: 'keine Antwort nach ' + secText(o.ms) + ' – lädt im Hintergrund weiter',
+        skip: 'übersprungen nach ' + secText(o.ms) + ' – lädt im Hintergrund weiter', error: 'Fehler: ' + (o.error || '?'), off: 'ausgeschaltet (⚙ Einstellungen)' }[o.state] || '?';
+      if (o.late) ot += o.late.ok ? '; später geladen nach ' + secText(o.late.ms) : '; auch später keine Antwort';
+      rows.push(['OpenStreetMap', ot]);
+      if (o.tiles) rows.push(['OSM-Kacheln', o.tiles + ', davon ' + (o.cachedTiles || 0) + ' gespeichert' + (o.server ? '; Server: ' + o.server : '')]);
+      if (st.osm) rows.push(['Zusammengeführt', st.osm.byWikidata + ' über Wikidata, ' + st.osm.byName + ' über Namen; ' + st.osm.osmDup + ' OSM-Doppel']);
+      if (st.requests != null) rows.push(['Anfragen', st.requests + ', gesamt ' + secText(st.ms)]);
+    }
+    rows.push(['Orte', (last.places || []).length + ': nur Wikipedia ' + h.w + ', nur OSM ' + h.o + ', beide ' + h.wo]);
+    var html = '<table class="kv">' + rows.map(function (r) { return '<tr><td>' + esc(r[0]) + '</td><td>' + esc(r[1]) + '</td></tr>'; }).join('') + '</table>' +
+      ((last.warnings || []).length ? '<p class="small">Hinweise: ' + esc(last.warnings.join('; ')) + '</p>' : '') +
+      '<p class="small">In der Liste steht bei jedem Ort, woher er kommt: <b>W</b> = Wikipedia, <b>OSM</b> = OpenStreetMap, <b>W+OSM</b> = in beiden gefunden.</p>' +
+      (last.bbox ? '<div class="actions"><button class="btn wide" type="button" data-a="research">' + (s.area ? 'Trotzdem online neu suchen' : 'Nochmal suchen') + '</button></div>' : '');
+    openSheet('Suche – Details', html);
+    $('sheetBody').removeAttribute('data-place');
   }
 
   // ------------------------------------------------ short German info ("was ist das?")
@@ -474,13 +663,15 @@
 
   function kurzText(p) {
     var k = kurzStore[p.id];
-    if (k && k.t) return k.t;
+    if (k && k.t && !(k.orig && p.kurz && !p.kurzOrig)) return k.t;
+    if (p.kurz) return p.kurz;   // stored with a prepared area (v0.6)
     if (p.osmOnly) return p.beschreibung || '';
     var d = C.stripLocation(p.beschreibung);
     return d && d.toLowerCase() !== String(p.typ_label || '').toLowerCase() ? d : '';
   }
   function kurzNeeded(id) {
     var k = kurzStore[id];
+    if (!k) { var p = findPlace(id); if (p && p.kurz && !p.kurzOrig) return false; }
     return !k || (k.orig && Date.now() - (k.d || 0) > KURZ_RETRY);
   }
   function observeRows() {
@@ -504,7 +695,11 @@
   function saveKurz() {
     var keys = Object.keys(kurzStore);
     if (keys.length > 2500) keys.slice(0, keys.length - 2500).forEach(function (k) { delete kurzStore[k]; });
-    LS.set(K.kurz, kurzStore);
+    if (!LS.set(K.kurz, kurzStore)) {  // storage full: keep the newest half (prepared areas keep their own copy)
+      keys = Object.keys(kurzStore);
+      keys.slice(0, Math.ceil(keys.length / 2)).forEach(function (k) { delete kurzStore[k]; });
+      LS.set(K.kurz, kurzStore);
+    }
   }
   function showKurz(id) {
     var p = findPlace(id);
@@ -522,13 +717,22 @@
     if (!ids.length) return;
     ids.forEach(function (id) { delete kurzQueue[id]; });
     var places = ids.map(findPlace).filter(Boolean);
+    kurzBusy = true;
+    kurzFor(places).catch(function () { /* offline: keep descriptions */ }).then(function () {
+      saveKurz();
+      kurzBusy = false;
+      if (Object.keys(kurzQueue).length) scheduleKurz();
+    });
+  }
+  // German short info for places (max 20 per call): Wikipedia intro, translated if needed
+  function kurzFor(places, cancelled) {
     var f = function (u, o) { return fetch(u, o); };
     var order = (cfg.uebersetzung && cfg.uebersetzung.reihenfolge) || ['chrome', 'mymemory'];
-    kurzBusy = true;
-    C.loadIntros(places, f).then(function (intros) {
+    return C.loadIntros(places, f).then(function (intros) {
       // translate one after the other (gentle on the free service)
       return Object.keys(intros).reduce(function (pr, id) {
         return pr.then(function () {
+          if (cancelled && cancelled()) return;
           var it = intros[id];
           if (it.lang === 'de') { kurzStore[id] = { t: it.text, l: 'de', d: Date.now() }; showKurz(id); return; }
           return C.translate(it.text, it.lang, 'de', f, order).then(function (tr) {
@@ -538,10 +742,6 @@
           }).then(function () { showKurz(id); });
         });
       }, Promise.resolve());
-    }).catch(function () { /* offline: keep descriptions */ }).then(function () {
-      saveKurz();
-      kurzBusy = false;
-      if (Object.keys(kurzQueue).length) scheduleKurz();
     });
   }
 
@@ -571,6 +771,7 @@
 
   // -------------------------------------------------------------- sheet
   function openSheet(title, html) {
+    $('sheetBody').removeAttribute('data-view');
     $('sheetTitle').textContent = title;
     $('sheetBody').innerHTML = html;
     if ($('sheet').hidden) {
@@ -596,6 +797,9 @@
   function mapsLinks(p) {
     if (settings.kartenApp === 'geo') {
       return { name: C.geoSearchUrl(p), pin: C.geoPinUrl(p), label: 'In Karten-App', target: '' };
+    }
+    if (settings.kartenApp === 'osmand') {
+      return { name: C.osmandIntentUrl(p, cfg.osmand_paket), pin: C.geoPinUrl(p), label: 'In OsmAnd', target: '' };
     }
     return { name: C.gmapsSearchUrl(p), pin: C.gmapsPinUrl(p), label: 'In Google Maps', target: ' target="_blank" rel="noopener"' };
   }
@@ -640,7 +844,7 @@
           foci.map(function (f) { return '<option' + (settings.focus === f ? ' selected' : '') + '>' + esc(f) + '</option>'; }).join('') +
         '</select>' +
         '<button class="btn primary big" type="button" data-a="tell">🎧 Erzähl mir davon</button>' +
-        '<button class="btn big review-btn" type="button" data-a="review">💬 Lohnt sich das?</button>' +
+        '<button class="btn big review-btn" type="button" data-a="review">' + esc((cfg.besucher && cfg.besucher.knopf) || '📋 Übersicht und Bewertung') + '</button>' +
         '<div id="tellStatus" class="tell-status" hidden></div>' +
         '<button class="btn heard-btn' + (heard[p.id] ? ' on' : '') + '" type="button" data-a="heard">' + (heard[p.id] ? '✓ Schon gehört' : 'Als gehört markieren') + '</button>' +
       '</div>' +
@@ -674,8 +878,12 @@
     var key = level === 'kurz' ? 'kurz' : 'full';
     if (!narr.cache[key]) {
       var p = findPlace(narr.pid);
-      narr.cache[key] = C.loadArticle(p, key, function (u, o) { return fetch(u, o); });
-      narr.cache[key].catch(function () { if (narr) delete narr.cache[key]; });
+      // article stored with a prepared area (whole article, also contains the intro): works offline
+      narr.cache[key] = withTimeout(IDB.get('art:' + p.id), 1500, null).then(function (a) {
+        return a && a.text ? a : C.loadArticle(p, key, function (u, o) { return fetch(u, o); });
+      });
+      var c = narr.cache[key];
+      c.catch(function () { if (narr && narr.cache[key] === c) delete narr.cache[key]; });
     }
     return narr.cache[key];
   }
@@ -806,10 +1014,19 @@
   function merkText() { return merk.map(C.merkZeile).join('\n'); }
 
   function openSettings() {
+    var vb = viewBbox(), vs = C.bboxSize(vb), km2 = vs.w * vs.h / 1e6, maxKm2 = cfg.gebiet.max_km2 || 400;
     var html =
+      '<h3>📥 Gebiet vorbereiten</h3>' +
+      '<p class="small">Lädt alle Orte im Kartenausschnitt mit deutschen Kurzinfos und Wikipedia-Texten vorab. Danach ist „Hier suchen“ dort sofort fertig, auch ohne Internet (nur Bilder und Claude brauchen Internet). ' +
+      'Dauert einige Minuten; die App muss dabei offen bleiben.</p>' +
+      '<p class="small">Ausschnitt jetzt: <b>' + kmText(vs.w) + ' × ' + kmText(vs.h) + '</b>' + (km2 > maxKm2 ? ' – zu groß (höchstens ' + maxKm2 + ' km²), bitte näher heranzoomen.' : '') + '</p>' +
+      '<div class="actions"><button class="btn primary wide" type="button" data-a="prep"' + (km2 > maxKm2 || prep ? ' disabled' : '') + '>' +
+        (prep ? 'Wird gerade vorbereitet …' : 'Kartenausschnitt vorbereiten') + '</button></div>' +
+      areasHtml() +
       '<h3>Karten-App für „In Google Maps“ und „Pin“</h3>' +
-      '<label class="opt"><input type="radio" name="kapp" value="google"' + (settings.kartenApp !== 'geo' ? ' checked' : '') + '> Google Maps (Web-Link, empfohlen)</label>' +
-      '<label class="opt"><input type="radio" name="kapp" value="geo"' + (settings.kartenApp === 'geo' ? ' checked' : '') + '> Android-Karten-App (geo:-Link, Auswahl möglich)</label>' +
+      [['google', 'Google Maps (Web-Link, empfohlen)'], ['geo', 'Android-Karten-App (geo:-Link, Auswahl möglich)'], ['osmand', 'OsmAnd (öffnet OsmAnd+; „Pin“ per geo:-Link)']].map(function (o) {
+        return '<label class="opt"><input type="radio" name="kapp" value="' + o[0] + '"' + (settings.kartenApp === o[0] ? ' checked' : '') + '> ' + o[1] + '</label>';
+      }).join('') +
       '<h3>„Erzähl mir davon“: Übergabe an Claude</h3>' +
       [['claude-new', 'Claude-App mit fertigem Text öffnen (empfohlen)'], ['kopieren-app', 'Text kopieren und Claude-App öffnen'], ['kopieren', 'Nur kopieren']].map(function (o) {
         return '<label class="opt"><input type="radio" name="uebergabe" value="' + o[0] + '"' + (settings.uebergabe === o[0] ? ' checked' : '') + '> ' + o[1] + '</label>';
@@ -821,17 +1038,222 @@
       '<label class="opt"><input type="checkbox" id="useOsm"' + (settings.osm !== false ? ' checked' : '') + '> OpenStreetMap-Orte einbeziehen (Kunstwerke, Aussichtspunkte, Denkmäler …)</label>' +
       '<h3>Daten</h3>' +
       '<div class="actions"><button class="btn wide" type="button" data-a="clearcache">Zwischenspeicher leeren</button></div>' +
-      '<p class="small">Löscht gespeicherte Orte, Wikidata- und OpenStreetMap-Daten und Kurztexte. Merkliste und Einstellungen bleiben.</p>' +
+      '<p class="small">Löscht die letzte Suche, Wikidata- und OpenStreetMap-Daten und Kurztexte. Merkliste, Einstellungen und vorbereitete Gebiete bleiben.</p>' +
+      '<p class="small" id="storageInfo"></p>' +
       '<h3>Hilfe</h3>' +
       '<div class="actions"><a class="btn" href="diag.html">Diagnose</a>' +
       '<a class="btn" href="https://github.com/obitusde/reisefuehrer/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Änderungen</a></div>' +
-      '<p class="small">Sterne sind eine Faustregel aus Wikipedia/Wikidata (Sprachversionen, Aufrufe, Artikellänge, Denkmalstatus, Art des Ortes), keine Expertenbewertung.</p>' +
+      '<p class="small">Sterne sind eine Faustregel aus Wikipedia/Wikidata (Sprachversionen, Artikellänge, Denkmalstatus, Art des Ortes), keine Expertenbewertung.</p>' +
       '<h3>Quellen und Lizenzen</h3>' +
       '<p class="small">Karte und Ortsnamen: © OpenStreetMap-Mitwirkende (ODbL). Orte und Texte: Wikipedia (CC BY-SA 4.0), Wikidata (CC0). ' +
       'Kartenbibliothek: Leaflet (BSD-2). Dein Standort bleibt auf dem Gerät; an die Schnittstellen gehen nur die Koordinaten der Suche.</p>' +
       '<p class="small">Version v' + VERSION + '</p>';
     openSheet('Einstellungen', html);
     $('sheetBody').removeAttribute('data-place');
+    $('sheetBody').setAttribute('data-view', 'settings');
+    if (navigator.storage && navigator.storage.estimate) {
+      navigator.storage.estimate().then(function (e) {
+        if ($('storageInfo')) $('storageInfo').textContent = 'Speicher der App: ' + Math.round((e.usage || 0) / 1e5) / 10 + ' MB belegt.';
+      }).catch(function () {});
+    }
+  }
+
+  // ------------------------------------------- prepared areas (v0.6)
+  // Index in IndexedDB "areas"; places in "area:<id>"; whole Wikipedia articles in "art:<placeId>".
+
+  function loadAreas() {
+    withTimeout(IDB.get('areas'), 3000, null).then(function (a) {
+      areas = Array.isArray(a) ? a : [];
+      drawAreas();
+      // a preparation that was interrupted (app closed) is "teilweise"
+      areas.forEach(function (x) { if (x.status === 'laden') x.status = 'teilweise'; });
+    });
+  }
+  function saveAreas() { return IDB.set('areas', areas); }
+  function areaById(id) { return areas.filter(function (a) { return a.id === id; })[0] || null; }
+
+  function areasHtml() {
+    if (!areas.length) return '<p class="small">Noch kein Gebiet vorbereitet. Gebiete erscheinen auf der Karte grün gestrichelt.</p>';
+    var old = (cfg.gebiet.veraltet_tage || 30) * 864e5;
+    return '<ul class="areas">' + areas.map(function (a) {
+      var c = a.counts || {}, sz = C.bboxSize(a.bbox);
+      var state = prep && prep.id === a.id ? 'wird vorbereitet …' : a.status === 'fertig' ? (Date.now() - (a.updated || 0) > old ? 'veraltet – bitte aktualisieren' : 'fertig') : 'unvollständig';
+      return '<li data-area="' + esc(a.id) + '"><b>' + esc(a.name) + '</b>' +
+        '<span class="small">' + kmText(sz.w) + ' × ' + kmText(sz.h) + ' · Stand ' + dateText(a.updated || a.created) + ' · ' + state + '<br>' +
+        (c.orte || 0) + ' Orte · ' + (c.texte || 0) + ' Kurzinfos · ' + (c.artikel || 0) + ' Texte</span>' +
+        '<div class="actions three">' +
+          '<button class="btn" type="button" data-a="areashow">Zeigen</button>' +
+          '<button class="btn" type="button" data-a="arearun"' + (prep ? ' disabled' : '') + '>' + (a.status === 'fertig' ? 'Aktualisieren' : 'Fortsetzen') + '</button>' +
+          '<button class="btn danger" type="button" data-a="areadel"' + (prep && prep.id === a.id ? ' disabled' : '') + '>Löschen</button>' +
+        '</div></li>';
+    }).join('') + '</ul>';
+  }
+  function refreshSettings() {
+    if (!$('sheet').hidden && $('sheetBody').getAttribute('data-view') === 'settings') {
+      var top = $('sheetBody').scrollTop;
+      openSettings();
+      $('sheetBody').scrollTop = top;
+    }
+  }
+
+  function renderPrep() {
+    var el = $('prep');
+    if (!prep) { el.hidden = true; el.innerHTML = ''; return; }
+    var s = Math.floor((Date.now() - prep.t0) / 1000);
+    el.innerHTML = '<span class="prep-text">📥 <b>' + esc(prep.name || 'Gebiet') + '</b>: ' + esc(prep.text || '') + ' · ' + Math.floor(s / 60) + ':' + ('0' + s % 60).slice(-2) + '</span>' +
+      '<button type="button" class="st-btn" data-a="prepcancel">Abbrechen</button>' +
+      (prep.total ? '<span class="bar"><span style="width:' + Math.round(100 * prep.done / prep.total) + '%"></span></span>' : '');
+    el.hidden = false;
+  }
+  function prepStep(text, done, total) {
+    if (!prep) return;
+    prep.text = text; prep.done = done || 0; prep.total = total || 0;
+    renderPrep();
+  }
+
+  /**
+   * Prepares an area: 1. places (Wikipedia in cells, OpenStreetMap, Wikidata), 2. German short info,
+   * 3. whole Wikipedia articles. Every step skips what is already there, so "Fortsetzen" is cheap.
+   * b: map section for a new area; id: existing area (refresh or continue).
+   */
+  function prepareArea(b, id) {
+    if (prep) { toast('Es wird schon ein Gebiet vorbereitet.'); return; }
+    var a = id ? areaById(id) : null;
+    var refresh = !!(a && a.status === 'fertig');
+    b = a ? a.bbox : b;
+    var g = cfg.gebiet, f = function (u, o) { return fetch(u, o); };
+    var p = prep = { id: a ? a.id : 'g' + Date.now(), t0: Date.now(), text: 'starte …', cancelled: false };
+    var stop = function () { return p.cancelled; };
+    renderPrep();
+    if (navigator.wakeLock && navigator.wakeLock.request) navigator.wakeLock.request('screen').then(function (l) { p.lock = l; }).catch(function () {});
+    if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {});
+    var c = C.bboxCenter(b), places = null, errors = 0;
+    prepStep('bestimme Ort …');
+    getPlaceInfo(c.lat, c.lon).then(function (info) {
+      if (!a) {
+        a = { id: p.id, name: info.name || 'Gebiet', bbox: b, created: Date.now(), status: 'laden', counts: {} };
+        areas.push(a);
+      }
+      a.status = 'laden';
+      p.name = a.name;
+      saveAreas(); drawAreas(); refreshSettings();
+      // 1. places
+      var have = a.hasPlaces && !refresh ? IDB.get('area:' + a.id) : Promise.resolve(null);
+      return have.then(function (stored) {
+        if (stored && stored.length) return stored;
+        var cells = C.cellsFor(b, g.zelle_m || 3000);
+        prepStep('1/3 Orte (' + cells.length + ' Bereiche) …');
+        return C.loadPlaces({
+          lat: c.lat, lon: c.lon, circles: cells, bbox: b, cfg: cfg, wdCache: wdCache, osmCache: IDB, osm: settings.osm !== false,
+          langs: C.languagesFor(info, cfg), localLang: C.localLanguage(info, cfg), fetch: f,
+          osmWaitS: (cfg.osm && cfg.osm.vorbereiten_wartezeit_s) || 600,
+          onProgress: function (t) { prepStep('1/3 ' + t.replace(/ …$/, '') + ' …'); }
+        }).then(function (res) {
+          saveWd();
+          res.places.forEach(function (x) { x.ort = a.name; });
+          if (res.warnings.length) a.warnings = res.warnings;
+          return res.places;
+        });
+      });
+    }).then(function (pl) {
+      places = pl;
+      a.hasPlaces = true;
+      a.counts = a.counts || {};
+      a.counts.orte = places.length;
+      return IDB.set('area:' + a.id, places).then(saveAreas);
+    }).then(function () {
+      if (stop()) return;
+      // 2. short info (German), in batches of 20; texts already known from the list are taken over
+      places.forEach(function (x) {
+        var k = kurzStore[x.id];
+        if (k && k.t && !k.orig && !x.kurz) x.kurz = k.t;
+      });
+      var need = places.filter(function (x) { return x.sterne >= (g.texte_ab_sternen || 1) && !x.osmOnly && x.artikel && Object.keys(x.artikel).length && (!x.kurz || x.kurzOrig); });
+      var batches = [];
+      for (var i = 0; i < need.length; i += 20) batches.push(need.slice(i, i + 20));
+      var done = 0;
+      return batches.reduce(function (pr, batch) {
+        return pr.then(function () {
+          if (stop()) return;
+          prepStep('2/3 Kurzinfos ' + done + '/' + need.length + ' …', done, need.length);
+          return kurzFor(batch, stop).catch(function () { errors++; }).then(function () {
+            batch.forEach(function (x) {
+              var k = kurzStore[x.id];
+              if (k && k.t) { x.kurz = k.t; x.kurzOrig = !!k.orig; }
+            });
+            done += batch.length;
+            saveKurz();
+          });
+        });
+      }, Promise.resolve()).then(function () {
+        a.counts.texte = places.filter(function (x) { return x.kurz; }).length;
+        return IDB.set('area:' + a.id, places).then(saveAreas);
+      });
+    }).then(function () {
+      if (stop()) return;
+      // 3. whole articles (for "Erzähl mir davon" without internet)
+      var need = places.filter(function (x) { return x.sterne >= (g.artikel_ab_sternen || 1) && x.wikipedia; });
+      var done = 0, have = 0;
+      prepStep('3/3 Texte 0/' + need.length + ' …', 0, need.length);
+      return runSeq(need, 2, function (x) {
+        if (stop()) return null;
+        return IDB.get('art:' + x.id).then(function (old) {
+          if (old && old.text && !refresh) { have++; return; }
+          return C.loadArticle(x, 'full', f).then(function (art) {
+            have++;
+            return IDB.set('art:' + x.id, art);
+          }, function () { errors++; });
+        }).then(function () {
+          done++;
+          prepStep('3/3 Texte ' + done + '/' + need.length + ' …', done, need.length);
+        });
+      }).then(function () { a.counts.artikel = have; });
+    }).then(function () {
+      a.status = stop() ? 'teilweise' : 'fertig';
+      if (!stop()) a.updated = Date.now();
+      return saveAreas();
+    }).then(function () {
+      toast(p.cancelled ? 'Vorbereitung abgebrochen – „Fortsetzen“ in ⚙ macht weiter.'
+        : 'Gebiet „' + a.name + '“ ist vorbereitet: ' + a.counts.orte + ' Orte, ' + (a.counts.texte || 0) + ' Kurzinfos, ' + (a.counts.artikel || 0) + ' Texte' + (errors ? ' (' + errors + ' Fehler, später „Aktualisieren“)' : '') + '.', 6000);
+    }).catch(function (e) {
+      if (a) { a.status = 'teilweise'; saveAreas(); }
+      toast('Vorbereitung fehlgeschlagen: ' + e.message + (navigator.onLine === false ? ' (kein Internet)' : ''), 6000);
+    }).then(function () {
+      if (p.lock) { try { p.lock.release(); } catch (e) { /* ignore */ } }
+      clearInterval(p.timer);
+      prep = null;
+      renderPrep();
+      drawAreas();
+      refreshSettings();
+    });
+    p.timer = setInterval(renderPrep, 1000);
+  }
+  // like runLimited in core: n at a time
+  function runSeq(items, n, fn) {
+    var i = 0;
+    function worker() {
+      if (i >= items.length) return Promise.resolve();
+      var x = items[i++];
+      return Promise.resolve(fn(x)).then(worker, worker);
+    }
+    var ws = [];
+    for (var k = 0; k < Math.min(n, items.length); k++) ws.push(worker());
+    return Promise.all(ws);
+  }
+
+  function deleteArea(id) {
+    var a = areaById(id);
+    if (!a || !confirm('Gebiet „' + a.name + '“ löschen?')) return;
+    areas = areas.filter(function (x) { return x.id !== id; });
+    saveAreas(); drawAreas();
+    // remove its articles unless another area still has the place
+    Promise.all([IDB.get('area:' + id)].concat(areas.map(function (x) { return IDB.get('area:' + x.id); }))).then(function (lists) {
+      var keep = {};
+      lists.slice(1).forEach(function (l) { (l || []).forEach(function (x) { keep[x.id] = 1; }); });
+      return Promise.all((lists[0] || []).filter(function (x) { return !keep[x.id]; }).map(function (x) { return IDB.del('art:' + x.id); }));
+    }).then(function () { return IDB.del('area:' + id); }).then(function () {
+      toast('Gebiet gelöscht'); refreshSettings();
+    });
   }
 
   // ------------------------------------------------------- place search
@@ -874,7 +1296,7 @@
         '<input id="searchInput" type="search" enterkeyhint="search" placeholder="z. B. Lyon, Imperial War Museum" aria-label="Suchbegriff">' +
         '<button class="btn primary" type="submit">Suchen</button></form>' +
       '<div id="searchHits">' + hitsHtml([{ title: 'Zuletzt gesucht', list: recent }]) + '</div>' +
-      '<p class="small">Treffer in der Nähe der Karte kommen zuerst. Die Karte springt hin und sucht dort Sehenswertes im eingestellten Umkreis. Ortssuche: Nominatim/© OpenStreetMap-Mitwirkende.</p>');
+      '<p class="small">Treffer in der Nähe der Karte kommen zuerst. Die Karte springt hin und sucht dort Sehenswertes im Kartenausschnitt. Ortssuche: Nominatim/© OpenStreetMap-Mitwirkende.</p>');
     $('sheetBody').removeAttribute('data-place');
     $('searchForm').addEventListener('submit', function (e) {
       e.preventDefault();
@@ -903,8 +1325,8 @@
     if (h.placeId) { select(h.placeId, 'list'); return; } // already loaded: just open it
     rememberHit(h);
     closeSheet();
-    map.setView([h.lat, h.lon], 15, { animate: false });
-    doSearch(h.lat, h.lon, true, h.poi ? function () {
+    map.setView([h.lat, h.lon], h.poi ? 15 : (cfg.suche.standort_zoom || 14), { animate: false });
+    doSearch(viewBbox(), { onDone: h.poi ? function () {
       // a sight was searched: open the nearest loaded place (within 250 m)
       var best = null, bd = 250;
       (last && last.places || []).forEach(function (p) {
@@ -913,15 +1335,24 @@
       });
       if (best) select(best.id, 'list');
       else toast('„' + h.name + '“ hat keinen Wikipedia-Eintrag hier – Karte steht dort.', 4000);
-    } : null);
+    } : null });
   }
 
   // ---------------------------------------------------------- UI events
   function bindUI() {
     $('btnLocate').addEventListener('click', locate);
-    $('btnHere').addEventListener('click', function () {
-      var c = map.getCenter();
-      doSearch(c.lat, c.lng, false);
+    $('btnHere').addEventListener('click', function () { doSearch(viewBbox()); });
+    $('status').addEventListener('click', function (e) {
+      var el = e.target.closest('[data-a]');
+      if (!el) return;
+      var a = el.getAttribute('data-a');
+      if (a === 'skiposm' && run && run.control.skipOsm) { run.control.skipOsm(); run.text = 'Weiter ohne OpenStreetMap …'; renderBusy(); }
+      else if (a === 'cancel') cancelSearch();
+      else if (a === 'details') openSearchDetails();
+    });
+    $('prep').addEventListener('click', function (e) {
+      if (e.target.closest('[data-a="prepcancel"]') && prep) { prep.cancelled = true; prepStep('breche ab …'); }
+      else openSettings();
     });
     $('btnMerk').addEventListener('click', openMerk);
     $('btnSearch').addEventListener('click', openSearch);
@@ -934,10 +1365,6 @@
     });
     $('fKat').addEventListener('change', function () {
       settings.kat = this.value; saveSettings(); renderAll();
-    });
-    $('fRadius').addEventListener('change', function () {
-      settings.radius = parseInt(this.value, 10); saveSettings();
-      if (last) doSearch(last.lat, last.lon, true);
     });
 
     $('list').addEventListener('click', function (e) {
@@ -1009,12 +1436,25 @@
         var h = searchHits[parseInt(el.getAttribute('data-i'), 10)];
         if (h) goToHit(h);
       } else if (a === 'clearcache') {
-        if (confirm('Gespeicherte Orte und Wikidata-Daten löschen?')) {
-          LS.del(K.last); LS.del(K.wd); LS.del(K.ort); LS.del(K.kurz); IDB.clear();
+        if (confirm('Letzte Suche, Wikidata- und OpenStreetMap-Daten löschen? Vorbereitete Gebiete bleiben.')) {
+          LS.del(K.last); LS.del(K.wd); LS.del(K.ort); LS.del(K.kurz); IDB.delPrefix('osm:');
           wdStore = {}; last = null; kurzStore = {};
           if (searchCircle) { map.removeLayer(searchCircle); searchCircle = null; }
           renderAll(); toast('Zwischenspeicher geleert');
         }
+      } else if (a === 'research') {
+        var rb = last && last.bbox;
+        closeSheet();
+        if (rb) { map.fitBounds([[rb.south, rb.west], [rb.north, rb.east]], { animate: false }); doSearch(rb, { force: true }); }
+      } else if (a === 'prep') {
+        prepareArea(viewBbox());
+        refreshSettings();
+      } else if (a === 'areashow' || a === 'arearun' || a === 'areadel') {
+        var ar = areaById(el.closest('[data-area]').getAttribute('data-area'));
+        if (!ar) return;
+        if (a === 'areashow') { closeSheet(); map.fitBounds([[ar.bbox.south, ar.bbox.west], [ar.bbox.north, ar.bbox.east]], { animate: false }); }
+        else if (a === 'arearun') { prepareArea(null, ar.id); refreshSettings(); }
+        else deleteArea(ar.id);
       }
     });
     $('sheetBody').addEventListener('change', function (e) {
@@ -1024,7 +1464,7 @@
       if (e.target.id === 'hideHeard') { settings.hideHeard = e.target.checked; saveSettings(); renderAll(); return; }
       if (e.target.name === 'kapp') {
         settings.kartenApp = e.target.value; saveSettings();
-        toast(e.target.value === 'geo' ? 'Karten-App: geo:-Link' : 'Karten-App: Google Maps');
+        toast({ geo: 'Karten-App: geo:-Link', osmand: 'Karten-App: OsmAnd', google: 'Karten-App: Google Maps' }[e.target.value]);
       }
     });
   }

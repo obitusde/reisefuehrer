@@ -108,6 +108,12 @@ eq(pn({ local: 'Παρθενώνας', de: 'Parthenon', en: 'Parthenon' }), 'Par
 eq(pn({ local: 'Ακρόπολη', de: 'Akropolis', en: 'Acropolis of Athens' }), 'Acropolis of Athens|Akropolis', 'Greek: English then German');
 eq(pn({ local: 'Kölner Dom', de: 'Kölner Dom', en: 'Cologne Cathedral' }), 'Kölner Dom|', 'Germany: one name');
 eq(pn({ local: '', de: 'Musée X', en: '' }), 'Musée X|', 'no local name: German');
+// v0.5: German only if it is really another name
+eq(pn({ local: 'Espace Horloger Vallée de Joux', de: 'Espace Horloger de la Vallée de Joux', en: '' }), 'Espace Horloger Vallée de Joux|', 'German variant with "de la" not shown');
+eq(pn({ local: 'Musée Alexis-Forel', de: 'Musée Alexis Forel', en: '' }), 'Musée Alexis-Forel|', 'German variant with dash not shown');
+eq(pn({ local: 'Château de Morges', de: 'Schloss Morges', en: '' }), 'Château de Morges|Schloss Morges', 'real translation shown');
+eq(pn({ local: 'Manchester Cathedral', de: 'Kathedrale von Manchester', en: '' }), 'Manchester Cathedral|Kathedrale von Manchester', 'Cathedral/Kathedrale shown');
+ok(core.sameName('Musée Forel', 'Musée Alexis Forel') && !core.sameName('Town Hall', 'Rathaus'), 'sameName subset / different');
 eq(core.localLanguage({ cc: 'ch', region: 'CH-VD' }, cfg), 'fr', 'local language Vaud');
 eq(core.localLanguage({ cc: 'gb', region: 'GB-ENG' }, cfg), 'en', 'local language England');
 eq(core.localLanguage({ cc: 'de' }, cfg), 'de', 'local language Germany');
@@ -210,10 +216,32 @@ eq(core.nameSimilarity('Manchester Cathedral', 'Manchester Cathedral'), 1, 'simi
 ok(core.nameSimilarity('Musée Alexis-Forel', 'Musee Alexis Forel') === 1, 'similarity ignores accents and dashes');
 ok(core.nameSimilarity('Town Hall', 'Manchester Town Hall') < 0.85, 'different names stay apart');
 eq(core.tileKeys(53.4792, -2.2442, 10000, 0.1).length, 12, 'tiles for 10 km with 0.1° (3 x 4)');
+const tk = core.tileKeys(53.4792, -2.2442, 1000, 0.05);
+ok(tk.length === 2 && new Set(tk).size === 2 && tk.includes('53.450,-2.300') && tk.includes('53.450,-2.250'), 'v0.5: 0.05° tiles have distinct keys: ' + tk.join(' '));
+const bq = core.overpassQuery('53.450,-2.250', cfg);
+ok(bq.includes('(53.4500,-2.2500,53.5000,-2.2000)') && bq.includes('[timeout:40]'), 'overpass bbox from key');
+// v0.5: map section
+const vb = { south: 53.47, west: -2.26, north: 53.49, east: -2.23 };
+const vs = core.bboxSize(vb);
+ok(Math.abs(vs.w - 1985) < 30 && Math.abs(vs.h - 2224) < 30, 'bbox size ' + Math.round(vs.w) + ' x ' + Math.round(vs.h));
+const vc = core.circleFor(vb);
+ok(Math.abs(vc.lat - 53.48) < 1e-9 && vc.radius > 1480 && vc.radius < 1500, 'circle around bbox r=' + vc.radius);
+ok(core.inBbox({ lat: 53.48, lon: -2.24 }, vb) && !core.inBbox({ lat: 53.5, lon: -2.24 }, vb), 'inBbox');
+ok(core.bboxContains({ south: 53, west: -3, north: 54, east: -2 }, vb) && !core.bboxContains(vb, { south: 53, west: -3, north: 54, east: -2 }), 'bboxContains');
+const cells = core.cellsFor({ south: 53.43, west: -2.32, north: 53.52, east: -2.17 }, 3000);
+ok(cells.length === 16 && cells.every((c) => c.radius < 2200), 'cells 10 x 10 km -> 4 x 4 of ~2,5 km: ' + cells.length);
+eq(core.sourceTag({ quellen: ['W', 'O'] }) + core.sourceTag({ quellen: ['O'] }) + core.sourceTag({ quellen: ['W'] }), 'W+OSMOSMW', 'source tags');
+// OsmAnd links
+const pin = { lat: 46.5110, lon: 6.4980, name: 'Test' };
+eq(core.osmandWebUrl(pin), 'https://osmand.net/map?pin=46.511000,6.498000#17/46.511000/6.498000', 'osmand web url');
+eq(core.osmandGoUrl(pin), 'https://osmand.net/go?lat=46.511000&lon=6.498000&z=17', 'osmand go url');
+ok(core.osmandIntentUrl(pin, 'net.osmand.plus').startsWith('intent://osmand.net/map?pin=46.511000,6.498000#Intent;scheme=https;package=net.osmand.plus;S.browser_fallback_url=https%3A%2F%2Fosmand.net') &&
+  core.osmandIntentUrl(pin).endsWith(';end'), 'osmand intent url');
 ok(core.claudeNewUrl('a b?').startsWith('claude://claude.ai/new?q=a%20b%3F'), 'claude url');
 const rv = core.buildReviewPrompt(th, cfg);
-ok(rv.text.startsWith('Ich überlege, ob ich diese Sehenswürdigkeit besuchen soll.') && rv.text.includes('Ort: Manchester Town Hall (deutsch: Rathaus Manchester)') &&
-  rv.text.includes('Google Maps, Tripadvisor') && rv.text.includes('Praktische Tipps') && rv.text.includes('Wikipedia: https://en.wikipedia.org/wiki/Manchester_Town_Hall'), 'review prompt');
+ok(rv.text.startsWith('Gib mir eine Übersicht zu dieser Sehenswürdigkeit') && rv.text.includes('Ort: Manchester Town Hall (deutsch: Rathaus Manchester)') &&
+  rv.text.includes('Google Maps, Tripadvisor') && rv.text.includes('## Praktische Tipps') && rv.text.includes('Wikipedia: https://en.wikipedia.org/wiki/Manchester_Town_Hall'), 'review prompt');
+ok(rv.text.includes('nicht zum Vorlesen') && rv.text.includes('Eine Tabelle mit zwei Spalten') && rv.text.includes('## Lohnt es sich?') && rv.length < 3000, 'v0.5 overview prompt: for reading, table, verdict (' + rv.length + ')');
 
 // ---- languages
 eq(core.languagesFor({ cc: 'ch', region: 'CH-VD' }, cfg).join(), 'de,en,fr', 'Vaud -> fr');
@@ -255,16 +283,48 @@ ok(f6.calls.some(u => u.includes('overpass.kumi.systems')) && r6.places.some(p =
 // v0.4.1: a hanging Overpass server must not block the search
 core._setFetchTimeout(300);
 const hang = (url) => /overpass|mail\.ru/.test(url) ? new Promise(() => {}) : mockFetch(fx)(url);
-const cfgFast = JSON.parse(JSON.stringify(cfg)); cfgFast.osm.max_wartezeit_s = 0.3; cfgFast.osm.version = 99;
+const cfgFast = JSON.parse(JSON.stringify(cfg)); cfgFast.osm.max_wartezeit_s = 0.3; cfgFast.osm.version = 99; cfgFast.osm.server = ['https://overpass-api.de/api/interpreter']; // one server: the test ends quickly
 const tHang = Date.now();
 const r8 = await core.loadPlaces({ lat: fx.center.lat, lon: fx.center.lon, radius: 1000, cfg: cfgFast, fetch: hang, wdCache, localLang: 'en' });
-ok(Date.now() - tHang < 3000 && r8.places.length >= 20 && r8.warnings.some(w => /OpenStreetMap antwortet gerade langsam/.test(w)), 'hanging OSM: results without OSM after the waiting time');
+ok(Date.now() - tHang < 3000 && r8.places.length >= 20 && r8.warnings.some(w => /OpenStreetMap: keine Antwort nach 0.3 s/.test(w)) && r8.stats.src.osm.state === 'timeout', 'hanging OSM: results without OSM after the waiting time');
+// v0.5: "Ohne OSM weiter" button and late OSM
+const ctl = {}; let late = null;
+const slowOsm = (url) => /overpass/.test(url) ? new Promise((r) => setTimeout(() => r(mockFetch(fx)(url)), 400)).then((x) => x) : mockFetch(fx)(url);
+const cfgSlow = JSON.parse(JSON.stringify(cfg)); cfgSlow.osm.version = 98;
+const tSkip = Date.now();
+const pSkip = core.loadPlaces({ lat: fx.center.lat, lon: fx.center.lon, radius: 1000, cfg: cfgSlow, fetch: slowOsm, wdCache, osmCache, localLang: 'en', control: ctl,
+  onProgress: (t, ph) => { if (ph === 'osm') ctl.skipOsm(); }, onOsmLate: (i) => { late = i; } });
+const r9 = await pSkip;
+ok(Date.now() - tSkip < 400 && r9.stats.src.osm.state === 'skip' && !r9.places.some((p) => p.quellen.includes('O')), 'skip OSM: results at once without OSM');
+await new Promise((r) => setTimeout(r, 700));
+ok(late && late.ok && late.els > 0, 'OSM arrives later: onOsmLate ' + JSON.stringify(late));
 const tTo = Date.now();
 const toErr = await core.getJsonRetry('https://de.wikipedia.org/w/api.php?x=1', () => new Promise(() => {}), []).then(() => 'none', (e) => e.message);
 eq(toErr, 'Zeitüberschreitung', 'hanging request ends by time limit (' + (Date.now() - tTo) + ' ms)');
 core._setFetchTimeout(20000);
 const r7 = await core.loadPlaces({ lat: fx.center.lat, lon: fx.center.lon, radius: 1000, cfg, fetch: mockFetch(fx), wdCache, localLang: 'en', osm: false });
-ok(!r7.places.some(p => p.quellen.includes('O')), 'OSM can be switched off');
+ok(!r7.places.some(p => p.quellen.includes('O')) && r7.stats.src.osm.state === 'off', 'OSM can be switched off');
+// v0.5: only places inside the map section; source stats
+const rb = await core.loadPlaces({ lat: fx.center.lat, lon: fx.center.lon, radius: 1000, bbox: { south: 53.475, west: -2.25, north: 53.4835, east: -2.238 }, cfg, fetch: mockFetch(fx), wdCache, osmCache, localLang: 'en' });
+ok(rb.places.length > 3 && rb.places.length < res.places.length && rb.places.every((p) => p.lat >= 53.475 && p.lat <= 53.4835 && p.lon >= -2.25 && p.lon <= -2.238), 'bbox filter: ' + rb.places.length + ' of ' + res.places.length);
+ok(rb.stats.src.wiki.ms != null && rb.stats.src.osm.state === 'cache' && rb.stats.herkunft.w + rb.stats.herkunft.o + rb.stats.herkunft.wo === rb.places.length, 'source stats ' + JSON.stringify(rb.stats.src.osm) + ' ' + JSON.stringify(rb.stats.herkunft));
+// v0.6: an area in cells: same places as one search, OSM tiles loaded once
+const fA = mockFetch(fx);
+const osmStoreA = new Map();
+const rA = await core.loadPlaces({ lat: fx.center.lat, lon: fx.center.lon, circles: core.cellsFor({ south: 53.4702, west: -2.2592, north: 53.4882, east: -2.2292 }, 1000),
+  bbox: { south: 53.4702, west: -2.2592, north: 53.4882, east: -2.2292 }, cfg, fetch: fA, wdCache, localLang: 'en', langs: ['de', 'en', 'fr'],
+  osmCache: { get: async (k) => osmStoreA.get(k), set: async (k, v) => { osmStoreA.set(k, v); } } });
+const ids1 = new Set(res.places.filter((p) => core.inBbox(p, { south: 53.4702, west: -2.2592, north: 53.4882, east: -2.2292 })).map((p) => p.id));
+const idsA = new Set(rA.places.map((p) => p.id));
+ok(ids1.size > 10 && [...ids1].every((id) => idsA.has(id)), 'area in cells finds the same places (' + idsA.size + ' / ' + ids1.size + ')');
+eq(rA.places.filter((p) => p.name === 'Manchester Town Hall').length, 1, 'area: no duplicates across cells');
+eq(fA.calls.filter((u) => u.includes('overpass')).length, rA.stats.osmTiles, 'area: every OSM tile once (' + rA.stats.osmTiles + ')');
+// dense area: more than 500 articles -> the circle is split
+const many = { query: { pages: Array.from({ length: 500 }, (_, i) => ({ pageid: 9000 + i, ns: 0, title: 'P' + i, coordinates: [{ lat: 53.48, lon: -2.24 }] })) } };
+let wpCalls = 0;
+const denseF = async (url) => { wpCalls++; return { ok: true, status: 200, json: async () => (wpCalls === 1 ? many : { query: { pages: [{ pageid: 1, ns: 0, title: 'Extra', coordinates: [{ lat: 53.48, lon: -2.24 }] }] } }) }; };
+const dense = await core.loadWikipediaArea('en', [{ lat: 53.48, lon: -2.24, radius: 2000 }], cfg, denseF, []);
+ok(wpCalls === 5 && dense.pages.length === 501, 'dense: split into 4 after 500 results (' + wpCalls + ' calls, ' + dense.pages.length + ' pages)');
 const by = n => res.places.find(p => (p.artikel.en || p.artikel.de || '').includes(n) || p.name.includes(n));
 eq(res.warnings.length, 0, 'no warnings: ' + res.warnings.join('; '));
 // OpenStreetMap merge (PROJEKT.md v0.4)

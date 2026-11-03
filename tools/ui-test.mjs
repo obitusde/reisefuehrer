@@ -17,6 +17,7 @@ const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/cs
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mN49+7dfwAJbAPYqH3VQgAAAABJRU5ErkJggg==', 'base64');
 
 let fakeVersion = null;
+let OFFLINE = false, OSM_DELAY = 0;
 const server = http.createServer((req, res) => {
   const u = new URL(req.url, 'http://x');
   let p = decodeURIComponent(u.pathname);
@@ -34,6 +35,7 @@ function ok(c, m) { if (c) passes++; else { fails++; console.log('FAIL', m); } }
 
 async function mockApis(ctx) {
   await ctx.route(/wikipedia\.org\/w\/api\.php/, (route) => {
+    if (OFFLINE) return route.abort('internetdisconnected');
     const u = new URL(route.request().url());
     const lang = u.hostname.split('.')[0];
     let body;
@@ -51,17 +53,21 @@ async function mockApis(ctx) {
     route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
   });
   await ctx.route(/www\.wikidata\.org/, (route) => {
+    if (OFFLINE) return route.abort('internetdisconnected');
     const ids = (new URL(route.request().url()).searchParams.get('ids') || '').split('|');
     const entities = {}; ids.forEach((id) => { entities[id] = fx.wikidata.entities[id] || { id, missing: '' }; });
     route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ entities }) });
   });
-  await ctx.route(/nominatim\.openstreetmap\.org/, (route) => route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
+  await ctx.route(/nominatim\.openstreetmap\.org/, (route) => OFFLINE ? route.abort('internetdisconnected') : route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
     body: JSON.stringify((() => { const u = new URL(route.request().url());
       if (!u.pathname.startsWith('/search')) return fx.nominatim;
       return /imperial/i.test(u.searchParams.get('q')) ? fx.nominatimSearch.imperial : fx.nominatimSearch.default; })()) }));
-  await ctx.route(/overpass-api\.de|overpass\.kumi\.systems|maps\.mail\.ru/, (route) => route.fulfill({ status: 200, contentType: 'application/json',
-    headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(fx.overpass) }));
-  await ctx.route(/api\.mymemory\.translated\.net/, (route) => route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
+  await ctx.route(/overpass-api\.de|overpass\.kumi\.systems|maps\.mail\.ru/, async (route) => {
+    if (OFFLINE) return route.abort('internetdisconnected');
+    if (OSM_DELAY) await new Promise((r) => setTimeout(r, OSM_DELAY));
+    route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(fx.overpass) }).catch(() => {});
+  });
+  await ctx.route(/api\.mymemory\.translated\.net/, (route) => OFFLINE ? route.abort('internetdisconnected') : route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
     body: JSON.stringify({ responseData: { translatedText: 'Übersetzt: ' + new URL(route.request().url()).searchParams.get('q') }, responseStatus: 200 }) }));
   await ctx.route(/tile\.openstreetmap\.org/, (route) => route.fulfill({ status: 200, contentType: 'image/png', headers: { 'access-control-allow-origin': '*' }, body: PNG }));
 }
@@ -89,7 +95,7 @@ try {
   if (process.env.DEBUG) { page.on('request', (r) => { if (/extracts|mymemory/.test(r.url())) console.log('REQ', decodeURIComponent(r.url()).slice(0, 160)); }); page.on('requestfailed', (r) => console.log('FAILED', r.url().slice(0, 120), r.failure() && r.failure().errorText)); page.on('console', (m) => console.log('CONSOLE', m.text())); }
   await page.goto(BASE + 'index.html');
   await page.waitForSelector('.empty');
-  ok((await page.textContent('#version')) === 'v0.4.1', 'footer version');
+  ok((await page.textContent('#version')) === 'v0.6.0', 'footer version');
   if (OUT) await page.screenshot({ path: OUT + '/01-start.png' });
 
   await page.click('#btnLocate');
@@ -121,6 +127,21 @@ try {
   const names4 = await page.$$eval('.it-name', (els) => els.map((e) => e.textContent));
   ok(names4.filter((n) => n === 'Manchester Town Hall').length === 1, 'v0.4: Town Hall once in list');
   ok(names4.includes('Pankhurst Centre'), 'v0.4: OSM-only museum in list');
+  // v0.5: where results come from
+  const srcLine = await page.textContent('#status .src-line');
+  ok(/Wikipedia ✓ .* · OSM ✓ .*neue/.test(srcLine), 'v0.5 status shows sources: ' + srcLine);
+  const tags = await page.$$eval('.it-src', (els) => els.map((e) => e.textContent));
+  ok(tags.includes('W+OSM') && tags.includes('OSM') && tags.includes('W'), 'v0.5 source tags in list: ' + [...new Set(tags)].join(','));
+  ok(!(await page.$('#fRadius')), 'v0.5 no radius filter');
+  const frame = await page.evaluate(() => document.querySelectorAll('.leaflet-overlay-pane path').length);
+  ok(frame >= 1, 'search frame drawn');
+  await page.click('#status .st-info');
+  await page.waitForFunction(() => document.getElementById('sheetTitle').textContent === 'Suche – Details');
+  const det = await page.textContent('#sheetBody');
+  ok(det.includes('OpenStreetMap') && det.includes('nur Wikipedia') && det.includes('Ausschnitt'), 'v0.5 search details sheet');
+  if (OUT) await page.screenshot({ path: OUT + '/11-details.png' });
+  await page.click('#sheetClose');
+  await page.waitForSelector('#sheet', { state: 'hidden' });
 
   // layout checks
   const lay = await page.evaluate(() => {
@@ -198,6 +219,18 @@ try {
   await page.click('.item >> nth=0');
   ok((await page.getAttribute('#sheetBody a.btn.primary', 'href')).startsWith('geo:0,0?q='), 'geo link setting');
   await page.evaluate(() => history.back());
+  await page.waitForSelector('#sheet', { state: 'hidden' });
+  await page.click('#btnSettings');
+  await page.check('input[name=kapp][value=osmand]');
+  await page.click('#sheetClose');
+  await page.click('.item >> nth=0');
+  const osmHref = await page.getAttribute('#sheetBody a.btn.primary', 'href');
+  ok(osmHref.startsWith('intent://osmand.net/map?pin=') && osmHref.includes('package=net.osmand.plus') && (await page.textContent('#sheetBody a.btn.primary')) === 'In OsmAnd', 'v0.5 OsmAnd link: ' + osmHref.slice(0, 60));
+  await page.evaluate(() => history.back());
+  await page.waitForSelector('#sheet', { state: 'hidden' });
+  await page.click('#btnSettings');
+  await page.check('input[name=kapp][value=google]');
+  await page.click('#sheetClose');
 
   // splitter drag
   const sp = await page.$('#splitter'); const b = await sp.boundingBox();
@@ -253,8 +286,9 @@ try {
   await page.click('[data-a=review]');
   await page.waitForFunction(() => /Prompt kopiert/.test(document.getElementById('tellStatus').textContent));
   const rprompt = await page.evaluate(() => navigator.clipboard.readText());
-  ok(rprompt.startsWith('Ich überlege, ob ich diese Sehenswürdigkeit besuchen soll.') && rprompt.includes('Tripadvisor'), 'review prompt copied');
-  ok((await page.getAttribute('#tellStatus a.btn', 'href')).startsWith('claude://claude.ai/new?q=Ich%20%C3%BCberlege'), 'review Claude link');
+  ok(rprompt.startsWith('Gib mir eine Übersicht') && rprompt.includes('Tripadvisor') && rprompt.includes('## Auf einen Blick'), 'overview prompt copied');
+  ok((await page.getAttribute('#tellStatus a.btn', 'href')).startsWith('claude://claude.ai/new?q=Gib%20mir'), 'overview Claude link');
+  ok((await page.textContent('[data-a=review]')).includes('Übersicht und Bewertung'), 'v0.5 button "Übersicht und Bewertung"');
   await page.click('[data-a=recopy]');
   await page.$eval('#sheetBody', (b) => { b.scrollTop = 400; });
   await page.$eval('.item:nth-child(2) .it-main', (el) => el.click());
@@ -282,10 +316,10 @@ try {
   ok(Math.abs((await page.$('#mapWrap').then((e) => e.boundingBox())).height - after) < 10, 'split persisted');
 
   // update banner (fake newer version, then ?testupdate=1)
-  fakeVersion = '0.4.2';
+  fakeVersion = '0.6.1';
   await page.reload();
   await page.waitForSelector('#banner:not([hidden])');
-  ok((await page.textContent('#bannerText')).includes('v0.4.2'), 'banner shows remote version');
+  ok((await page.textContent('#bannerText')).includes('v0.6.1'), 'banner shows remote version');
   if (OUT) await page.screenshot({ path: OUT + '/05-banner.png' });
   fakeVersion = null;
   await page.click('#bannerBtn');
@@ -297,6 +331,78 @@ try {
   ok((await page.textContent('#bannerText')).includes('(Test)'), 'testupdate banner');
   ok(errs.length === 0, 'no JS errors: ' + errs.join(' | '));
   await ctx.close();
+
+  // ---------------- v0.5: slow OpenStreetMap: seconds, "Abbrechen", "Ohne OSM weiter", too big section
+  {
+    const c5 = await newCtx(browser);
+    const p5 = await c5.newPage(); const e5 = []; watch(p5, e5);
+    await p5.goto(BASE + 'index.html');
+    await p5.waitForSelector('.empty');
+    await p5.evaluate(() => { localStorage.setItem('rf.view', JSON.stringify({ lat: 53.4792, lon: -2.2442, z: 15 })); });
+    await p5.reload(); await p5.waitForSelector('.empty');
+    OSM_DELAY = 60000;
+    await p5.click('#btnHere');
+    await p5.waitForSelector('#status [data-a=cancel]', { timeout: 8000 });
+    ok(/\d+ s/.test(await p5.textContent('#status .secs')), 'v0.5 seconds counter while searching');
+    await p5.click('#status [data-a=cancel]');
+    await p5.waitForFunction(() => !document.getElementById('btnHere').disabled);
+    ok((await p5.textContent('#toast')).includes('abgebrochen') && !(await p5.$('.item')), 'v0.5 cancel stops the search');
+    await p5.click('#btnHere');
+    await p5.waitForSelector('#status [data-a=skiposm]', { timeout: 8000 });
+    if (OUT) await p5.screenshot({ path: OUT + '/12-warte-osm.png' });
+    await p5.click('#status [data-a=skiposm]');
+    await p5.waitForSelector('.item', { timeout: 8000 });
+    const sl5 = await p5.textContent('#status .src-line');
+    ok(/OSM übersprungen nach \d+ s/.test(sl5) && !(await p5.$$eval('.it-src', (els) => els.some((e) => e.textContent !== 'W'))), 'v0.5 skip OSM: Wikipedia results at once: ' + sl5);
+    OSM_DELAY = 0;
+    await p5.evaluate(() => window.__rfMap && window.__rfMap.setZoom(10, { animate: false }));
+    await p5.click('#btnHere');
+    await p5.waitForFunction(() => /zu groß/.test(document.getElementById('toast').textContent), null, { timeout: 4000 }).catch(() => {});
+    ok((await p5.textContent('#toast')).includes('Ausschnitt zu groß'), 'v0.5 too big section: hint to zoom in');
+    ok(e5.length === 0, 'v0.5: no JS errors ' + e5.join(' | '));
+    await c5.close();
+  }
+
+  // ---------------- v0.6: prepare an area, then use it offline
+  {
+    const c6 = await newCtx(browser);
+    const p6 = await c6.newPage(); const e6 = []; watch(p6, e6);
+    await p6.goto(BASE + 'index.html');
+    await p6.waitForSelector('.empty');
+    await p6.evaluate(() => { localStorage.setItem('rf.view', JSON.stringify({ lat: 53.4792, lon: -2.2442, z: 15 })); });
+    await p6.reload(); await p6.waitForSelector('.empty');
+    await p6.click('#btnSettings');
+    ok((await p6.textContent('#sheetBody')).includes('Gebiet vorbereiten'), 'v0.6 settings: prepare section');
+    await p6.click('[data-a=prep]');
+    await p6.waitForSelector('#prep:not([hidden])');
+    if (OUT) await p6.screenshot({ path: OUT + '/13-vorbereiten.png' });
+    await p6.waitForFunction(() => /ist vorbereitet/.test(document.getElementById('toast').textContent), null, { timeout: 30000 });
+    const done6 = await p6.textContent('#toast');
+    ok(/\d+ Orte, \d+ Kurzinfos, \d+ Texte/.test(done6), 'v0.6 area prepared: ' + done6);
+    const areaTxt = await p6.textContent('.areas li');
+    ok(areaTxt.includes('Manchester') && areaTxt.includes('fertig'), 'v0.6 area listed: ' + areaTxt.replace(/\s+/g, ' ').slice(0, 120));
+    if (OUT) await p6.screenshot({ path: OUT + '/14-gebiete.png' });
+    await p6.click('#sheetClose');
+    // offline now
+    OFFLINE = true; await c6.setOffline(true);
+    await p6.click('#btnHere');
+    await p6.waitForSelector('.item', { timeout: 5000 });
+    const sl6 = await p6.textContent('#status .src-line');
+    ok(sl6.includes('Vorbereitet') && sl6.includes('Manchester'), 'v0.6 offline search uses the area: ' + sl6);
+    const d6 = await p6.$$eval('.it-desc', (els) => els.map((e) => e.textContent).filter(Boolean));
+    ok(d6.length >= 5 && d6.some((d) => /Übersetzt:|Testort/.test(d)), 'v0.6 short infos offline: ' + d6.length);
+    await p6.$eval('#list', (l) => { const li = [...l.querySelectorAll('.item')].find((x) => x.textContent.includes('Town Hall')); li.querySelector('.it-main').click(); });
+    await p6.waitForSelector('#sheet:not([hidden])');
+    await p6.click('[data-a=level][data-level=normal]');
+    await p6.click('[data-a=tell]');
+    await p6.waitForFunction(() => /Prompt kopiert/.test(document.getElementById('tellStatus').textContent), null, { timeout: 5000 });
+    const pr6 = await p6.evaluate(() => navigator.clipboard.readText());
+    ok(pr6.includes('Sentence 3 about history') && !pr6.includes('ohne Wikipedia-Text'), 'v0.6 narration offline from the stored article');
+    if (OUT) await p6.screenshot({ path: OUT + '/15-offline.png' });
+    OFFLINE = false; await c6.setOffline(false);
+    ok(e6.filter((e) => !/ERR_INTERNET_DISCONNECTED|Failed to load resource/.test(e)).length === 0, 'v0.6: no JS errors ' + e6.join(' | '));
+    await c6.close();
+  }
 
   // ---------------- small viewport like the user's phone (display size enlarged)
   const ctxS = await newCtx(browser, { height: 626, width: 329 });
@@ -339,9 +445,9 @@ try {
   const swOk = await p3.evaluate(() => navigator.serviceWorker.ready.then((r) => !!r.active)).catch(() => false);
   ok(swOk, 'service worker active');
   const cacheKeys = await p3.evaluate(async () => { await new Promise((r) => setTimeout(r, 800)); return caches.keys(); });
-  ok(cacheKeys.includes('rf-app-0.4.1'), 'app cache with version: ' + cacheKeys.join(','));
-  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.4.1')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
-  ok(cached.some((u) => u.includes('app.js?v=0.4.1')), 'shell precached');
+  ok(cacheKeys.includes('rf-app-0.6.0'), 'app cache with version: ' + cacheKeys.join(','));
+  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.6.0')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
+  ok(cached.some((u) => u.includes('app.js?v=0.6.0')), 'shell precached');
   ok(errs3.length === 0, 'sw: no JS errors ' + errs3.join(' | '));
   await ctx3.close();
 
@@ -360,6 +466,11 @@ try {
   ok(sum.includes('Übersetzer MyMemory: OK'), 'diag translation check');
   ok(sum.includes('Overpass (OSM-Orte): OK') && sum.includes('Manchester Town Hall: 1× in der Liste') && sum.includes('Duplikate: vorher'), 'diag v0.4 checks: ' + (sum.match(/Duplikate[^\n]*/) || [''])[0]);
   ok(sum.includes('Wikipedia en: OK') && sum.includes('Goldliste Manchester BESTANDEN') && sum.includes('Sprachen de,en'), 'diag summary:\n' + sum.slice(0, 900));
+  const s6 = await p4.inputValue('#v6summary');
+  ok(s6.includes('Abnahme v0.5/v0.6') && s6.includes('A Intent-Link für OsmAnd+') && s6.includes('Vorbereitete Gebiete:'), 'diag v0.6 summary');
+  ok((await p4.getAttribute('#osmandTests a.btn >> nth=0', 'href')).startsWith('intent://osmand.net/map?pin=46.510700,6.498300'), 'diag OsmAnd intent link');
+  await p4.check('input[name=osA][value=app]');
+  ok((await p4.inputValue('#v6summary')).includes('A Intent-Link für OsmAnd+ (App-Standard): OsmAnd öffnet mit Pin'), 'diag OsmAnd result recorded');
   ok(await p4.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'diag no horizontal scroll');
   if (OUT) await p4.screenshot({ path: OUT + '/07-diag.png', fullPage: true });
   ok(errs4.length === 0, 'diag: no JS errors ' + errs4.join(' | '));

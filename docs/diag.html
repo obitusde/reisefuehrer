@@ -104,6 +104,29 @@
 <p class="muted">Tests für die aktuelle Etappe. Ergebnisse werden auf diesem Gerät gespeichert. Am Ende die Zusammenfassung kopieren und an Claude Code zurückmelden.</p>
 <p><a class="btn secondary" href="index.html">Zur App</a></p>
 
+<!-- ======================= v0.5 / v0.6 ======================= -->
+<section class="card" id="v06">
+  <h2>v0.5/v0.6 – Kartenausschnitt, Herkunft, OsmAnd, Gebiete</h2>
+  <h2 style="margin-top:12px">1. OsmAnd öffnen</h2>
+  <p class="muted">Drei Arten, OsmAnd mit einem Pin auf dem Rathaus Morges zu öffnen. Jeden Knopf antippen, zurück in den Browser wechseln und ankreuzen, was passiert ist. Die App benutzt Art A.</p>
+  <div id="osmandTests"></div>
+  <h2 style="margin-top:16px">2. In der App ausprobieren</h2>
+  <p class="muted">Gebiet vorbereiten: in der App die Karte auf ein Stadtzentrum schieben, ⚙ → „Kartenausschnitt vorbereiten“. Danach Flugmodus an und dort „Hier suchen“.</p>
+  <a class="btn secondary" href="index.html">App öffnen</a>
+  <div id="checklist6"></div>
+  <label for="v6osm">Wie lange hat OpenStreetMap gedauert? (Statuszeile, z. B. „OSM ✓ 34 s“)</label>
+  <input type="text" id="v6osm" placeholder="z. B. 34 s, Morges" autocomplete="off">
+  <label for="v6note">Notiz</label>
+  <input type="text" id="v6note" placeholder="z. B. „Vorbereiten dauerte 6 Minuten“" autocomplete="off">
+  <h2 style="margin-top:16px">Zusammenfassung v0.5/v0.6</h2>
+  <textarea id="v6summary" readonly rows="12"></textarea>
+  <div class="row">
+    <button id="v6copy" type="button">Kopieren</button>
+    <button id="v6share" type="button" class="secondary">Teilen</button>
+  </div>
+  <div class="status" id="v6status"></div>
+</section>
+
 <!-- ======================= v0.3 ======================= -->
 <section class="card" id="v03">
   <h2>v0.3 – „Erzähl mir davon“</h2>
@@ -258,7 +281,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '0.4.1';
+  var VERSION = '0.6.0';
   var KEY = 'rf.diag.v1';
 
   var TESTS = [
@@ -569,14 +592,14 @@
   init();
 })();
 </script>
-<script src="core.js?v=0.4.1"></script>
+<script src="core.js?v=0.6.0"></script>
 <script>
 /* v0.2 diagnostics: API checks, gold list, manual checklist, summary */
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
   var KEY = 'rf.diag.v2';
-  var DV = '0.4.1';
+  var DV = '0.6.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function load() { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { return {}; } }
@@ -851,7 +874,7 @@
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
-  var KEY = 'rf.diag.v3', DV = '0.4.1';
+  var KEY = 'rf.diag.v3', DV = '0.6.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -921,6 +944,108 @@
   });
   if (!navigator.share) $('v3share').style.display = 'none';
   $('v3share').addEventListener('click', function () { render(); navigator.share({ title: 'Reiseführer Diagnose v0.3', text: $('v3summary').value }).catch(function () {}); });
+})();
+</script>
+<script>
+/* v0.5/v0.6 diagnostics: OsmAnd links, manual checklist, prepared areas */
+(function () {
+  'use strict';
+  var C = window.RF && window.RF.core;
+  var KEY = 'rf.diag.v6', DV = '0.6.0';
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
+  st.checks = st.checks || {}; st.osmand = st.osmand || {};
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) { /* ignore */ } }
+  if (!C) return;
+  var PIN = { lat: 46.5107, lon: 6.4983, name: 'Hôtel de ville de Morges' };
+  var LINKS = [
+    ['A', 'Intent-Link für OsmAnd+ (App-Standard)', C.osmandIntentUrl(PIN, 'net.osmand.plus')],
+    ['B', 'Web-Link osmand.net/map', C.osmandWebUrl(PIN)],
+    ['C', 'Web-Link osmand.net/go', C.osmandGoUrl(PIN)]
+  ];
+  var RES = [['app', 'OsmAnd öffnet mit Pin'], ['appohne', 'OsmAnd öffnet, ohne Pin'], ['web', 'Webseite öffnet'], ['nichts', 'Nichts / Fehler']];
+  var CHECKS = [
+    ['k1', '„Hier suchen“ sucht im sichtbaren Kartenausschnitt (gestrichelter Rahmen)'],
+    ['k2', 'Statuszeile zeigt „Wikipedia ✓ … · OSM ✓ …“ mit Sekunden'],
+    ['k3', 'Statuszeile antippen zeigt „Suche – Details“'],
+    ['k4', 'Liste zeigt bei jedem Ort W, OSM oder W+OSM'],
+    ['k5', 'Langsame Suche: Sekunden zählen, „Ohne OSM weiter“ und „Abbrechen“ funktionieren'],
+    ['k6', 'Deutscher Name steht nur da, wenn er wirklich anders ist'],
+    ['k7', '„Übersicht und Bewertung“: Claude antwortet mit Tabelle und Stichpunkten'],
+    ['k8', '„Kartenausschnitt vorbereiten“ läuft durch (⚙), Gebiet ist grün umrandet'],
+    ['k9', 'Flugmodus: „Hier suchen“ im Gebiet zeigt Orte mit Kurzinfos'],
+    ['k10', 'Flugmodus: „Erzähl mir davon“ kopiert einen Prompt mit Wikipedia-Text']
+  ];
+  $('osmandTests').innerHTML = LINKS.map(function (l) {
+    return '<div class="card"><h2><span class="num">' + l[0] + '</span>' + esc(l[1]) + '</h2>' +
+      '<a class="btn" href="' + esc(l[2]) + '">OsmAnd-Test ' + l[0] + ' öffnen</a><span class="url">' + esc(l[2]) + '</span>' +
+      '<div class="results">' + RES.map(function (r) {
+        return '<label><input type="radio" name="os' + l[0] + '" value="' + r[0] + '"' + (st.osmand[l[0]] === r[0] ? ' checked' : '') + '> ' + esc(r[1]) + '</label>';
+      }).join('') + '</div></div>';
+  }).join('');
+  $('checklist6').innerHTML = CHECKS.map(function (c) {
+    return '<label class="check"><input type="checkbox" data-c="' + c[0] + '"' + (st.checks[c[0]] ? ' checked' : '') + '> ' + esc(c[1]) + '</label>';
+  }).join('');
+  $('v6osm').value = st.osm || '';
+  $('v6note').value = st.note || '';
+
+  // prepared areas from the app's IndexedDB (read only)
+  var areaLines = ['(nicht gelesen)'];
+  function readAreas() {
+    return new Promise(function (res) {
+      if (!window.indexedDB) { res(['kein IndexedDB']); return; }
+      var r = indexedDB.open('reisefuehrer', 1);
+      r.onupgradeneeded = function () { r.result.createObjectStore('kv'); };
+      r.onerror = function () { res(['IndexedDB-Fehler']); };
+      r.onsuccess = function () {
+        try {
+          var q = r.result.transaction('kv', 'readonly').objectStore('kv').get('areas');
+          q.onsuccess = function () {
+            var a = q.result || [];
+            res(a.length ? a.map(function (x) {
+              var c = x.counts || {}, sz = C.bboxSize(x.bbox);
+              return x.name + ': ' + (Math.round(sz.w / 100) / 10) + ' × ' + (Math.round(sz.h / 100) / 10) + ' km, ' + (c.orte || 0) + ' Orte, ' + (c.texte || 0) + ' Kurzinfos, ' + (c.artikel || 0) + ' Texte, ' + x.status +
+                (x.warnings && x.warnings.length ? ' (Hinweise: ' + x.warnings.join('; ') + ')' : '');
+            }) : ['keine']);
+          };
+          q.onerror = function () { res(['Lesefehler']); };
+        } catch (e) { res(['Lesefehler: ' + e.message]); }
+      };
+    });
+  }
+  function render() {
+    var L = ['Reiseführer Diagnose v' + DV + ' – Abnahme v0.5/v0.6', 'Datum: ' + new Date().toLocaleString('de-DE'), 'Gerät: ' + navigator.userAgent, ''];
+    L.push('1 OsmAnd:');
+    LINKS.forEach(function (l) {
+      var r = RES.filter(function (x) { return x[0] === st.osmand[l[0]]; })[0];
+      L.push(l[0] + ' ' + l[1] + ': ' + (r ? r[1] : 'nicht getestet'));
+    });
+    L.push('');
+    L.push('2 In der App:');
+    CHECKS.forEach(function (c) { L.push((st.checks[c[0]] ? '[x] ' : '[ ] ') + c[1]); });
+    if (st.osm) L.push('OSM-Dauer: ' + st.osm);
+    if (st.note) L.push('Notiz: ' + st.note);
+    L.push('');
+    L.push('Vorbereitete Gebiete:');
+    L = L.concat(areaLines);
+    $('v6summary').value = L.join('\n');
+  }
+  readAreas().then(function (l) { areaLines = l; render(); });
+  render();
+  $('osmandTests').addEventListener('change', function (e) {
+    if (e.target.name && e.target.name.indexOf('os') === 0) { st.osmand[e.target.name.slice(2)] = e.target.value; save(); render(); }
+  });
+  $('checklist6').addEventListener('change', function (e) { var c = e.target.getAttribute('data-c'); if (c) { st.checks[c] = e.target.checked; save(); render(); } });
+  $('v6osm').addEventListener('input', function () { st.osm = this.value; save(); render(); });
+  $('v6note').addEventListener('input', function () { st.note = this.value; save(); render(); });
+  $('v6copy').addEventListener('click', function () {
+    render();
+    (navigator.clipboard ? navigator.clipboard.writeText($('v6summary').value).then(function () { return true; }, function () { return false; }) : Promise.resolve(false))
+      .then(function (ok) { $('v6status').textContent = ok ? 'Zusammenfassung kopiert.' : 'Kopieren fehlgeschlagen – Text lange antippen und markieren.'; });
+  });
+  if (!navigator.share) $('v6share').style.display = 'none';
+  $('v6share').addEventListener('click', function () { render(); navigator.share({ title: 'Reiseführer Diagnose v0.6', text: $('v6summary').value }).catch(function () {}); });
 })();
 </script>
 </body>

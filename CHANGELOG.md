@@ -1,5 +1,45 @@
 # Changelog
 
+## v0.6.0 – 03.11.2026 – Gebiet vorbereiten (offline)
+
+Vorgezogen aus v0.7/v0.10 (Wunsch Nutzer): eine Suche vorbereiten, die länger dauern darf, damit sie unterwegs sofort da ist – auch ohne Internet.
+
+- **⚙ → „Kartenausschnitt vorbereiten“**: lädt für den ganzen Ausschnitt (bis 400 km²) in drei Schritten
+  1. alle Orte: Wikipedia in Teilbereichen von 3 km, OpenStreetMap (wartet bis 10 Minuten), Wikidata;
+  2. deutsche Kurzinfos für alle Orte ab ★ (übersetzt, wenn nötig);
+  3. die ganzen Wikipedia-Artikel für alle Orte ab ★ (für „Erzähl mir davon“).
+- **Fortschrittsleiste** unter den Filtern mit Schritt, Zähler, Zeit und „Abbrechen“. Der Bildschirm bleibt dabei an (Wake Lock). Abgebrochen oder App geschlossen: „Fortsetzen“ macht dort weiter, wo es aufgehört hat.
+- **Benutzen**: Liegt der Kartenausschnitt in einem vorbereiteten Gebiet, ist „Hier suchen“ sofort fertig, ohne Internet. Statuszeile: „📥 Vorbereitet: „Manchester“, Stand …“. Ohne Internet wird auch ein Gebiet benutzt, das den Ausschnitt nur teilweise abdeckt. In „Suche – Details“: „Trotzdem online neu suchen“.
+- **Offline geht**: Karte (bereits angesehene Kacheln), Liste, Sterne, Kurzinfos, Merkliste, „Erzähl mir davon“ und „Übersicht und Bewertung“ bauen den Prompt und kopieren ihn. Claude selbst und die Bilder brauchen Internet (Bilder erscheinen wieder, sobald Internet da ist).
+- **Gebiete verwalten** in ⚙: Größe, Stand, Zahl der Orte/Kurzinfos/Texte, „Zeigen“, „Aktualisieren“ bzw. „Fortsetzen“, „Löschen“. Vorbereitete Gebiete sind auf der Karte grün gestrichelt. Speicherbedarf der App steht in ⚙.
+- „Zwischenspeicher leeren“ lässt vorbereitete Gebiete stehen.
+- **Diagnose**: Zusammenfassung listet die vorbereiteten Gebiete.
+
+### Annahmen/Abweichungen
+
+- Kartenbilder werden nicht vorab heruntergeladen: Das verbieten die Nutzungsregeln von OpenStreetMap. Offline sieht man die Kacheln, die man vorher angeschaut hat. Für eine richtige Offline-Karte: OsmAnd (siehe v0.5.0).
+- Übersetzungen: Der kostenlose Dienst MyMemory hat ein Tageslimit. Bei großen Gebieten bleiben dann einige Kurzinfos in der Originalsprache; „Aktualisieren“ an einem späteren Tag übersetzt sie nach.
+- Daten liegen in IndexedDB. Die App bittet den Browser, sie dauerhaft zu behalten (`storage.persist`); ob Chrome zustimmt, entscheidet Chrome.
+- Wie lange das Vorbereiten auf dem Handy dauert, konnte ich nicht messen (Cloud-Session ohne Zugang zu den echten Schnittstellen). Geschätzt: Innenstadt 3 × 3 km etwa 2–5 Minuten.
+
+## v0.5.0 – 03.11.2026 – Kartenausschnitt, Herkunft, Abbrechen, OsmAnd
+
+- **Suche im sichtbaren Kartenausschnitt** statt Radius (Wunsch Nutzer): „Hier suchen“ sucht genau, was die Karte zeigt (gestrichelter Rahmen); Liste und Karte zeigen nur Orte darin. Der Radius-Filter ist weg. Ist der Ausschnitt zu groß (halbe Diagonale über 10 km, Grenze von Wikipedia): Hinweis „Bitte näher heranzoomen“. „Mein Standort“ und die Ortssuche zoomen auf Stufe 14 (etwa 2 × 2 km), Sehenswürdigkeiten auf 15.
+- **Dichte Stadtzentren vollständig**: Wikipedia liefert höchstens 500 Artikel je Abfrage. Kommen 500, wird der Bereich geviertelt und neu gefragt (bis zu zweimal).
+- **Herkunft sichtbar**: Statuszeile zeigt nach jeder Suche z. B. „Wikipedia ✓ 3 s · OSM ✓ 12 s, 6 neue“ (oder „OSM ✓ gespeichert“, „OSM übersprungen“, „OSM ✗ keine Antwort nach 120 s“). Antippen öffnet „Suche – Details“: Zeiten, Artikel je Sprache, Wikidata, OSM-Kacheln und Server, Zusammenführung, Orte nur W / nur OSM / beide. In der Liste steht bei jedem Ort **W**, **OSM** oder **W+OSM**.
+- **Sekundenzähler und Knöpfe beim Suchen**: Nach 3 s erscheinen „Abbrechen“ und – sobald nur noch OpenStreetMap fehlt – „Ohne OSM weiter“. Ohne Knopfdruck wartet die App bis zu 2 Minuten auf OSM (`osm.max_wartezeit_s` 120, je Server 40 s). Kommt OSM später doch, meldet die App das („Hier suchen“ ergänzt die OSM-Orte dann sofort aus dem Speicher).
+- **Fehler behoben (v0.4.1)**: Die kleineren OSM-Kacheln hatten doppelte Namen, dadurch fehlte ein Teil des Suchgebiets. Zwischenspeicher-Version 3.
+- **Deutscher Name nur, wenn er wirklich anders ist** (Wunsch Nutzer): „Espace Horloger Vallée de Joux“ / „Espace Horloger de la Vallée de Joux“ zeigt nur noch einen Namen; „Château de Morges“ / „Schloss Morges“ weiterhin beide. Regel: Wörter ohne kleine Wörter (de, la, of, …), Akzente und Bindestriche vergleichen; sind die Wörter des einen Namens alle im anderen enthalten, gilt er als gleich.
+- **„📋 Übersicht und Bewertung“** statt „Lohnt sich das?“ (Wunsch Nutzer): zum Lesen, nicht zum Vorlesen. Claude antwortet in fester Gliederung: Was ist das? · Auf einen Blick (Tabelle: Bewertungen mit Anzahl, Zeitbedarf, Eintritt, Öffnungszeiten, beste Zeit, Andrang, für wen) · Lohnt es sich? (Ja/Bedingt/Eher nicht) · 👍/👎 · Praktische Tipps · Quellen mit Stand. „Erzähl mir davon“ bleibt zum Anhören vor Ort.
+- **OsmAnd als Karten-App** (⚙): „In OsmAnd“ öffnet OsmAnd+ mit Pin (Android-Intent-Link, ohne App öffnet die OsmAnd-Webkarte); „Pin“ nutzt dann den geo:-Link.
+- **Diagnose**: neuer Abschnitt v0.5/v0.6 mit drei OsmAnd-Link-Varianten zum Ankreuzen und Checkliste.
+
+### Annahmen/Abweichungen
+
+- Öffnungszeiten und Eintritt in „Übersicht und Bewertung“: Abweichung von PROJEKT.md (dort „nicht das Ziel“), auf Wunsch des Nutzers für die Entscheidung „hingehen oder nicht“. Die App lädt sie nicht selbst; Claude recherchiert und soll den Stand angeben.
+- Ob der OsmAnd-Link auf dem Handy direkt OsmAnd+ öffnet, konnte ich nicht testen. Darum drei Varianten in der Diagnose; die App nimmt danach die, die funktioniert.
+- Der Ortsname steht nicht mehr vorne in der Statuszeile (er steht oben auf der Karte), damit die Liste auf kleinen Bildschirmen Platz behält.
+
 ## v0.4.1 – 03.11.2026 – Suche hängt nicht mehr
 
 Anlass: Am Handy blieb die Suche bei „Lade Wikipedia (de, en, fr) und OpenStreetMap …“ stehen.
