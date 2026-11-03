@@ -10,7 +10,7 @@ Plan und Etappen: `PROJEKT.md`, Änderungen: `CHANGELOG.md`.
 ## Dateien
 
 - `docs/index.html`, `app.js`, `style.css` – App
-- `docs/core.js` – Logik (Wikipedia/Wikidata laden, Typ, Score, Sterne, Links), auch von `diag.html` und Tests genutzt
+- `docs/core.js` – Logik (Wikipedia/Wikidata/OpenStreetMap laden und zusammenführen, Typ, Score, Sterne, Prompts, Links), auch von `diag.html` und Tests genutzt
 - `docs/sw.js`, `manifest.webmanifest`, `icons/` – PWA
 - `docs/lib/leaflet/` – Leaflet 1.9.4 (BSD-2)
 - `docs/testdata/` – synthetische Testdaten

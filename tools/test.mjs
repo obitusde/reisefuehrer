@@ -45,6 +45,9 @@ export function mockFetch(fixture) {
       body = u.pathname.startsWith('/search')
         ? (/imperial/i.test(u.searchParams.get('q')) ? fixture.nominatimSearch.imperial : fixture.nominatimSearch.default)
         : fixture.nominatim;
+    } else if (/overpass/.test(u.hostname) || u.hostname === 'maps.mail.ru') {
+      if (fixture.__overpassDown && u.hostname === 'overpass-api.de') return { ok: false, status: 504, json: async () => ({}) };
+      body = fixture.overpass;
     } else if (u.hostname === 'api.mymemory.translated.net') {
       const q = u.searchParams.get('q');
       body = fixture.__mmQuota ? { responseData: { translatedText: 'MYMEMORY WARNING: YOU USED ALL AVAILABLE FREE TRANSLATIONS FOR TODAY' }, responseStatus: 429, quotaFinished: true }
@@ -199,7 +202,14 @@ ok(pA.length <= 12000 && pA.length > 9000, 'ausführlich within 12000: ' + pA.le
 const big = Object.assign({}, artF, { text: artF.text + ' ' + 'x'.repeat(30000) });
 ok(core.buildPrompt(th, { article: big, level: 'ausfuehrlich' }, Object.assign({}, cfg, { erzaehlen: Object.assign({}, cfg.erzaehlen, { quelltext_max: { ausfuehrlich: 50000 } }) })).length <= 12000, 'never above 12000 even with huge limits');
 const pNone = core.buildPrompt(th, { article: null, level: 'kurz' }, cfg);
-ok(pNone.text.includes('keinen Wikipedia-Text'), 'prompt without article says so');
+ok(pNone.text.includes('keinen Wikipedia-Text') && pNone.text.includes('Quelltext (kein Wikipedia-Artikel):'), 'prompt without article says so');
+const pOsm = core.buildPrompt(Object.assign({}, th, { osm: { x: { artist_name: 'Glyn Hughes', start_date: '2001' } } }), { article: null, level: 'kurz' }, cfg);
+ok(pOsm.text.includes('Quelltext (OpenStreetMap, kein Wikipedia-Artikel):') && pOsm.text.includes('Angaben aus OpenStreetMap: Künstler: Glyn Hughes; Entstehung: 2001'), 'prompt uses OSM facts');
+ok(pK.text.includes('Quelltext (Englisch, Wikipedia):'), 'prompt source label with Wikipedia');
+eq(core.nameSimilarity('Manchester Cathedral', 'Manchester Cathedral'), 1, 'similarity equal');
+ok(core.nameSimilarity('Musée Alexis-Forel', 'Musee Alexis Forel') === 1, 'similarity ignores accents and dashes');
+ok(core.nameSimilarity('Town Hall', 'Manchester Town Hall') < 0.85, 'different names stay apart');
+eq(core.tileKeys(53.4792, -2.2442, 10000).length, 12, 'tiles for 10 km (3 x 4)');
 ok(core.claudeNewUrl('a b?').startsWith('claude://claude.ai/new?q=a%20b%3F'), 'claude url');
 const rv = core.buildReviewPrompt(th, cfg);
 ok(rv.text.startsWith('Ich überlege, ob ich diese Sehenswürdigkeit besuchen soll.') && rv.text.includes('Ort: Manchester Town Hall (deutsch: Rathaus Manchester)') &&
@@ -232,10 +242,40 @@ eq(core.formatDistance(1234), '1,2 km', 'distance format');
 const f = mockFetch(fx);
 const cache = new Map();
 const wdCache = { get: k => cache.get(k), set: (k, v) => cache.set(k, v) };
-const res = await core.loadPlaces({ lat: fx.center.lat, lon: fx.center.lon, radius: 1000, cfg, fetch: f, wdCache, langs: ['de', 'en', 'fr'], localLang: 'en' });
+const osmStore = new Map();
+const osmCache = { get: async (k) => osmStore.get(k), set: async (k, v) => { osmStore.set(k, v); } };
+const res = await core.loadPlaces({ lat: fx.center.lat, lon: fx.center.lon, radius: 1000, cfg, fetch: f, wdCache, osmCache, langs: ['de', 'en', 'fr'], localLang: 'en' });
+eq(f.calls.filter(u => u.includes('overpass')).length, 1, 'one Overpass request for one tile');
+const f5 = mockFetch(fx);
+await core.loadPlaces({ lat: fx.center.lat, lon: fx.center.lon, radius: 1000, cfg, fetch: f5, wdCache, osmCache, localLang: 'en' });
+eq(f5.calls.filter(u => u.includes('overpass')).length, 0, 'Overpass tile cached');
+const f6 = mockFetch(Object.assign({}, fx, { __overpassDown: true }));
+const r6 = await core.loadPlaces({ lat: fx.center.lat, lon: fx.center.lon, radius: 1000, cfg, fetch: f6, wdCache, localLang: 'en' });
+ok(f6.calls.some(u => u.includes('overpass.kumi.systems')) && r6.places.some(p => p.name === 'Alan Turing Memorial'), 'Overpass fallback server used');
+const r7 = await core.loadPlaces({ lat: fx.center.lat, lon: fx.center.lon, radius: 1000, cfg, fetch: mockFetch(fx), wdCache, localLang: 'en', osm: false });
+ok(!r7.places.some(p => p.quellen.includes('O')), 'OSM can be switched off');
 const by = n => res.places.find(p => (p.artikel.en || p.artikel.de || '').includes(n) || p.name.includes(n));
 eq(res.warnings.length, 0, 'no warnings: ' + res.warnings.join('; '));
-eq(res.places.length, 23, 'merged count (21 wd items + 1 de-only + 1 fr-only)');
+// OpenStreetMap merge (PROJEKT.md v0.4)
+const st4 = res.stats.osm;
+ok(st4 && st4.byWikidata >= 3 && st4.byName >= 1 && st4.osmDup === 0, 'OSM merged by Wikidata and by name: ' + JSON.stringify(st4));
+eq(res.places.filter(p => /^Manchester Town Hall$/.test(p.name)).length, 1, 'Town Hall appears once');
+eq(res.places.filter(p => p.name === 'Manchester Cathedral').length, 1, 'Cathedral appears once (name + 150 m)');
+eq(by('Town Hall').quellen.join(), 'W,O', 'Town Hall sources W and O');
+eq(by('Cathedral').quellen.join(), 'W,O', 'Cathedral sources W and O');
+ok(by('Town Hall').teile.quellen === 0.5, 'source bonus +0.5');
+eq(res.places.filter(p => p.name.includes('John Rylands')).length, 1, 'John Rylands once (two OSM objects + W)');
+const turing = by('Alan Turing Memorial');
+ok(turing && turing.quellen.join() === 'O' && turing.typ === 'kunst' && turing.sterne === 1, 'OSM-only artwork: 1 star');
+ok(turing.osmOnly && turing.beschreibung.includes('Glyn Hughes'), 'OSM facts as description');
+eq(by('Castlefield Viewing Platform').sterne, 1, 'OSM-only viewpoint 1 star');
+eq(by('Pankhurst Centre').sterne, 2, 'OSM-only museum 2 stars (museums always orange)');
+eq(by('Piccadilly Gardens').sterne, 0, 'OSM-only park: no star');
+ok(by('Albert Memorial').sterne <= 1, 'OSM-only memorial at most 1 star');
+ok(!by('Far Away Tower'), 'OSM outside radius ignored');
+const owi = by('Old Wellington Inn');
+ok(owi && owi.wikidata === 'Q900040' && owi.wikipedia === 'en:Old Wellington Inn' && owi.sprachversionen === 3 && !owi.osmOnly, 'OSM with Wikidata scored via Wikidata, article from OSM tag');
+eq(res.places.length, 23 + 6, 'merged count (23 W + 6 new from OSM)');
 eq(f.calls.filter(u => u.includes('en.wikipedia')).length, 2, 'en continuation followed');
 ok(by('Town Hall').laenge === 52000, 'length merged from continuation, longest article');
 ok(!f.calls.some(u => u.includes('pageviews')), 'no pageviews requested');
@@ -257,7 +297,7 @@ eq(res.places.find(p => p.typ === 'liste').sterne, 0, 'list capped');
 eq(by('tram stop').sterne, 0, 'tram stop no star');
 eq(by('Deansgate').sterne, 0, 'street no star');
 ok(res.places.every((p, i, a) => i === 0 || a[i - 1].sterne > p.sterne || (a[i - 1].sterne === p.sterne && a[i - 1].score >= p.score)), 'sorted by stars, score');
-ok(res.places.every(p => p.quellen.join() === 'W' && p.geprueft === true && typeof p.lat === 'number'), 'format 5b fields');
+ok(res.places.every(p => /^(W|O|W,O)$/.test(p.quellen.join()) && p.geprueft === true && typeof p.lat === 'number'), 'format 5b fields');
 eq(res.places.find(p => p.id.startsWith('wp:de:')).name, 'Gedenktafel am Rathaus', 'de-only page kept, title cleaned');
 
 // cache: second run makes no Wikidata request

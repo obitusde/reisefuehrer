@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.4.0 – 03.11.2026 – OpenStreetMap dazu, Duplikate zusammenführen
+
+- **OpenStreetMap als zweite Quelle** (PROJEKT.md 5d): Overpass-Abfrage nach benannten Sehenswürdigkeiten (`tourism` attraction/museum/gallery/viewpoint/artwork, `historic` Burg, Denkmal, Ruine, Kirche …, `amenity` theatre/library/arts_centre, benannte Parks/Gärten, Gipfel/Wasserfälle). Abfrage pro Kachel (0,1°), 30 Tage im Gerät gespeichert (IndexedDB), höchstens 2 gleichzeitig, Ausweich-Server, wenn einer nicht antwortet.
+- **Zusammenführen** (PROJEKT.md 5b): gleiche Wikidata-ID → ein Ort; sonst ähnlicher Name (≥ 0,85) und ≤ 150 m → ein Ort; Koordinaten von Wikipedia; im Zweifel nicht zusammenführen. Auch doppelte OSM-Objekte (Punkt und Gebäude) werden zu einem.
+- **Bewertung:** bestätigt OSM einen Wikipedia-Ort, gibt es +0,5 Punkte. OSM-Orte mit Wikidata-Eintrag werden wie Wikipedia-Orte bewertet (Artikel aus dem OSM-Tag `wikipedia`, damit gehen Kurzinfo und „Erzähl mir davon“). OSM-Orte ohne Wikidata: Grundwert 3 + Typ + Denkmal, höchstens ★; Museen trotzdem ★★, Aussichtspunkte mindestens ★ (Entscheidungen Nutzer).
+- **Ortsfenster:** Quellen (Wikipedia · OpenStreetMap) und Lizenzen je Ort, OSM-Tag in „Warum …?“. Bei Orten nur aus OSM nutzt „Erzähl mir davon“ die OSM-Angaben (Künstler, Entstehung, Inschrift, Beschreibung) und sagt offen, dass es keinen Wikipedia-Artikel gibt.
+- **Einstellungen:** OpenStreetMap-Orte an/aus. „Zwischenspeicher leeren“ löscht auch die OSM-Daten.
+- **Diagnose:** Overpass-Test; Goldliste prüft „Rathaus und Kathedrale genau einmal“, „mindestens ein Ort nur aus OSM“ und zeigt die Duplikat-Quote (vorher/nachher).
+
+### Annahmen/Abweichungen
+
+- `historic=*` ist auf sehenswerte Werte begrenzt, Gedenktafeln (`memorial=plaque`) sind ausgeschlossen, sonst kämen in Großstädten Hunderte Tafeln dazu. Alles in `config.json` → `osm.filter` änderbar.
+- Neuer Typ „Sehenswürdigkeit“ (`tourism=attraction`, Wikidata „tourist attraction“), Gewicht +1.
+- Im Erzähl-Prompt heißt der Platzhalter für die Quelle jetzt `{quelle}` („Englisch, Wikipedia“ bzw. „OpenStreetMap, kein Wikipedia-Artikel“).
+- Nicht live geprüft (Cloud-Session ohne Zugang zu Overpass); getestet mit synthetischen OSM-Daten.
+
 ## v0.3.3 – 03.11.2026 – „Lohnt sich das?“
 
 - **Neuer Knopf „💬 Lohnt sich das?“** im Ortsfenster (Wunsch Nutzer): schickt einen Prompt an die Claude-App. Claude sucht im Netz Bewertungen und Erfahrungen von Besuchern (Google Maps, Tripadvisor, Foren, Blogs) und fasst zusammen: Bewertung je Quelle, was gelobt und kritisiert wird, ob sich der Besuch lohnt, praktische Tipps. Vorlage in `config.json` → `besucher.vorlage`.

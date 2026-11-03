@@ -1,8 +1,8 @@
-/* Reiseführer – app (v0.3.3). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.4.0). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.3.3';
+  var VERSION = '0.4.0';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
@@ -19,6 +19,35 @@
     },
     del: function (k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } }
   };
+
+  // Small IndexedDB key-value store (OSM tiles are too big for localStorage); falls back to memory
+  var IDB = (function () {
+    var mem = {}, dbp = null;
+    function open() {
+      if (!dbp) dbp = new Promise(function (res, rej) {
+        if (!window.indexedDB) { rej(new Error('kein IndexedDB')); return; }
+        var r = indexedDB.open('reisefuehrer', 1);
+        r.onupgradeneeded = function () { r.result.createObjectStore('kv'); };
+        r.onsuccess = function () { res(r.result); };
+        r.onerror = function () { rej(r.error); };
+      });
+      return dbp;
+    }
+    function tx(mode, fn) {
+      return open().then(function (db) {
+        return new Promise(function (res) {
+          var t = db.transaction('kv', mode), st = t.objectStore('kv'), out = fn(st);
+          t.oncomplete = function () { res(out && out.result); };
+          t.onerror = t.onabort = function () { res(undefined); };
+        });
+      });
+    }
+    return {
+      get: function (k) { return tx('readonly', function (s) { return s.get(k); }).catch(function () { return mem[k]; }); },
+      set: function (k, v) { return tx('readwrite', function (s) { s.put(v, k); }).catch(function () { mem[k] = v; }); },
+      clear: function () { mem = {}; return tx('readwrite', function (s) { s.clear(); }).catch(function () {}); }
+    };
+  })();
 
   // -------------------------------------------------------------- state
   var cfg = null;
@@ -125,6 +154,7 @@
     if (settings.focus == null) settings.focus = '';
     if (!settings.uebergabe) settings.uebergabe = cfg.claude_uebergabe || 'claude-new';
     if (settings.hideHeard == null) settings.hideHeard = false;
+    if (settings.osm == null) settings.osm = true;
     saveSettings();
 
     // filters
@@ -330,7 +360,7 @@
     getPlaceInfo(lat, lon).then(function (info) {
       ort = info.name || '';
       return C.loadPlaces({
-        lat: lat, lon: lon, radius: radius, cfg: cfg, wdCache: wdCache,
+        lat: lat, lon: lon, radius: radius, cfg: cfg, wdCache: wdCache, osmCache: IDB, osm: settings.osm !== false,
         langs: C.languagesFor(info, cfg),
         localLang: C.localLanguage(info, cfg),
         fetch: function (u, o) { return fetch(u, o); },
@@ -445,6 +475,7 @@
   function kurzText(p) {
     var k = kurzStore[p.id];
     if (k && k.t) return k.t;
+    if (p.osmOnly) return p.beschreibung || '';
     var d = C.stripLocation(p.beschreibung);
     return d && d.toLowerCase() !== String(p.typ_label || '').toLowerCase() ? d : '';
   }
@@ -577,12 +608,19 @@
     var ml = mapsLinks(p);
     var on = isMerk(p.id);
     var t = p.teile || {};
-    var rows = [
+    var osmTag = p.osm && p.osm.k ? ' (OSM: ' + p.osm.k + ')' : '';
+    var rows = p.osmOnly ? [
+      ['Grundwert OpenStreetMap (höchstens ★, Museen ★★)', t.osm_basis],
+      ['Denkmal', t.denkmal],
+      ['Typ: ' + p.typ_label + osmTag, t.typ]
+    ] : [
       ['Sprachversionen (' + p.sprachversionen + ')', t.sprachversionen],
       ['Artikellänge (' + (p.laenge || 0).toLocaleString('de-DE') + ' Bytes)', t.laenge],
       ['Denkmal/UNESCO', t.denkmal],
-      ['Typ: ' + p.typ_label + (p.klassen && p.klassen.length ? ' (Wikidata: ' + p.klassen.join(', ') + ')' : ''), t.typ]
+      ['Typ: ' + p.typ_label + (p.klassen && p.klassen.length ? ' (Wikidata: ' + p.klassen.join(', ') + ')' : osmTag), t.typ],
+      ['Weitere Quellen (' + p.quellen.join(' + ') + ')', t.quellen]
     ];
+    var srcNames = { W: 'Wikipedia', O: 'OpenStreetMap', V: 'Wikivoyage', C: 'Claude-Liste' };
     var lv = settings.level;
     var foci = (cfg.erzaehlen && cfg.erzaehlen.schwerpunkte) || [];
     var html =
@@ -618,7 +656,10 @@
         '<tr><td><b>Punkte</b></td><td><b>' + (p.score == null ? '–' : p.score.toFixed(1)) + '</b></td></tr>' +
       '</table><p class="small">Faustregel aus Wikipedia/Wikidata. Gewichte und Schwellen stehen in config.json.</p></details>' +
       '<details class="why" id="plIntro" hidden><summary>Wikipedia-Einleitung</summary><p class="intro" id="plIntroText"></p></details>' +
-      '<p class="src">Quelle: Wikipedia (CC BY-SA 4.0), Wikidata (CC0)' + (p.ort ? ', Ortsname: Nominatim/© OpenStreetMap-Mitwirkende' : '') + '.</p>';
+      '<p class="src">Quellen: ' + p.quellen.map(function (q) { return srcNames[q] || q; }).join(' · ') + '. Lizenzen: ' +
+        [p.quellen.indexOf('W') >= 0 || p.wikipedia ? 'Wikipedia (CC BY-SA 4.0), Wikidata (CC0)' : '',
+         p.quellen.indexOf('O') >= 0 ? '© OpenStreetMap-Mitwirkende (ODbL)' : '',
+         p.ort ? 'Ortsname: Nominatim' : ''].filter(Boolean).join(', ') + '.</p>';
     openSheet(p.name, html);
     $('sheetBody').setAttribute('data-place', p.id);
     if (kurzNeeded(p.id)) { kurzQueue[p.id] = 1; scheduleKurz(); }
@@ -776,9 +817,11 @@
       '<h3>Schon gehört</h3>' +
       '<label class="opt"><input type="checkbox" id="hideHeard"' + (settings.hideHeard ? ' checked' : '') + '> Schon gehörte Orte in Liste und Karte ausblenden</label>' +
       '<div class="actions"><button class="btn wide" type="button" data-a="clearheard">Liste „Schon gehört“ leeren (' + Object.keys(heard).length + ')</button></div>' +
+      '<h3>Quellen</h3>' +
+      '<label class="opt"><input type="checkbox" id="useOsm"' + (settings.osm !== false ? ' checked' : '') + '> OpenStreetMap-Orte einbeziehen (Kunstwerke, Aussichtspunkte, Denkmäler …)</label>' +
       '<h3>Daten</h3>' +
       '<div class="actions"><button class="btn wide" type="button" data-a="clearcache">Zwischenspeicher leeren</button></div>' +
-      '<p class="small">Löscht gespeicherte Orte, Wikidata-Daten und Kurztexte. Merkliste und Einstellungen bleiben.</p>' +
+      '<p class="small">Löscht gespeicherte Orte, Wikidata- und OpenStreetMap-Daten und Kurztexte. Merkliste und Einstellungen bleiben.</p>' +
       '<h3>Hilfe</h3>' +
       '<div class="actions"><a class="btn" href="diag.html">Diagnose</a>' +
       '<a class="btn" href="https://github.com/obitusde/reisefuehrer/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Änderungen</a></div>' +
@@ -967,7 +1010,7 @@
         if (h) goToHit(h);
       } else if (a === 'clearcache') {
         if (confirm('Gespeicherte Orte und Wikidata-Daten löschen?')) {
-          LS.del(K.last); LS.del(K.wd); LS.del(K.ort); LS.del(K.kurz);
+          LS.del(K.last); LS.del(K.wd); LS.del(K.ort); LS.del(K.kurz); IDB.clear();
           wdStore = {}; last = null; kurzStore = {};
           if (searchCircle) { map.removeLayer(searchCircle); searchCircle = null; }
           renderAll(); toast('Zwischenspeicher geleert');
@@ -977,6 +1020,7 @@
     $('sheetBody').addEventListener('change', function (e) {
       if (e.target.id === 'focusSel') { settings.focus = e.target.value; saveSettings(); setTellStatus(''); return; }
       if (e.target.name === 'uebergabe') { settings.uebergabe = e.target.value; saveSettings(); toast('Übergabe gespeichert'); return; }
+      if (e.target.id === 'useOsm') { settings.osm = e.target.checked; saveSettings(); toast('Gilt ab der nächsten Suche'); return; }
       if (e.target.id === 'hideHeard') { settings.hideHeard = e.target.checked; saveSettings(); renderAll(); return; }
       if (e.target.name === 'kapp') {
         settings.kartenApp = e.target.value; saveSettings();

@@ -69,11 +69,32 @@ entities.Q900030 = { type: 'item', id: 'Q900030', sitelinks: { frwiki: { site: '
 for (const [q, [en, de]] of Object.entries(CLASSES)) {
   entities[q] = { type: 'item', id: q, labels: { en: { language: 'en', value: en }, de: { language: 'de', value: de } } };
 }
+// Wikidata item that only OSM knows nearby (no geotagged Wikipedia article in the fixture)
+entities.Q900040 = { type: 'item', id: 'Q900040', sitelinks: { enwiki: { site: 'enwiki' }, frwiki: { site: 'frwiki' }, dewiki: { site: 'dewiki' } },
+  labels: { en: { language: 'en', value: 'Old Wellington Inn' }, de: { language: 'de', value: 'Old Wellington Inn' } },
+  descriptions: { en: { language: 'en', value: 'Grade II listed pub in Manchester, England' } },
+  claims: { P31: [{ mainsnak: { snaktype: 'value', datavalue: { type: 'wikibase-entityid', value: { 'entity-type': 'item', id: 'Q212198' } } } }],
+    P1435: [{ mainsnak: { snaktype: 'value', datavalue: { type: 'wikibase-entityid', value: { 'entity-type': 'item', id: 'Q15700834' } } } }] } };
+// SYNTHETIC Overpass answer (out tags center)
+const overpass = { version: 0.6, elements: [
+  { type: 'way', id: 101, center: { lat: 53.47945, lon: -2.24455 }, tags: { name: 'Manchester Town Hall', tourism: 'attraction', wikidata: 'Q900001', historic: 'building' } },
+  { type: 'node', id: 102, lat: 53.4856, lon: -2.2450, tags: { name: 'Manchester Cathedral', historic: 'church' } },
+  { type: 'node', id: 103, lat: 53.4802, lon: -2.2486, tags: { name: 'John Rylands Library', tourism: 'attraction', wikidata: 'Q900003' } },
+  { type: 'way', id: 104, center: { lat: 53.4803, lon: -2.2488 }, tags: { name: 'John Rylands Library', tourism: 'museum', wikidata: 'Q900003' } },
+  { type: 'node', id: 105, lat: 53.4770, lon: -2.2370, tags: { name: 'Alan Turing Memorial', tourism: 'artwork', artwork_type: 'statue', artist_name: 'Glyn Hughes', start_date: '2001' } },
+  { type: 'node', id: 106, lat: 53.4760, lon: -2.2560, tags: { name: 'Castlefield Viewing Platform', tourism: 'viewpoint' } },
+  { type: 'node', id: 107, lat: 53.4810, lon: -2.2380, tags: { name: 'Pankhurst Centre', tourism: 'museum', description: 'Former home of Emmeline Pankhurst' } },
+  { type: 'way', id: 108, center: { lat: 53.4808, lon: -2.2369 }, tags: { name: 'Piccadilly Gardens', leisure: 'park' } },
+  { type: 'node', id: 109, lat: 53.4851, lon: -2.2440, tags: { name: 'Old Wellington Inn', historic: 'building', tourism: 'attraction', wikidata: 'Q900040', wikipedia: 'en:Old Wellington Inn' } },
+  { type: 'node', id: 110, lat: 53.4790, lon: -2.2440, tags: { name: 'Albert Memorial', historic: 'memorial', memorial: 'statue' } },
+  { type: 'node', id: 111, lat: 53.5900, lon: -2.4000, tags: { name: 'Far Away Tower', historic: 'tower' } }
+] };
 const fixture = {
   _hinweis: 'SYNTHETISCHE Testdaten im Format der echten Schnittstellen (Wikipedia generator=geosearch, Wikidata wbgetentities, Nominatim reverse). IDs (Q9000xx) und Zahlen sind erfunden, nur für Logik-Tests in Node/Playwright. Echte Daten prüft diag.html am Handy.',
   center: { lat: 53.4792, lon: -2.2442 },
   wikipedia: { en: [en1, en2], de: [de], fr: [fr] },
   wikidata: { entities },
+  overpass,
   nominatimSearch: {
     default: [
       { place_id: 2, name: 'Manchester', addresstype: 'city', category: 'place', type: 'city', display_name: 'Manchester, Greater Manchester, England, Vereinigtes Königreich', lat: '53.4794892', lon: '-2.2451148' },

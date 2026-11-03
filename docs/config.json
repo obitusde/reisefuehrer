@@ -100,6 +100,8 @@
       "qids": ["Q839954"], "woerter": ["archaeological site", "ruin", "ruins", "roman fort", "ruine", "ausgrabung"] },
     { "id": "ereignis", "label": "Ereignis", "gewicht": -1, "max_sterne": 0, "kategorie": "sonstiges",
       "qids": ["Q1190554", "Q1656682"], "woerter": ["massacre", "battle", "bombing", "attack", "riot", "disaster", "explosion", "event", "schlacht", "anschlag", "ereignis"] },
+    { "id": "attraktion", "label": "Sehenswürdigkeit", "gewicht": 1, "kategorie": "sonstiges",
+      "qids": ["Q570116"], "woerter": ["tourist attraction", "attraction", "sehenswürdigkeit"] },
     { "id": "parkplatz", "label": "Parkplatz", "gewicht": -3, "kategorie": "sonstiges",
       "qids": ["Q6501349"], "woerter": ["car park", "parking", "parkhaus", "parkplatz"] },
     { "id": "platz", "label": "Platz", "gewicht": 0, "kategorie": "sonstiges",
@@ -141,6 +143,36 @@
     { "id": "firma", "label": "Firma", "gewicht": -3, "kategorie": "sonstiges",
       "qids": ["Q4830453", "Q783794", "Q6881511"], "woerter": ["company", "business", "enterprise", "retailer", "brand", "unternehmen", "firma"] }
   ],
+
+  "osm": {
+    "_hinweis": "OpenStreetMap über Overpass (PROJEKT.md 5d). Kacheln 0,1°, 30 Tage zwischengespeichert, höchstens 2 Anfragen gleichzeitig. filter = Overpass-Bedingungen (nur Objekte mit Namen). typen = OSM-Tag → Typ aus „typen“ unten. Bei Änderungen an filter: version um 1 erhöhen (leert den Zwischenspeicher).",
+    "aktiv": true,
+    "version": 1,
+    "server": ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter"],
+    "kachel_grad": 0.1,
+    "cache_tage": 30,
+    "parallel": 2,
+    "filter": [
+      "[\"tourism\"~\"^(attraction|museum|gallery|viewpoint|artwork)$\"]",
+      "[\"historic\"~\"^(castle|monument|memorial|ruins|archaeological_site|church|manor|city_gate|fort|tower|monastery|palace|bridge|ship|aircraft|locomotive|aqueduct|citywalls|mill|tomb|wreck)$\"][\"memorial\"!=\"plaque\"]",
+      "[\"amenity\"~\"^(theatre|library|arts_centre)$\"]",
+      "[\"leisure\"~\"^(park|garden)$\"]",
+      "[\"natural\"~\"^(peak|waterfall)$\"]"
+    ],
+    "typen": {
+      "tourism=museum": "museum", "tourism=gallery": "museum", "tourism=viewpoint": "aussicht", "tourism=artwork": "kunst",
+      "tourism=attraction": "attraktion", "historic=castle": "burg", "historic=fort": "burg", "historic=palace": "palast",
+      "historic=manor": "herrenhaus", "historic=monument": "denkmal", "historic=memorial": "denkmal", "historic=ruins": "archaeologie",
+      "historic=archaeological_site": "archaeologie", "historic=church": "kirche", "historic=monastery": "kloster",
+      "historic=city_gate": "denkmal", "historic=citywalls": "denkmal", "historic=tower": "turm", "historic=bridge": "bruecke",
+      "historic=aqueduct": "bruecke", "historic=mill": "industrie", "historic=ship": "industrie", "historic=locomotive": "industrie",
+      "historic=aircraft": "industrie", "historic=tomb": "denkmal", "historic=wreck": "archaeologie", "historic=*": "denkmal",
+      "amenity=theatre": "theater", "amenity=library": "bibliothek", "amenity=arts_centre": "kunst",
+      "leisure=park": "park", "leisure=garden": "park", "natural=peak": "natur", "natural=waterfall": "natur"
+    },
+    "ohne_wikidata": { "basis": 3, "max_sterne": 1 },
+    "duplikat": { "aehnlichkeit": 0.85, "abstand_m": 150 }
+  },
 
   "karten_app_standard": "google",
   "claude_uebergabe": "claude-new",
@@ -195,7 +227,7 @@
       "- Beginne mit einem Satz, der mir hilft zu erkennen, was ich vor mir sehe.",
       "- Nenne am Ende keine Quellen.",
       "",
-      "Quelltext ({quellsprache}, Wikipedia{gekuerzt}):",
+      "Quelltext ({quelle}{gekuerzt}):",
       "{extrakt}",
       "",
       "Reisetipp (Wikivoyage): {wikivoyage}",
@@ -224,6 +256,8 @@
       "radius_m": 1000,
       "drei_sterne": ["Manchester Town Hall", "Manchester Cathedral", "John Rylands", "Science and Industry Museum"],
       "mindestens_ein_stern": [],
+      "einmal": ["Manchester Town Hall", "Manchester Cathedral"],
+      "osm_ohne_wikipedia_mindestens": 1,
       "ohne_stern_namen": ["River Tib"],
       "ohne_stern_typen": ["bach", "ereignis"]
     },

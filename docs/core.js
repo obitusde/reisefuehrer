@@ -1,5 +1,5 @@
 /*
- * Reiseführer – core logic (v0.3.3)
+ * Reiseführer – core logic (v0.4.0)
  * Shared by the app (index.html), the diagnostics page (diag.html) and Node tests.
  * No DOM access here. Network access only through the injected fetch function.
  */
@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var CORE_VERSION = '0.3.3';
+  var CORE_VERSION = '0.4.0';
 
   // ---------------------------------------------------------------- helpers
 
@@ -498,19 +498,27 @@
   function loadPlaces(opts) {
     var cfg = opts.cfg, f = opts.fetch, prog = opts.onProgress || function () {};
     var langs = opts.langs || cfg.wikipedia.sprachen || ['de', 'en'];
+    var useOsm = !!(cfg.osm && cfg.osm.aktiv !== false && opts.osm !== false);
     var t0 = Date.now(), warnings = [], requests = 0;
-    prog('Lade Wikipedia (' + langs.join(', ') + ') …');
-    return Promise.all(langs.map(function (l) {
+    prog('Lade Wikipedia (' + langs.join(', ') + ')' + (useOsm ? ' und OpenStreetMap' : '') + ' …');
+    var osmP = useOsm ? loadOsm(opts.lat, opts.lon, opts.radius, cfg, f, opts.osmCache, null).catch(function (e) {
+      warnings.push('OpenStreetMap: ' + e.message);
+      return null;
+    }) : Promise.resolve(null);
+    return Promise.all([Promise.all(langs.map(function (l) {
       return loadWikipedia(l, opts.lat, opts.lon, opts.radius, cfg, f, opts.retryDelays).catch(function (e) {
         warnings.push('Wikipedia ' + l + ': ' + e.message);
         return null;
       });
-    })).then(function (lrs) {
+    })), osmP]).then(function (both) {
+      var lrs = both[0], osm = both[1];
       var ok = lrs.filter(Boolean);
-      if (!ok.length) throw new Error('Wikipedia nicht erreichbar (' + warnings.join('; ') + ')');
-      requests += ok.reduce(function (s, lr) { return s + lr.requests; }, 0);
+      if (!ok.length && !(osm && osm.els.length)) throw new Error('Wikipedia nicht erreichbar (' + warnings.join('; ') + ')');
+      requests += ok.reduce(function (s, lr) { return s + lr.requests; }, 0) + (osm ? osm.requests : 0);
+      if (osm && osm.failedTiles) warnings.push('OpenStreetMap: ' + osm.failedTiles + ' von ' + osm.tiles + ' Kacheln fehlgeschlagen');
       var ids = {};
       ok.forEach(function (lr) { lr.pages.forEach(function (pg) { if (pg.wikidata) ids[pg.wikidata] = 1; }); });
+      if (osm) osm.els.forEach(function (e) { if (e.wd) ids[e.wd] = 1; });
       var idList = Object.keys(ids);
       prog('Lade Wikidata (' + idList.length + ' Einträge) …');
       var labelLangs = ['de', 'en'];
@@ -526,16 +534,24 @@
         return loadClassLabels(Object.keys(cls), f, opts.wdCache, opts.retryDelays).then(function (cr) {
           requests += cr.requests;
           if (cr.failedBatches) warnings.push('Wikidata-Klassen: ' + cr.failedBatches + ' Abfrage(n) fehlgeschlagen');
-          var places = sortPlaces(buildPlaces(ok, wdr.info, cr.info, cfg, { lat: opts.lat, lon: opts.lon }, opts.localLang || null));
+          var center = { lat: opts.lat, lon: opts.lon };
+          var places = buildPlaces(ok, wdr.info, cr.info, cfg, center, opts.localLang || null);
+          var mstats = null;
+          if (osm) {
+            var m = mergeOsm(places, osm.els, wdr.info, cr.info, cfg, center, opts.localLang || null);
+            places = m.places; mstats = m.stats;
+          }
           return {
-            places: places,
+            places: sortPlaces(places),
             warnings: warnings,
             stats: {
               ms: Date.now() - t0,
               langs: langs.join(','),
-              perLang: ok.map(function (lr) { return lr.lang + ':' + lr.pages.length; }).join(' '),
+              perLang: ok.map(function (lr) { return lr.lang + ':' + lr.pages.length; }).join(' ') + (osm ? ' osm:' + osm.els.length : ''),
               requests: requests,
-              wdCached: wdr.cached
+              wdCached: wdr.cached,
+              osm: mstats,
+              osmTiles: osm ? osm.tiles : 0
             }
           };
         });
@@ -907,13 +923,19 @@
       laenge_text: e.laenge_text[level],
       schwerpunkt: o.schwerpunkt || e.schwerpunkt_standard,
       quellsprache: art ? (LANG_NOM[art.lang] || art.lang) : '',
+      quelle: art ? (LANG_NOM[art.lang] || art.lang) + ', Wikipedia' : (p.osm ? 'OpenStreetMap, kein Wikipedia-Artikel' : 'kein Wikipedia-Artikel'),
       gekuerzt: '',
       extrakt: '',
       wikivoyage: '',
       wikipedia_url: art ? art.url : ''
     };
     var src = art ? (level === 'kurz' ? art.intro : art.text) : '';
-    if (!src) src = e.ohne_artikel;
+    if (!src) {
+      src = e.ohne_artikel;
+      var facts = p.osm ? osmFacts(p.osm.x) : '';
+      if (facts) src += '\nAngaben aus OpenStreetMap: ' + facts;
+      else if (p.beschreibung) src += '\nKurzbeschreibung: ' + p.beschreibung;
+    }
     function render() {
       return e.vorlage.map(function (line) {
         return line.replace(/\{(\w+)\}/g, function (m, k) { return vars[k] != null ? vars[k] : ''; });
@@ -948,6 +970,241 @@
   }
 
   function claudeNewUrl(prompt) { return 'claude://claude.ai/new?q=' + encodeURIComponent(prompt); }
+
+  // ---------------------------------------------- OpenStreetMap (v0.4)
+
+  /** Keys of the 0.1° tiles that cover a search circle, e.g. "53.4,-2.3". */
+  function tileKeys(lat, lon, radius, size) {
+    size = size || 0.1;
+    var dLat = radius / 111320, dLon = radius / (111320 * Math.max(0.2, Math.cos(lat * Math.PI / 180)));
+    var keys = [];
+    var f = function (x) { return Math.floor(x / size + 1e-9); };
+    for (var a = f(lat - dLat); a <= f(lat + dLat); a++) {
+      for (var b = f(lon - dLon); b <= f(lon + dLon); b++) keys.push((a * size).toFixed(1) + ',' + (b * size).toFixed(1));
+    }
+    return keys;
+  }
+
+  function overpassQuery(key, cfg) {
+    var size = cfg.osm.kachel_grad || 0.1;
+    var p = key.split(',').map(Number);
+    var bbox = [p[0], p[1], p[0] + size, p[1] + size].map(function (x) { return x.toFixed(4); }).join(',');
+    var parts = (cfg.osm.filter || []).map(function (flt) { return 'nwr["name"]' + flt + '(' + bbox + ');'; });
+    return '[out:json][timeout:25];(' + parts.join('') + ');out tags center qt;';
+  }
+
+  var OSM_KEYS = ['tourism', 'historic', 'amenity', 'leisure', 'natural', 'building', 'man_made'];
+  var OSM_EXTRA = ['artist_name', 'artist', 'start_date', 'inscription', 'artwork_type', 'memorial', 'architect', 'denomination', 'heritage', 'description'];
+
+  /** Compact element (what is cached): position, names, Wikidata/Wikipedia link, main tag and a few facts. */
+  function compactOsm(el) {
+    var t = el.tags || {};
+    var lat = el.lat != null ? el.lat : el.center && el.center.lat, lon = el.lon != null ? el.lon : el.center && el.center.lon;
+    if (lat == null || lon == null || !t.name) return null;
+    var k = '';
+    for (var i = 0; i < OSM_KEYS.length && !k; i++) if (t[OSM_KEYS[i]] && t[OSM_KEYS[i]] !== 'yes') k = OSM_KEYS[i] + '=' + t[OSM_KEYS[i]];
+    var x = {};
+    OSM_EXTRA.forEach(function (n) { if (t[n]) x[n] = String(t[n]).slice(0, 300); });
+    var names = {};
+    Object.keys(t).forEach(function (n) { var m = n.match(/^name:([a-z]{2})$/); if (m) names[m[1]] = t[n]; });
+    return {
+      id: el.type + '/' + el.id, lat: +lat.toFixed(6), lon: +lon.toFixed(6), name: t.name, names: names,
+      wd: /^Q\d+$/.test(t.wikidata || '') ? t.wikidata : '', wp: t.wikipedia || '', k: k, x: x
+    };
+  }
+
+  /**
+   * One tile from Overpass (cache {get(key) -> Promise, set(key, value) -> Promise}, 30 days).
+   * Tries the configured servers one after the other.
+   */
+  function loadOsmTile(key, cfg, f, cache) {
+    var ttl = (cfg.osm.cache_tage || 30) * 24 * 3600 * 1000;
+    var ck = 'osm:' + (cfg.osm.version || 1) + ':' + key;
+    return Promise.resolve(cache ? cache.get(ck) : null).catch(function () { return null; }).then(function (hit) {
+      if (hit && Date.now() - hit.t < ttl) return { els: hit.els, cached: true };
+      var q = overpassQuery(key, cfg), servers = cfg.osm.server || ['https://overpass-api.de/api/interpreter'];
+      var i = 0, lastErr = null;
+      function next() {
+        if (i >= servers.length) return Promise.reject(lastErr || new Error('Overpass nicht erreichbar'));
+        var url = servers[i++] + '?data=' + encodeURIComponent(q);
+        return getJson(url, f).then(function (d) {
+          if (d && d.remark && /runtime error|timed out|out of memory/i.test(d.remark)) throw new Error('Overpass: ' + d.remark);
+          return d;
+        }).catch(function (e) { lastErr = e; return next(); });
+      }
+      return next().then(function (d) {
+        var els = (d.elements || []).map(compactOsm).filter(Boolean);
+        if (cache) Promise.resolve(cache.set(ck, { t: Date.now(), els: els })).catch(function () {});
+        return { els: els, cached: false };
+      });
+    });
+  }
+
+  /** All OSM elements within the radius (tiles in parallel, max `parallel` at a time). */
+  function loadOsm(lat, lon, radius, cfg, f, cache, onProgress) {
+    var keys = tileKeys(lat, lon, radius, cfg.osm.kachel_grad);
+    var seen = {}, out = [], done = 0, requests = 0, failed = 0;
+    return runLimited(keys, cfg.osm.parallel || 2, function (key) {
+      return loadOsmTile(key, cfg, f, cache).then(function (r) {
+        if (!r.cached) requests++;
+        r.els.forEach(function (e) {
+          if (seen[e.id] || haversine(lat, lon, e.lat, e.lon) > radius) return;
+          seen[e.id] = 1; out.push(e);
+        });
+      }, function () { failed++; }).then(function () {
+        done++;
+        if (onProgress) onProgress(done, keys.length);
+      });
+    }).then(function () {
+      if (failed === keys.length) throw new Error('OpenStreetMap nicht erreichbar');
+      return { els: out, tiles: keys.length, requests: requests, failedTiles: failed };
+    });
+  }
+
+  // ---- duplicates (PROJEKT.md 5b)
+
+  var NAME_STOP = { the: 1, der: 1, die: 1, das: 1, le: 1, la: 1, les: 1, l: 1, de: 1, du: 1, des: 1, of: 1, von: 1, st: 1, saint: 1, sankt: 1, and: 1, und: 1, et: 1 };
+  function normName(s) {
+    return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ')
+      .split(' ').filter(function (w) { return w && !NAME_STOP[w]; }).join(' ');
+  }
+  function bigrams(s) { var o = {}; s = s.replace(/ /g, ''); for (var i = 0; i < s.length - 1; i++) { var b = s.slice(i, i + 2); o[b] = (o[b] || 0) + 1; } return o; }
+  /** Name similarity 0..1 (Dice coefficient on letter pairs, after normalising). */
+  function nameSimilarity(a, b) {
+    a = normName(a); b = normName(b);
+    if (!a || !b) return 0;
+    if (a === b) return 1;
+    var A = bigrams(a), B = bigrams(b), inter = 0, na = 0, nb = 0, k;
+    for (k in A) { na += A[k]; if (B[k]) inter += Math.min(A[k], B[k]); }
+    for (k in B) nb += B[k];
+    return na + nb ? 2 * inter / (na + nb) : 0;
+  }
+  function osmNames(e) { return [e.name].concat(Object.keys(e.names || {}).map(function (l) { return e.names[l]; })); }
+  function placeNames(p) {
+    var n = [p.name, p.name2];
+    Object.keys(p.artikel || {}).forEach(function (l) { n.push(cleanTitle(p.artikel[l])); });
+    Object.keys(p.namen || {}).forEach(function (l) { n.push(p.namen[l]); });
+    return n.filter(Boolean);
+  }
+  function bestSimilarity(na, nb) {
+    var best = 0;
+    na.forEach(function (a) { nb.forEach(function (b) { best = Math.max(best, nameSimilarity(a, b)); }); });
+    return best;
+  }
+
+  function osmTypeOf(e, cfg) {
+    var map = cfg.osm.typen || {};
+    return map[e.k] || map[(e.k || '').split('=')[0] + '=*'] || 'sonstiges';
+  }
+
+  /** Short facts from OSM tags, e.g. "Künstler: Glyn Hughes; Entstehung: 2001". */
+  function osmFacts(x) {
+    var L = { artist_name: 'Künstler', artist: 'Künstler', architect: 'Architekt', start_date: 'Entstehung', inscription: 'Inschrift',
+      artwork_type: 'Art', memorial: 'Art', denomination: 'Konfession', description: 'Beschreibung' };
+    var seen = {};
+    return Object.keys(x || {}).filter(function (k) { return L[k] && !(seen[L[k]] && k !== 'description') && (seen[L[k]] = 1); })
+      .map(function (k) { return L[k] + ': ' + x[k]; }).join('; ');
+  }
+
+  function rescore(p, cfg) {
+    var sc = computeScore(p, cfg);
+    p.score = sc.score; p.teile = sc.teile;
+    p.sterne = starsFor(p.score, p.typ, cfg);
+    p.dauer_min = (cfg.dauer_min && cfg.dauer_min[String(p.sterne)]) || 0;
+  }
+
+  /**
+   * Merges OSM elements into the Wikipedia places (in place) and adds new places from OSM.
+   * Order (PROJEKT.md 5b): same Wikidata id, else similar name (>= threshold) within max distance; when in doubt keep both.
+   * wd/classes: Wikidata info for OSM elements whose Wikidata item has no Wikipedia article nearby.
+   */
+  function mergeOsm(places, els, wd, classes, cfg, center, localLang) {
+    var dup = cfg.osm.duplikat || {}, simMin = dup.aehnlichkeit || 0.85, maxDist = dup.abstand_m || 150;
+    var byWd = {};
+    places.forEach(function (p) { if (p.wikidata) byWd[p.wikidata] = p; });
+    var stats = { w: places.length, o: els.length, byWikidata: 0, byName: 0, osmDup: 0, neu: 0 };
+    var added = [];
+    function attach(p, e) {
+      if (p.quellen.indexOf('O') < 0) p.quellen.push('O');
+      p.osm = p.osm || { id: e.id, k: e.k, x: e.x };
+      if (p.typ === 'sonstiges' || typeInfo(p.typ, cfg).generisch) {
+        var ot = osmTypeOf(e, cfg);
+        if (ot !== 'sonstiges') { var t = typeInfo(ot, cfg); p.typ = ot; p.typ_label = t.label; p.kategorie = t.kategorie || 'sonstiges'; }
+      }
+      rescore(p, cfg);
+    }
+    function nearSimilar(list, e) {
+      var best = null, bs = 0, en = osmNames(e);
+      list.forEach(function (p) {
+        if (haversine(p.lat, p.lon, e.lat, e.lon) > maxDist) return;
+        var s = bestSimilarity(en, placeNames(p));
+        if (s >= simMin && s > bs) { bs = s; best = p; }
+      });
+      return best;
+    }
+    els.forEach(function (e) {
+      if (e.wd && byWd[e.wd]) { attach(byWd[e.wd], e); stats.byWikidata++; return; }
+      var p = nearSimilar(places, e);
+      if (p) { attach(p, e); stats.byName++; return; }
+      var q = nearSimilar(added, e) || (e.wd && added.filter(function (a) { return a.wikidata === e.wd; })[0]);
+      if (q) { stats.osmDup++; return; } // same object twice in OSM (e.g. node and building)
+      var np = buildOsmPlace(e, wd && e.wd ? wd[e.wd] : null, classes || {}, cfg, center, localLang);
+      added.push(np);
+      if (np.wikidata) byWd[np.wikidata] = np;
+      stats.neu++;
+    });
+    stats.after = places.length + added.length;
+    return { places: places.concat(added), stats: stats };
+  }
+
+  /** New place from OSM. With a Wikidata item it is scored like a Wikipedia place, otherwise by the OSM rule. */
+  function buildOsmPlace(e, info, classes, cfg, center, localLang) {
+    var names = { local: e.names[localLang] || e.name, de: e.names.de || (info && info.lab && info.lab.de) || '', en: e.names.en || (info && info.lab && info.lab.en) || '' };
+    var nm = pickNames(names);
+    var artikel = {}, wikipedia = '';
+    var wp = String(e.wp || '').match(/^([a-z-]{2,12}):(.+)$/);
+    if (wp) { artikel[wp[1]] = wp[2]; wikipedia = wp[1] + ':' + wp[2]; }
+    var typ = 'sonstiges', classLabels = [];
+    if (info) {
+      (info.p31 || []).forEach(function (q) { var c = classes[q]; if (c) classLabels.push(c.en, c.de); });
+      var dsc = info.desc || {};
+      typ = classify(info.p31, classLabels, [dsc.en, dsc.de, localLang ? dsc[localLang] : ''], [e.name], cfg);
+    }
+    if (typ === 'sonstiges' || typeInfo(typ, cfg).generisch) {
+      var ot = osmTypeOf(e, cfg);
+      if (ot !== 'sonstiges' || typ === 'sonstiges') typ = ot;
+    }
+    var t = typeInfo(typ, cfg);
+    var p = {
+      id: e.wd ? 'wd:' + e.wd : 'osm:' + e.id,
+      name: nm.name || e.name, name2: nm.name2, namen: names,
+      lat: e.lat, lon: e.lon,
+      wikidata: e.wd || null, wikipedia: wikipedia, artikel: artikel,
+      typ: typ, typ_label: t.label, kategorie: t.kategorie || 'sonstiges',
+      quellen: ['O'], sterne: 0, geheimtipp: false, geprueft: true, warum: '', dauer_min: 0,
+      beschreibung: (e.x && e.x.description) || (info && info.desc ? (info.desc.de || info.desc.en || '') : '') || osmFacts(e.x),
+      klassen: classLabels.filter(Boolean).slice(0, 4),
+      sprachversionen: info ? info.s : 0, laenge: 0,
+      denkmal: info ? info.h : (e.x && e.x.heritage ? ['osm-heritage'] : []), unesco: info ? info.u : false,
+      osm: { id: e.id, k: e.k, x: e.x }, ort: ''
+    };
+    if (info) {
+      rescore(p, cfg);
+    } else {
+      // OSM only (no Wikidata): base value + type + heritage, at most ★ unless a second source confirms (PROJEKT.md 6)
+      var o = cfg.osm.ohne_wikidata || {};
+      p.osmOnly = true;
+      p.teile = { osm_basis: o.basis || 3, denkmal: p.denkmal.length ? (cfg.score.denkmal_bonus.denkmal || 1) : 0, typ: t.gewicht || 0 };
+      p.score = round1(p.teile.osm_basis + p.teile.denkmal + p.teile.typ);
+      var s = starsFor(p.score, typ, cfg);
+      s = Math.min(s, typeof o.max_sterne === 'number' ? o.max_sterne : 1);
+      if (typeof t.min_sterne === 'number') s = Math.max(s, t.min_sterne);
+      p.sterne = s;
+      p.dauer_min = (cfg.dauer_min && cfg.dauer_min[String(p.sterne)]) || 0;
+    }
+    p.dist = center ? Math.round(haversine(center.lat, center.lon, p.lat, p.lon)) : null;
+    return p;
+  }
 
   // --------------------------------------------------------------- links
 
@@ -993,6 +1250,8 @@
     articleFor: articleFor, loadIntros: loadIntros, translate: translate,
     cleanArticle: cleanArticle, cutAtSentence: cutAtSentence, loadArticle: loadArticle,
     buildPrompt: buildPrompt, buildReviewPrompt: buildReviewPrompt, claudeNewUrl: claudeNewUrl,
+    tileKeys: tileKeys, overpassQuery: overpassQuery, compactOsm: compactOsm, loadOsm: loadOsm,
+    nameSimilarity: nameSimilarity, mergeOsm: mergeOsm, osmFacts: osmFacts,
     _resetTranslators: function () { chromeTranslators = {}; myMemoryBlocked = false; },
     nameWithPlace: nameWithPlace, gmapsSearchUrl: gmapsSearchUrl, gmapsPinUrl: gmapsPinUrl,
     geoSearchUrl: geoSearchUrl, geoPinUrl: geoPinUrl, wikipediaUrl: wikipediaUrl,

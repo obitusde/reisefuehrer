@@ -129,11 +129,12 @@
 
 <!-- ======================= v0.2 ======================= -->
 <section class="card" id="v02">
-  <h2>v0.2 – Karte, Orte, Sterne <span class="muted">(v0.2.3)</span></h2>
+  <h2>v0.2/v0.4 – Karte, Orte, Sterne, OpenStreetMap</h2>
   <p class="muted">Schritt 1 und 2 brauchen Internet und dauern zusammen etwa 10–30 Sekunden.</p>
   <button id="btnApi" type="button">1. Schnittstellen prüfen</button>
   <div id="apiOut" class="out"></div>
   <button id="btnGold" type="button">2. Goldlisten prüfen (Manchester, Morges)</button>
+  <p class="muted">v0.4: prüft auch, dass Rathaus und Kathedrale nur einmal vorkommen, und zeigt die Duplikat-Quote (vorher/nachher).</p>
   <div id="goldStatus" class="status"></div>
   <div id="goldOut" class="out"></div>
 
@@ -257,7 +258,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '0.3.3';
+  var VERSION = '0.4.0';
   var KEY = 'rf.diag.v1';
 
   var TESTS = [
@@ -568,14 +569,14 @@
   init();
 })();
 </script>
-<script src="core.js?v=0.3.3"></script>
+<script src="core.js?v=0.4.0"></script>
 <script>
 /* v0.2 diagnostics: API checks, gold list, manual checklist, summary */
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
   var KEY = 'rf.diag.v2';
-  var DV = '0.3.3';
+  var DV = '0.4.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function load() { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { return {}; } }
@@ -650,8 +651,15 @@
         var mm = C.translate('The town hall is a Victorian building.', 'en', 'de', f, ['mymemory']).then(function (r) {
           return { text: '„' + r.text + '“' };
         });
-        return Promise.all([timed(wd), timed(nom), timed(tile), timed(chromeTr), timed(mm)]).then(function (r2) {
+        var ovp = C.loadOsm(lat, lon, 1000, c, f, null, null).then(function (r) {
+          var wd = r.els.filter(function (e) { return e.wd; }).length;
+          var kinds = {};
+          r.els.forEach(function (e) { var k = (e.k || '?').split('=')[0]; kinds[k] = (kinds[k] || 0) + 1; });
+          return { text: r.els.length + ' Objekte im 1-km-Umkreis (' + wd + ' mit Wikidata; ' + Object.keys(kinds).map(function (k) { return k + ' ' + kinds[k]; }).join(', ') + ')', warn: !r.els.length };
+        });
+        return Promise.all([timed(wd), timed(nom), timed(tile), timed(chromeTr), timed(mm), timed(ovp)]).then(function (r2) {
           rows.push(['Wikidata', r2[0]]); rows.push(['Nominatim', r2[1]]); rows.push(['OSM-Kacheln', r2[2]]);
+          rows.push(['Overpass (OSM-Orte)', r2[5]]);
           rows.push(['Übersetzer Chrome', r2[3]]); rows.push(['Übersetzer MyMemory', r2[4]]);
         });
       });
@@ -691,7 +699,7 @@
   function k(n) { return n >= 10000 ? Math.round(n / 1000) + 'k' : String(n); }
   function line(p) {
     var t = p.teile;
-    return 'S' + p.sterne + ' ' + p.score.toFixed(1) + ' ' + p.name + (p.name2 ? ' / ' + p.name2 : '') + ' [' + p.typ + (p.klassen && p.klassen[0] ? ': ' + p.klassen[0] : '') + ']' +
+    return 'S' + p.sterne + ' ' + p.score.toFixed(1) + ' ' + p.name + (p.name2 ? ' / ' + p.name2 : '') + ' {' + p.quellen.join('') + '} [' + p.typ + (p.klassen && p.klassen[0] ? ': ' + p.klassen[0] : '') + ']' +
       ' SV=' + t.sprachversionen + '(' + p.sprachversionen + ')' +
       ' LA=' + t.laenge + '(' + k(p.laenge) + ')' +
       (t.denkmal ? ' DM=' + t.denkmal : '') + ' TY=' + t.typ;
@@ -719,6 +727,20 @@
         var p = find(n);
         checks.push({ ok: !!p && p.sterne >= 1, text: n + ': ' + (p ? (C.starsText(p.sterne) || 'kein Stern') + ' (' + p.name + ')' : 'nicht gefunden') });
       });
+      var exact = function (x, n) {
+        n = n.toLowerCase();
+        return [x.name, x.name2].concat(Object.keys(x.artikel || {}).map(function (l) { return C.cleanTitle(x.artikel[l]); }))
+          .some(function (t) { return t && t.toLowerCase() === n; });
+      };
+      (g.einmal || []).forEach(function (n) {
+        var cnt = P.filter(function (x) { return exact(x, n); }).length;
+        checks.push({ ok: cnt === 1, text: n + ': ' + cnt + '× in der Liste (soll 1×)' });
+      });
+      if (g.osm_ohne_wikipedia_mindestens) {
+        var oo = P.filter(function (x) { return x.quellen.join() === 'O' && !x.wikipedia; });
+        checks.push({ ok: oo.length >= g.osm_ohne_wikipedia_mindestens,
+          text: 'Orte nur aus OpenStreetMap: ' + oo.length + (oo.length ? ' (z. B. ' + oo.slice(0, 3).map(function (x) { return x.name + ' ' + (C.starsText(x.sterne) || 'ohne Stern'); }).join(', ') + ')' : '') });
+      }
       (g.ohne_stern_namen || []).forEach(function (n) {
         var p = find(n);
         checks.push({ ok: !p || p.sterne === 0, text: n + ': ' + (p ? (p.sterne ? C.starsText(p.sterne) + ' (soll keiner)' : 'kein Stern') : 'nicht im Umkreis') });
@@ -731,7 +753,9 @@
       var allOk = checks.every(function (x) { return x.ok; });
       var head = 'Goldliste ' + g.name + ' ' + (allOk ? 'BESTANDEN' : 'NICHT bestanden') + ' (' + g.lat + ', ' + g.lon + ', ' + g.radius_m + ' m)';
       var stats = P.length + ' Orte (' + res.stats.perLang + '), ★★★ ' + cnt[3] + ' · ★★ ' + cnt[2] + ' · ★ ' + cnt[1] + ' · ohne ' + cnt[0] +
-        ', ' + (res.stats.ms / 1000).toFixed(1) + ' s, ' + res.stats.requests + ' Anfragen';
+        ', ' + (res.stats.ms / 1000).toFixed(1) + ' s, ' + res.stats.requests + ' Anfragen' +
+        (res.stats.osm ? '. Duplikate: vorher ' + (res.stats.osm.w + res.stats.osm.o) + ' (W ' + res.stats.osm.w + ' + O ' + res.stats.osm.o + '), nachher ' + res.stats.osm.after +
+          ' (zusammengeführt: ' + res.stats.osm.byWikidata + ' über Wikidata, ' + res.stats.osm.byName + ' über Namen, ' + res.stats.osm.osmDup + ' OSM-doppelt; neu aus OSM: ' + res.stats.osm.neu + ')' : '');
       var top = P.slice(0, topN).map(line);
       var generic = P.slice(topN).filter(function (p) { return p.typ === 'gebaeude' || p.typ === 'sonstiges'; }).slice(0, 10).map(line);
       var lines = [head, stats].concat(checks.map(function (x) { return (x.ok ? 'OK ' : 'FEHLER ') + x.text; }))
@@ -781,7 +805,7 @@
   }
 
   function renderSummary() {
-    var L = ['Reiseführer Diagnose v' + DV + ' – Abnahme v0.2', 'Datum: ' + new Date().toLocaleString('de-DE'), 'Gerät: ' + navigator.userAgent, ''];
+    var L = ['Reiseführer Diagnose v' + DV + ' – Abnahme v0.2/v0.4', 'Datum: ' + new Date().toLocaleString('de-DE'), 'Gerät: ' + navigator.userAgent, ''];
     L.push('1 Schnittstellen:'); L = L.concat(st.api || ['nicht geprüft']); L.push('');
     L.push('2 Goldliste:'); L = L.concat(st.gold || ['nicht geprüft']); L.push('');
     L.push('3 In der App:');
@@ -827,7 +851,7 @@
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
-  var KEY = 'rf.diag.v3', DV = '0.3.3';
+  var KEY = 'rf.diag.v3', DV = '0.4.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }

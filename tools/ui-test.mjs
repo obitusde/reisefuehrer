@@ -59,6 +59,8 @@ async function mockApis(ctx) {
     body: JSON.stringify((() => { const u = new URL(route.request().url());
       if (!u.pathname.startsWith('/search')) return fx.nominatim;
       return /imperial/i.test(u.searchParams.get('q')) ? fx.nominatimSearch.imperial : fx.nominatimSearch.default; })()) }));
+  await ctx.route(/overpass-api\.de|overpass\.kumi\.systems|maps\.mail\.ru/, (route) => route.fulfill({ status: 200, contentType: 'application/json',
+    headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(fx.overpass) }));
   await ctx.route(/api\.mymemory\.translated\.net/, (route) => route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
     body: JSON.stringify({ responseData: { translatedText: 'Übersetzt: ' + new URL(route.request().url()).searchParams.get('q') }, responseStatus: 200 }) }));
   await ctx.route(/tile\.openstreetmap\.org/, (route) => route.fulfill({ status: 200, contentType: 'image/png', headers: { 'access-control-allow-origin': '*' }, body: PNG }));
@@ -87,7 +89,7 @@ try {
   if (process.env.DEBUG) { page.on('request', (r) => { if (/extracts|mymemory/.test(r.url())) console.log('REQ', decodeURIComponent(r.url()).slice(0, 160)); }); page.on('requestfailed', (r) => console.log('FAILED', r.url().slice(0, 120), r.failure() && r.failure().errorText)); page.on('console', (m) => console.log('CONSOLE', m.text())); }
   await page.goto(BASE + 'index.html');
   await page.waitForSelector('.empty');
-  ok((await page.textContent('#version')) === 'v0.3.3', 'footer version');
+  ok((await page.textContent('#version')) === 'v0.4.0', 'footer version');
   if (OUT) await page.screenshot({ path: OUT + '/01-start.png' });
 
   await page.click('#btnLocate');
@@ -116,6 +118,9 @@ try {
   ok(!descs.some((d) => /maschinell/.test(d)), 'no translation note');
   ok((await page.textContent('#ortLabel')) === 'Manchester', 'ort label');
   ok((await page.textContent('#status')).includes('★★★'), 'status counts');
+  const names4 = await page.$$eval('.it-name', (els) => els.map((e) => e.textContent));
+  ok(names4.filter((n) => n === 'Manchester Town Hall').length === 1, 'v0.4: Town Hall once in list');
+  ok(names4.includes('Pankhurst Centre'), 'v0.4: OSM-only museum in list');
 
   // layout checks
   const lay = await page.evaluate(() => {
@@ -168,6 +173,18 @@ try {
   ok(s3.length > 0 && s3.every((x) => x === '★★★'), 'filter ★★★');
   await page.selectOption('#fStars', '0');
   ok((await page.$$eval('.it-name', (els) => els.map((e) => e.textContent))).includes('River Tib'), 'filter alle shows River Tib');
+  await page.selectOption('#fKat', 'museum');
+  // OSM-only place: sources and narration with OSM facts
+  await page.selectOption('#fKat', '');
+  await page.$eval('#list', (l) => { const li = [...l.querySelectorAll('.item')].find((x) => x.textContent.includes('Alan Turing Memorial')); li.querySelector('.it-main').click(); });
+  await page.waitForFunction(() => document.getElementById('sheetTitle').textContent === 'Alan Turing Memorial');
+  ok((await page.textContent('#sheetBody')).includes('Quellen: OpenStreetMap') && (await page.textContent('#sheetBody')).includes('ODbL'), 'OSM source and license shown');
+  ok((await page.textContent('#plDesc')).includes('Glyn Hughes'), 'OSM facts as short info');
+  await page.click('[data-a=tell]');
+  await page.waitForFunction(() => /Prompt kopiert/.test(document.getElementById('tellStatus').textContent));
+  ok((await page.evaluate(() => navigator.clipboard.readText())).includes('Angaben aus OpenStreetMap: Künstler: Glyn Hughes'), 'OSM-only narration uses OSM facts');
+  await page.evaluate(() => history.back());
+  await page.waitForSelector('#sheet', { state: 'hidden' });
   await page.selectOption('#fKat', 'museum');
   const kat = await page.$$eval('.it-meta', (els) => els.map((e) => e.textContent));
   ok(kat.length > 0 && kat.every((m) => /Museum/.test(m)), 'filter kategorie museum');
@@ -265,10 +282,10 @@ try {
   ok(Math.abs((await page.$('#mapWrap').then((e) => e.boundingBox())).height - after) < 10, 'split persisted');
 
   // update banner (fake newer version, then ?testupdate=1)
-  fakeVersion = '0.3.4';
+  fakeVersion = '0.4.1';
   await page.reload();
   await page.waitForSelector('#banner:not([hidden])');
-  ok((await page.textContent('#bannerText')).includes('v0.3.4'), 'banner shows remote version');
+  ok((await page.textContent('#bannerText')).includes('v0.4.1'), 'banner shows remote version');
   if (OUT) await page.screenshot({ path: OUT + '/05-banner.png' });
   fakeVersion = null;
   await page.click('#bannerBtn');
@@ -322,9 +339,9 @@ try {
   const swOk = await p3.evaluate(() => navigator.serviceWorker.ready.then((r) => !!r.active)).catch(() => false);
   ok(swOk, 'service worker active');
   const cacheKeys = await p3.evaluate(async () => { await new Promise((r) => setTimeout(r, 800)); return caches.keys(); });
-  ok(cacheKeys.includes('rf-app-0.3.3'), 'app cache with version: ' + cacheKeys.join(','));
-  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.3.3')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
-  ok(cached.some((u) => u.includes('app.js?v=0.3.3')), 'shell precached');
+  ok(cacheKeys.includes('rf-app-0.4.0'), 'app cache with version: ' + cacheKeys.join(','));
+  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.4.0')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
+  ok(cached.some((u) => u.includes('app.js?v=0.4.0')), 'shell precached');
   ok(errs3.length === 0, 'sw: no JS errors ' + errs3.join(' | '));
   await ctx3.close();
 
@@ -341,6 +358,7 @@ try {
   await p4.waitForSelector('#apiOut table', { timeout: 10000 });
   const sum = await p4.inputValue('#v2summary');
   ok(sum.includes('Übersetzer MyMemory: OK'), 'diag translation check');
+  ok(sum.includes('Overpass (OSM-Orte): OK') && sum.includes('Manchester Town Hall: 1× in der Liste') && sum.includes('Duplikate: vorher'), 'diag v0.4 checks: ' + (sum.match(/Duplikate[^\n]*/) || [''])[0]);
   ok(sum.includes('Wikipedia en: OK') && sum.includes('Goldliste Manchester BESTANDEN') && sum.includes('Sprachen de,en'), 'diag summary:\n' + sum.slice(0, 900));
   ok(await p4.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'diag no horizontal scroll');
   if (OUT) await p4.screenshot({ path: OUT + '/07-diag.png', fullPage: true });
