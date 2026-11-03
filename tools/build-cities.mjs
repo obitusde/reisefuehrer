@@ -38,7 +38,8 @@ function saveCache() {
   try { const old = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8')); if (old.key === cacheKey && !fresh) t = Math.min(t, old.t); } catch (e) { /* none */ }
   fs.writeFileSync(CACHE_FILE, JSON.stringify({ key: cacheKey, t, tiles: Object.fromEntries(cache) }));
 }
-const NAMEN = process.env.NAMEN ? new RegExp('^(' + process.env.NAMEN.replace(/[^\p{L}\p{N} .,'’|()-]/gu, '') + ')$', 'u') : null;
+// names to explain in the log: parts separated by |, matched as part of the name (case-insensitive)
+const NAMEN = process.env.NAMEN ? { parts: process.env.NAMEN.toLowerCase().split('|').map((x) => x.trim()).filter(Boolean), test(n) { n = String(n).toLowerCase(); return this.parts.some((p) => n.includes(p)); } } : null;
 
 function fmtMs(ms) { const s = Math.round(ms / 1000); return s < 90 ? s + ' s' : Math.round(s / 60) + ' min'; }
 
@@ -85,7 +86,7 @@ async function build(codes) {
     if (NAMEN) {
       const seen = new Set();
       for (const list of cache.values()) for (const x of list) {
-        if (seen.has(x.q) || !NAMEN.test(x.name)) continue;
+        if (seen.has(x.q) || !NAMEN.test(x.name) || !core.inBbox(x, core.bboxOf(land.bbox))) continue;
         seen.add(x.q);
         console.log('  ? ' + x.name + ' ' + x.q + ' sl ' + x.sl + ' pop ' + x.pop + ' km² ' + x.km2 + ' → ' + (x.fate || '–') + ' | ' + x.cls.join('; '));
       }
