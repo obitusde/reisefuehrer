@@ -119,17 +119,18 @@ async function build(codes) {
 // node tools/build-cities.mjs --verzeichnis "46,6,47,7;46,7,47,8" [--fokus "46.15,6.0,47.0,7.3"]
 // The given boxes are split into tiles of `kachel` degrees (what the phone would load one by one).
 const VZ = {
-  kachel: 0.5, min_einwohner: 1000, aufrufe_ab: 5, aufrufe_orte: 250, aufrufe_staedte: 150, doppelt_m: 500, nah_ab: 4,
-  sterne: { 3: 10.5, 2: 8.5, 1: 7 },
-  stadt: { sprachen: 3, aufrufe: 1.5, wikivoyage: 2, hauptstadt: 1, top_n: 5, basis: 5, einzel_anteil: 0.3 },
-  stadt_sterne: { 3: 25, 2: 19, 1: 14 },
+  kachel: 0.25, min_einwohner: 1000, aufrufe_ab: 5, aufrufe_orte: 250, aufrufe_natur: 60, aufrufe_staedte: 1000, doppelt_m: 500, nah_ab: 4,
+  sterne: { 3: 10.5, 2: 8.5, 1: 7.5 },
+  sterne_natur: { 3: 9, 2: 7, 1: 5.5 },
+  stadt: { sprachen: 3, aufrufe: 3, wikivoyage: 2, hauptstadt: 1, top_n: 5, basis: 5, einzel_anteil: 0.6 },
+  stadt_sterne: { 3: 30, 2: 22, 1: 16 },
   zoom: { region: 9, nah: 12 }
 };
 async function verzeichnis(arg, fokusArg) {
   const vc = JSON.parse(JSON.stringify(cfg));
   Object.assign(vc.staedte, {
     min_sprachversionen: 1, titel_sprachen: ['de', 'en', 'fr', 'it'], wikivoyage: true,
-    gewicht_sprachen: 2, gewicht_aufrufe: 1.5, aufrufe_stapel: 25, aufrufe_parallel: 2
+    gewicht_sprachen: 2, gewicht_aufrufe: 1.5, aufrufe_stapel: 25, aufrufe_parallel: 2, timeout_s: 30
   });
   vc.verzeichnis = VZ;
   const boxes = arg.split(';').filter(Boolean).map((t) => core.bboxOf(t.split(',').map(Number)));
@@ -173,6 +174,8 @@ async function verzeichnis(arg, fokusArg) {
   o2.slice(0, 50).forEach((o) => console.log('  ' + fo(o)));
   console.log('  … Stichprobe ab Platz 50 (jeder 20.):');
   o2.filter((_, i) => i >= 50 && i % 20 === 0).forEach((o) => console.log('  ' + fo(o)));
+  console.log('\nNATUR (beste 25):');
+  so.filter((o) => o.natur).slice(0, 25).forEach((o) => console.log('  ' + fo(o) + ' ab Zoom ' + o.z));
   console.log('\nOrte ohne Stern (beste 30):');
   st.filter((c) => !c.st).slice(0, 30).forEach((c) => console.log('  ' + fs_(c) + ' – ' + c.top.map((t) => t[0] + ' ' + t[1]).join(', ')));
   console.log('\nWohin die 25 besten Ziele gezählt wurden:');

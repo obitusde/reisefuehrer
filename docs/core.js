@@ -1839,15 +1839,18 @@
 
   /** Items worth asking page views for: the best sights and the best-known places (before page views are known). */
   function directoryCandidates(items, cfg) {
-    var v = cfg.verzeichnis, sights = [], places = [];
+    var v = cfg.verzeichnis, sights = [], nature = [], places = [];
     items.forEach(function (x) {
       if (isCityItem(x, cfg)) { if (x.pop >= (v.min_einwohner || 0)) places.push(x); return; }
       var s = sightScore(x, cfg);
-      if (s && s.score >= (v.aufrufe_ab || 0)) sights.push({ x: x, s: s.score });
+      if (s && s.natur) nature.push({ x: x, s: s.score });
+      else if (s && s.score >= (v.aufrufe_ab || 0)) sights.push({ x: x, s: s.score });
     });
-    sights.sort(function (a, b) { return b.s - a.s; });
+    var by = function (a, b) { return b.s - a.s; };
+    sights.sort(by); nature.sort(by);
     places.sort(function (a, b) { return b.sl - a.sl; });
-    return sights.slice(0, v.aufrufe_orte || 250).map(function (o) { return o.x; }).concat(places.slice(0, v.aufrufe_staedte || 150));
+    var pick = function (l, n) { return l.slice(0, n).map(function (o) { return o.x; }); };
+    return pick(sights, v.aufrufe_orte || 250).concat(pick(nature, v.aufrufe_natur || 60), places.slice(0, v.aufrufe_staedte || 150));
   }
 
   /**
@@ -1880,7 +1883,7 @@
     var kept = mergeCityCands(cands, cfg, sights);
     var near = gridIndex(kept, cell);
     sights.forEach(function (s) {
-      s.st = starsFrom(s.score, v.sterne);
+      s.st = starsFrom(s.score, s.natur && v.sterne_natur ? v.sterne_natur : v.sterne);
       s.alone = s.st >= 2;
       if (s.natur) { s.x.fate = 'Natur ' + s.score; return; }
       var best = null, bestQ = Infinity;
