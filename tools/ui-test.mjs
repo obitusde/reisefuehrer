@@ -39,8 +39,11 @@ async function mockApis(ctx) {
     let body;
     if ((u.searchParams.get('prop') || '').includes('extracts')) {
       const titles = u.searchParams.get('titles').split('|');
+      const intro = (t) => lang === 'de' ? t + ' ist ein Testort. Zweiter Satz.' : t + ' is a test place. Second sentence.';
+      const full = (t) => intro(t) + '\n\n== History ==\n' + Array.from({ length: 400 }, (_, i) => 'Sentence ' + (i + 1) + ' about history.').join(' ') + '\n\n== References ==\nRef.';
       body = { query: { pages: titles.map((t, i) => ({ pageid: i + 1, ns: 0, title: t,
-        extract: lang === 'de' ? t + ' ist ein Testort. Zweiter Satz.' : t + ' is a test place. Second sentence.' })) } };
+        extract: u.searchParams.get('exintro') ? intro(t) : full(t),
+        ...((u.searchParams.get('prop') || '').includes('pageimages') ? { thumbnail: { source: BASE + 'icons/icon-512.png' } } : {}) })) } };
     } else {
       const arr = fx.wikipedia[lang] || [{ query: { pages: [] } }];
       body = u.searchParams.get('incontinue') ? arr[1] : arr[0];
@@ -84,7 +87,7 @@ try {
   if (process.env.DEBUG) { page.on('request', (r) => { if (/extracts|mymemory/.test(r.url())) console.log('REQ', decodeURIComponent(r.url()).slice(0, 160)); }); page.on('requestfailed', (r) => console.log('FAILED', r.url().slice(0, 120), r.failure() && r.failure().errorText)); page.on('console', (m) => console.log('CONSOLE', m.text())); }
   await page.goto(BASE + 'index.html');
   await page.waitForSelector('.empty');
-  ok((await page.textContent('#version')) === 'v0.2.3', 'footer version');
+  ok((await page.textContent('#version')) === 'v0.3.0', 'footer version');
   if (OUT) await page.screenshot({ path: OUT + '/01-start.png' });
 
   await page.click('#btnLocate');
@@ -212,8 +215,28 @@ try {
   await page.click('#searchHits .hits button >> nth=0');
   await page.waitForFunction(() => document.getElementById('sheetTitle').textContent.includes('Chetham'));
   ok(true, 'local hit opens place');
-  // search a sight via Nominatim: jumps there and opens the nearest place
+  // v0.3: picture, narration prompt, handover, "schon gehört"
+  await page.waitForSelector('#plImg:not([hidden]) img', { timeout: 8000 });
+  ok(true, 'detail view shows picture');
+  ok(await page.isVisible('#plIntro'), 'detail view has Wikipedia intro');
+  await page.click('[data-a=level][data-level=ausfuehrlich]');
+  ok(await page.$eval('[data-a=level][data-level=ausfuehrlich]', (b) => b.classList.contains('on')), 'level switch');
+  await page.selectOption('#focusSel', 'Architektur');
+  await page.click('[data-a=tell]');
+  await page.waitForFunction(() => /Prompt kopiert/.test(document.getElementById('tellStatus').textContent), null, { timeout: 8000 });
+  const prompt = await page.evaluate(() => navigator.clipboard.readText());
+  ok(prompt.startsWith('Du bist mein Reiseführer.') && prompt.includes("Ort: Chetham's Library, Manchester") && prompt.includes('Schwerpunkt: Architektur'), 'prompt copied');
+  ok(prompt.length <= 12000 && prompt.includes('fünf Minuten'), 'ausführlich prompt <= 12000: ' + prompt.length);
+  const claudeHref = await page.getAttribute('#tellStatus a.btn', 'href');
+  ok(claudeHref && claudeHref.startsWith('claude://claude.ai/new?q=Du%20bist%20mein%20Reisef'), 'Claude link with prompt');
+  ok((await page.textContent('[data-a=heard]')).includes('Schon gehört'), 'marked as heard');
+  if (OUT) await page.screenshot({ path: OUT + '/10-erzaehlen.png' });
+  await page.click('[data-a=recopy]');
+  await page.evaluate(() => history.back());
+  await page.waitForSelector('#sheet', { state: 'hidden' });
+  ok(await page.$eval('.item.heard', (e) => e.textContent.includes('✓ gehört')).catch(() => false), 'heard row greyed in list');
   await page.click('#btnSearch');
+  // search a sight via Nominatim: jumps there and opens the nearest place
   await page.fill('#searchInput', 'Imperial War Museum');
   await page.press('#searchInput', 'Enter');
   await page.waitForFunction(() => document.getElementById('searchHits').textContent.includes('Imperial War Museum North'));
@@ -231,10 +254,10 @@ try {
   ok(Math.abs((await page.$('#mapWrap').then((e) => e.boundingBox())).height - after) < 10, 'split persisted');
 
   // update banner (fake newer version, then ?testupdate=1)
-  fakeVersion = '0.2.4';
+  fakeVersion = '0.3.1';
   await page.reload();
   await page.waitForSelector('#banner:not([hidden])');
-  ok((await page.textContent('#bannerText')).includes('v0.2.4'), 'banner shows remote version');
+  ok((await page.textContent('#bannerText')).includes('v0.3.1'), 'banner shows remote version');
   if (OUT) await page.screenshot({ path: OUT + '/05-banner.png' });
   fakeVersion = null;
   await page.click('#bannerBtn');
@@ -288,9 +311,9 @@ try {
   const swOk = await p3.evaluate(() => navigator.serviceWorker.ready.then((r) => !!r.active)).catch(() => false);
   ok(swOk, 'service worker active');
   const cacheKeys = await p3.evaluate(async () => { await new Promise((r) => setTimeout(r, 800)); return caches.keys(); });
-  ok(cacheKeys.includes('rf-app-0.2.3'), 'app cache with version: ' + cacheKeys.join(','));
-  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.2.3')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
-  ok(cached.some((u) => u.includes('app.js?v=0.2.3')), 'shell precached');
+  ok(cacheKeys.includes('rf-app-0.3.0'), 'app cache with version: ' + cacheKeys.join(','));
+  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.3.0')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
+  ok(cached.some((u) => u.includes('app.js?v=0.3.0')), 'shell precached');
   ok(errs3.length === 0, 'sw: no JS errors ' + errs3.join(' | '));
   await ctx3.close();
 

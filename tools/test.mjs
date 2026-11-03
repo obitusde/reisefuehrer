@@ -26,8 +26,12 @@ export function mockFetch(fixture) {
       const lang = u.hostname.split('.')[0];
       if ((u.searchParams.get('prop') || '').includes('extracts')) {
         const titles = u.searchParams.get('titles').split('|');
+        const intro = (t) => lang === 'de' ? t + ' ist ein Testort (synthetisch). Zweiter Satz.' : t + ' is a test place (synthetic). Second sentence.';
+        const full = (t) => intro(t) + '\n\n== History ==\n' + Array.from({ length: 400 }, (_, i) => 'Sentence number ' + (i + 1) + ' about the history.').join(' ') +
+          '\n\n== Architecture ==\nIt has a tower.\n\n== See also ==\nOther places.\n\n== References ==\nBook 1.';
         body = { query: { pages: titles.map((t, i) => ({ pageid: i + 1, ns: 0, title: t,
-          extract: lang === 'de' ? t + ' ist ein Testort (synthetisch). Zweiter Satz.' : t + ' is a test place (synthetic). Second sentence.' })) } };
+          extract: u.searchParams.get('exintro') ? intro(t) : full(t),
+          ...((u.searchParams.get('prop') || '').includes('pageimages') ? { thumbnail: { source: 'https://upload.wikimedia.org/test/' + i + '.jpg', width: 640, height: 400 } } : {}) })) } };
       } else {
         const arr = fixture.wikipedia[lang] || [{ query: { pages: [] } }];
         body = u.searchParams.get('incontinue') ? arr[1] : arr[0];
@@ -147,6 +151,37 @@ core._resetTranslators();
 globalThis.self = { Translator: { availability: async () => 'available', create: async () => ({ translate: async (t) => 'CHROME:' + t }) } };
 eq((await core.translate('Hi.', 'en', 'de', mockFetch(fx))).text, 'CHROME:Hi.', 'Chrome translator preferred when available');
 delete globalThis.self; core._resetTranslators();
+
+// ---- narration (v0.3)
+const raw = 'Intro sentence one. Intro two.\n\n== History ==\nOld times.\n\n=== Empty ===\n\n== Notes ==\nNote 1\n\n== References ==\nRef';
+eq(core.cleanArticle(raw), 'Intro sentence one. Intro two.\n\nHistory:\nOld times.', 'clean article: headings, empty sections and references removed');
+const cut = core.cutAtSentence('One. Two. Three four five.', 12);
+eq(cut.text + '|' + cut.truncated, 'One. Two.|true', 'cut at sentence');
+const th = { id: 'x', name: 'Manchester Town Hall', name2: 'Rathaus Manchester', ort: 'Manchester', lat: 53.4794, lon: -2.2446, typ_label: 'Rathaus',
+  wikipedia: 'en:Manchester Town Hall', artikel: { en: 'Manchester Town Hall', de: 'Rathaus Manchester' } };
+const artK = await core.loadArticle(th, 'kurz', mockFetch(fx));
+const artF = await core.loadArticle(th, 'full', mockFetch(fx));
+eq(artK.lang + '|' + artK.thumb.slice(0, 30), 'en|https://upload.wikimedia.org/t', 'article: longest language (en) and picture');
+ok(artF.text.includes('Architecture:') && !artF.text.includes('Book 1') && !artF.text.includes('Other places'), 'full article cleaned');
+eq(artF.intro, 'Manchester Town Hall is a test place (synthetic). Second sentence.', 'intro from full article');
+eq(artF.url, 'https://en.wikipedia.org/wiki/Manchester_Town_Hall', 'article url');
+const pK = core.buildPrompt(th, { article: artK, level: 'kurz', schwerpunkt: '', distance: 120 }, cfg);
+ok(pK.text.startsWith('Du bist mein Reiseführer. Erzähle mir gleich etwas über diesen Ort.'), 'prompt starts with template');
+ok(pK.text.includes('Ort: Manchester Town Hall (deutsch: Rathaus Manchester)') && pK.text.includes('Wo: 53.47940, -2.24460, etwa 120 m von mir entfernt'), 'prompt place and distance');
+ok(pK.text.includes('Länge: etwa dreißig Sekunden') && pK.text.includes('Schwerpunkt: keiner, ein guter Überblick'), 'prompt length and focus');
+ok(pK.text.includes('Quelltext (Englisch, Wikipedia):\nManchester Town Hall is a test place') && !pK.text.includes('Reisetipp') && !pK.text.includes('\n\n\n'), 'prompt source, no empty Wikivoyage line');
+ok(pK.text.endsWith('Weitere Infos: https://en.wikipedia.org/wiki/Manchester_Town_Hall'), 'prompt ends with link');
+const pN = core.buildPrompt(th, { article: artF, level: 'normal', schwerpunkt: 'Architektur', distance: null }, cfg);
+ok(pN.truncated && pN.text.includes('Wikipedia – an einer Satzgrenze gekürzt') && pN.text.includes('Schwerpunkt: Architektur') && pN.text.includes('Wo: 53.47940, -2.24460\n'), 'normal: truncated, focus, no distance');
+const srcN = pN.text.split('):\n')[1].split('\n\nWeitere Infos')[0];
+ok(srcN.length <= 3000 && /[.!?]$/.test(srcN), 'normal source <= 3000 and ends at sentence: ' + srcN.length);
+const pA = core.buildPrompt(th, { article: artF, level: 'ausfuehrlich', schwerpunkt: '', distance: 50 }, cfg);
+ok(pA.length <= 12000 && pA.length > 9000, 'ausführlich within 12000: ' + pA.length);
+const big = Object.assign({}, artF, { text: artF.text + ' ' + 'x'.repeat(30000) });
+ok(core.buildPrompt(th, { article: big, level: 'ausfuehrlich' }, Object.assign({}, cfg, { erzaehlen: Object.assign({}, cfg.erzaehlen, { quelltext_max: { ausfuehrlich: 50000 } }) })).length <= 12000, 'never above 12000 even with huge limits');
+const pNone = core.buildPrompt(th, { article: null, level: 'kurz' }, cfg);
+ok(pNone.text.includes('keinen Wikipedia-Text'), 'prompt without article says so');
+ok(core.claudeNewUrl('a b?').startsWith('claude://claude.ai/new?q=a%20b%3F'), 'claude url');
 
 // ---- languages
 eq(core.languagesFor({ cc: 'ch', region: 'CH-VD' }, cfg).join(), 'de,en,fr', 'Vaud -> fr');

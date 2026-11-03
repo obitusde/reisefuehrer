@@ -1,4 +1,4 @@
-/* Reiseführer – styles (v0.2.3). Mobile first, tuned for ~412 px wide phones (Pixel 8). */
+/* Reiseführer – styles (v0.3.0). Mobile first, tuned for ~412 px wide phones (Pixel 8). */
 
 :root {
   --bg: #f5f4f0; --card: #ffffff; --text: #1c1b19; --muted: #66645e; --line: #e2e0da;
@@ -197,6 +197,27 @@ button { cursor: pointer; }
 }
 .hits b { display: block; font-weight: 600; }
 .hits span { display: block; font-size: 13px; color: var(--muted); }
+.pl-img { margin: 0 0 8px; }
+.pl-img img { display: block; width: 100%; max-height: 190px; object-fit: cover; border-radius: 12px; background: var(--line); }
+.tell { margin: 10px 0 4px; padding: 10px; border-radius: 14px; background: var(--bg); border: 1px solid var(--line); }
+.seg { display: flex; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.seg button {
+  flex: 1; min-height: 44px; border: 0; background: var(--card); color: var(--text); font-weight: 600; font-size: 15px;
+}
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button.on { background: var(--accent); color: var(--accent-ink); }
+.focus {
+  display: block; width: 100%; min-height: 44px; margin: 8px 0; padding: 0 10px; border-radius: 12px;
+  border: 1px solid var(--line); background: var(--card); color: var(--text); font-size: 15px;
+}
+.btn.big { width: 100%; min-height: 54px; font-size: 17px; }
+.tell-status { margin: 8px 0 0; font-size: 14px; }
+.tell-status p { margin: 0 0 4px; }
+.tell-status .actions { margin: 6px 0 0; }
+.heard-btn { width: 100%; margin-top: 8px; min-height: 44px; font-weight: 500; }
+.heard-btn.on { color: var(--ok); }
+.item.heard .it-name, .item.heard .it-stars { opacity: .5; }
+.intro { white-space: pre-line; font-size: 14px; }
 .pl-stars { font-size: 18px; font-weight: 700; margin: 2px 0; }
 .pl-stars span { font-size: 15px; font-weight: 600; color: var(--text); margin-left: 6px; }
 .pl-meta { margin: 2px 0; color: var(--muted); font-size: 14px; }

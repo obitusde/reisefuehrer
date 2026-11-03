@@ -104,6 +104,29 @@
 <p class="muted">Tests für die aktuelle Etappe. Ergebnisse werden auf diesem Gerät gespeichert. Am Ende die Zusammenfassung kopieren und an Claude Code zurückmelden.</p>
 <p><a class="btn secondary" href="index.html">Zur App</a></p>
 
+<!-- ======================= v0.3 ======================= -->
+<section class="card" id="v03">
+  <h2>v0.3 – „Erzähl mir davon“</h2>
+  <p class="muted">Baut die Erzähl-Prompts für das Rathaus Manchester in allen drei Längen und prüft, dass sie unter 12.000 Zeichen bleiben.</p>
+  <button id="btnPrompt" type="button">1. Prompts bauen</button>
+  <div id="promptOut" class="out"></div>
+  <a class="btn secondary" id="promptLink" href="#" hidden>2. Kurz-Prompt an Claude schicken</a>
+  <p class="muted">In Claude muss ein gesprochener deutscher Text über das Rathaus entstehen. Lass ihn dir vorlesen.</p>
+  <h2 style="margin-top:16px">3. In der App ausprobieren</h2>
+  <p class="muted">Ort antippen → „Erzähl mir davon“. Einmal kurz, einmal ausführlich.</p>
+  <a class="btn secondary" href="index.html">App öffnen</a>
+  <div id="checklist3"></div>
+  <label for="v3note">Notiz</label>
+  <input type="text" id="v3note" placeholder="z. B. „Text zu lang“" autocomplete="off">
+  <h2 style="margin-top:16px">Zusammenfassung v0.3</h2>
+  <textarea id="v3summary" readonly rows="10"></textarea>
+  <div class="row">
+    <button id="v3copy" type="button">Kopieren</button>
+    <button id="v3share" type="button" class="secondary">Teilen</button>
+  </div>
+  <div class="status" id="v3status"></div>
+</section>
+
 <!-- ======================= v0.2 ======================= -->
 <section class="card" id="v02">
   <h2>v0.2 – Karte, Orte, Sterne <span class="muted">(v0.2.3)</span></h2>
@@ -234,7 +257,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '0.2.3';
+  var VERSION = '0.3.0';
   var KEY = 'rf.diag.v1';
 
   var TESTS = [
@@ -545,14 +568,14 @@
   init();
 })();
 </script>
-<script src="core.js?v=0.2.3"></script>
+<script src="core.js?v=0.3.0"></script>
 <script>
 /* v0.2 diagnostics: API checks, gold list, manual checklist, summary */
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
   var KEY = 'rf.diag.v2';
-  var DV = '0.2.3';
+  var DV = '0.3.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function load() { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { return {}; } }
@@ -797,6 +820,83 @@
     renderSummary();
     navigator.share({ title: 'Reiseführer Diagnose v0.2', text: $('v2summary').value }).catch(function () {});
   });
+})();
+</script>
+<script>
+/* v0.3 diagnostics: narration prompts */
+(function () {
+  'use strict';
+  var C = window.RF && window.RF.core;
+  var KEY = 'rf.diag.v3', DV = '0.3.0';
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
+  st.checks = st.checks || {};
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) { /* ignore */ } }
+  var f = function (u, o) { return fetch(u, o); };
+  var CHECKS = [
+    ['e1', '„Erzähl mir davon“ öffnet Claude mit dem Prompt'],
+    ['e2', 'Claude erzeugt einen gesprochenen deutschen Text'],
+    ['e3', 'Vorlesen in Claude funktioniert'],
+    ['e4', '„ausführlich“ ergibt einen langen Text'],
+    ['e5', 'Bild und deutsche Kurzinfo erscheinen im Ortsfenster'],
+    ['e6', 'Erzählte Orte sind in der Liste grau („✓ gehört“)']
+  ];
+  var TOWN_HALL = { id: 'diag', name: 'Manchester Town Hall', name2: 'Rathaus Manchester', ort: 'Manchester', lat: 53.4794, lon: -2.2446,
+    typ_label: 'Rathaus', wikipedia: 'en:Manchester Town Hall', artikel: { en: 'Manchester Town Hall', de: 'Rathaus Manchester' } };
+
+  function runPrompts() {
+    var out = $('promptOut');
+    out.innerHTML = '<p class="muted">Lade Artikel …</p>';
+    fetch('config.json', { cache: 'no-cache' }).then(function (r) { return r.json(); }).then(function (cfg) {
+      return Promise.all([C.loadArticle(TOWN_HALL, 'kurz', f), C.loadArticle(TOWN_HALL, 'full', f)]).then(function (arts) {
+        var lines = [], rows = [], allOk = true;
+        ['kurz', 'normal', 'ausfuehrlich'].forEach(function (lv) {
+          var pr = C.buildPrompt(TOWN_HALL, { article: lv === 'kurz' ? arts[0] : arts[1], level: lv, schwerpunkt: '', distance: 120 }, cfg);
+          var url = C.claudeNewUrl(pr.text);
+          var ok = pr.length <= (cfg.erzaehlen.max_zeichen || 12000);
+          allOk = allOk && ok;
+          lines.push((ok ? 'OK ' : 'FEHLER ') + lv + ': ' + pr.length + ' Zeichen, Link ' + url.length + (pr.truncated ? ', gekürzt' : ''));
+          rows.push('<tr><td class="' + (ok ? 'pass' : 'fail') + '">' + lv + '</td><td>' + pr.length.toLocaleString('de-DE') + ' Zeichen' + (pr.truncated ? ', Quelltext gekürzt' : '') + '</td></tr>');
+          if (lv === 'kurz') { $('promptLink').href = url; $('promptLink').hidden = false; st.kurzPrompt = pr.text; }
+        });
+        lines.unshift('Artikel ' + arts[1].lang + ': Einleitung ' + arts[0].intro.length + ', ganz ' + arts[1].text.length + ' Zeichen, Bild ' + (arts[0].thumb ? 'ja' : 'nein'));
+        st.prompts = lines; save();
+        out.innerHTML = '<p class="' + (allOk ? 'pass' : 'fail') + '">' + (allOk ? 'Alle Prompts ≤ 12.000 Zeichen' : 'Prompt zu lang') + '</p><table>' + rows.join('') + '</table>' +
+          '<details><summary>Kurz-Prompt ansehen</summary><pre class="top">' + esc(st.kurzPrompt) + '</pre></details>';
+        render();
+      });
+    }).catch(function (e) {
+      out.innerHTML = '<p class="fail">Fehler: ' + esc(e.message) + '</p>';
+      st.prompts = ['FEHLER ' + e.message]; save(); render();
+    });
+  }
+  function render() {
+    var L = ['Reiseführer Diagnose v' + DV + ' – Abnahme v0.3', 'Datum: ' + new Date().toLocaleString('de-DE'), 'Gerät: ' + navigator.userAgent, ''];
+    L.push('1 Prompts:'); L = L.concat(st.prompts || ['nicht geprüft']); L.push('');
+    L.push('3 In der App:');
+    CHECKS.forEach(function (c) { L.push((st.checks[c[0]] ? '[x] ' : '[ ] ') + c[1]); });
+    if (st.note) L.push('Notiz: ' + st.note);
+    $('v3summary').value = L.join('\n');
+  }
+  if (!C) return;
+  $('checklist3').innerHTML = CHECKS.map(function (c) {
+    return '<label class="check"><input type="checkbox" data-c="' + c[0] + '"' + (st.checks[c[0]] ? ' checked' : '') + '> ' + esc(c[1]) + '</label>';
+  }).join('');
+  $('v3note').value = st.note || '';
+  if (st.prompts) $('promptOut').innerHTML = '<p class="muted">Letztes Ergebnis:</p><pre class="top">' + esc(st.prompts.join('\n')) + '</pre>';
+  if (st.kurzPrompt) { $('promptLink').href = C.claudeNewUrl(st.kurzPrompt); $('promptLink').hidden = false; }
+  render();
+  $('btnPrompt').addEventListener('click', runPrompts);
+  $('checklist3').addEventListener('change', function (e) { var c = e.target.getAttribute('data-c'); if (c) { st.checks[c] = e.target.checked; save(); render(); } });
+  $('v3note').addEventListener('input', function () { st.note = this.value; save(); render(); });
+  $('v3copy').addEventListener('click', function () {
+    render();
+    (navigator.clipboard ? navigator.clipboard.writeText($('v3summary').value).then(function () { return true; }, function () { return false; }) : Promise.resolve(false))
+      .then(function (ok) { $('v3status').textContent = ok ? 'Zusammenfassung kopiert.' : 'Kopieren fehlgeschlagen – Text lange antippen und markieren.'; });
+  });
+  if (!navigator.share) $('v3share').style.display = 'none';
+  $('v3share').addEventListener('click', function () { render(); navigator.share({ title: 'Reiseführer Diagnose v0.3', text: $('v3summary').value }).catch(function () {}); });
 })();
 </script>
 </body>

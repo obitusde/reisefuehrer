@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.3.0 – 03.11.2026 – „Erzähl mir davon“
+
+- **Ortsfenster als Detailansicht:** Bild aus Wikipedia, deutsche Kurzinfo, Wikipedia-Einleitung zum Aufklappen, Link zu Wikipedia, Quellen und Lizenz.
+- **„🎧 Erzähl mir davon“:** baut den Prompt nach PROJEKT.md Abschnitt 8 (Vorlage in `config.json` → `erzaehlen.vorlage`) und übergibt ihn an die Claude-App per `claude://claude.ai/new?q=` (Ergebnis v0.1). Der Prompt wird immer zusätzlich kopiert; „Nochmal kopieren“ und „Claude öffnen“ bleiben sichtbar.
+- **Ausführlichkeit** kurz / normal / ausführlich (Standard kurz, schont das Nachrichtenlimit) und **Schwerpunkt** (Geschichte, Architektur, Kunst, Menschen und Geschichten, Kurioses). Die Wahl wird gemerkt.
+- **Quelltext:** kurz = Einleitung, normal = bis 3.000 Zeichen, ausführlich = bis 10.000 Zeichen, aus dem längsten Artikel (de/en/Landessprache), an einer Satzgrenze gekürzt (im Prompt vermerkt). Literatur-, Einzelnachweis- und Weblink-Abschnitte werden weggelassen. Der ganze Prompt bleibt immer ≤ 12.000 Zeichen.
+- **„Schon gehört“:** Erzählte Orte werden markiert und in der Liste grau mit „✓ gehört“ gezeigt. Von Hand umschaltbar, in den Einstellungen ausblendbar oder leerbar.
+- **Einstellungen:** Übergabe an Claude (App mit Text / kopieren und App öffnen / nur kopieren), „Schon gehört“.
+- **Diagnose v0.3:** Prompts für das Rathaus Manchester in allen drei Längen bauen und prüfen (≤ 12.000 Zeichen), Kurz-Prompt direkt an Claude schicken, Abhakliste, Zusammenfassung.
+
+### Annahmen/Abweichungen
+
+- Der Artikeltext wird beim Öffnen des Ortsfensters vorgeladen, damit Claude noch innerhalb des Antippens geöffnet werden kann (Browser erlauben App-Links nur kurz nach einer Berührung). Dauert das Laden länger als 4 Sekunden, erscheint stattdessen der Knopf „Claude öffnen“.
+- Wikivoyage-Zeile entfällt im Prompt, bis Wikivoyage in v0.5 dazukommt.
+- Kurz-Quelltext auf 2.500 Zeichen begrenzt (lange Einleitungen).
+- Entfernung steht nur im Prompt, wenn „Mein Standort“ bekannt ist und unter 30 km liegt.
+
 ## v0.2.3 – 03.11.2026 – Beschriftungen, „Was ist das?“, bessere Suche
 
 - **Kurze Beschriftung an allen Punkten** (Wunsch Nutzer): höchstens 18 Zeichen, ohne Stadtnamen („Manchester Central Library“ → „Central Library“, „Hôtel de ville de Morges“ → „Hôtel de ville“). Überlappende Beschriftungen weniger wichtiger Orte werden ausgeblendet; beim Hineinzoomen erscheinen mehr.

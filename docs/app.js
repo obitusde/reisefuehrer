@@ -1,14 +1,14 @@
-/* Reiseführer – app (v0.2.3). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.3.0). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.2.3';
+  var VERSION = '0.3.0';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
   var K = {
     settings: 'rf.settings', last: 'rf.last', merk: 'rf.merk', wd: 'rf.wdcache',
-    ort: 'rf.ortcache2', view: 'rf.view', split: 'rf.split', recent: 'rf.recent', kurz: 'rf.kurz'
+    ort: 'rf.ortcache2', view: 'rf.view', split: 'rf.split', recent: 'rf.recent', kurz: 'rf.kurz', heard: 'rf.gehoert'
   };
   var LS = {
     get: function (k, d) {
@@ -27,6 +27,7 @@
   // Results saved by an older version were scored differently: drop them (user searches again)
   if (last && last.version !== VERSION) { last = null; LS.del(K.last); }
   var merk = LS.get(K.merk, []) || [];   // saved place objects
+  var heard = LS.get(K.heard, {}) || {};  // id -> time ("schon gehört")
   var wdStore = LS.get(K.wd, {}) || {};
   var wdCache = { get: function (k) { return wdStore[k]; }, set: function (k, v) { wdStore[k] = v; } };
   var userPos = null, busy = false, selectedId = null;
@@ -120,6 +121,10 @@
     if (typeof settings.minStars !== 'number') settings.minStars = 1;
     if (!settings.kartenApp) settings.kartenApp = cfg.karten_app_standard || 'google';
     if (settings.kat == null) settings.kat = '';
+    if (['kurz', 'normal', 'ausfuehrlich'].indexOf(settings.level) < 0) settings.level = (cfg.erzaehlen && cfg.erzaehlen.standard_ausfuehrlichkeit) || 'kurz';
+    if (settings.focus == null) settings.focus = '';
+    if (!settings.uebergabe) settings.uebergabe = cfg.claude_uebergabe || 'claude-new';
+    if (settings.hideHeard == null) settings.hideHeard = false;
     saveSettings();
 
     // filters
@@ -370,7 +375,8 @@
   function visiblePlaces() {
     if (!last || !last.places) return [];
     return last.places.filter(function (p) {
-      return p.sterne >= settings.minStars && (!settings.kat || p.kategorie === settings.kat);
+      return p.sterne >= settings.minStars && (!settings.kat || p.kategorie === settings.kat) &&
+        !(settings.hideHeard && heard[p.id]);
     });
   }
 
@@ -415,9 +421,9 @@
     var dt = cfg.dauer_text || {};
     ul.innerHTML = vis.map(function (p) {
       var d = distOf(p);
-      var meta = [p.typ_label, d != null ? C.formatDistance(d) : '', dt[String(p.sterne)] || ''].filter(Boolean).join(' · ');
+      var meta = [heard[p.id] ? '✓ gehört' : '', p.typ_label, d != null ? C.formatDistance(d) : '', dt[String(p.sterne)] || ''].filter(Boolean).join(' · ');
       var on = isMerk(p.id);
-      return '<li class="item' + (p.id === selectedId ? ' sel' : '') + (p.sterne ? '' : ' zero') + '" data-id="' + esc(p.id) + '">' +
+      return '<li class="item' + (p.id === selectedId ? ' sel' : '') + (p.sterne ? '' : ' zero') + (heard[p.id] ? ' heard' : '') + '" data-id="' + esc(p.id) + '">' +
         '<div class="it-main">' +
           '<span class="it-stars s' + p.sterne + '">' + (p.sterne ? C.starsText(p.sterne) : '·') + '</span>' +
           '<span class="it-text"><span class="it-name">' + esc(p.name) + '</span>' +
@@ -570,12 +576,28 @@
       ['Denkmal/UNESCO', t.denkmal],
       ['Typ: ' + p.typ_label + (p.klassen && p.klassen.length ? ' (Wikidata: ' + p.klassen.join(', ') + ')' : ''), t.typ]
     ];
+    var lv = settings.level;
+    var foci = (cfg.erzaehlen && cfg.erzaehlen.schwerpunkte) || [];
     var html =
+      '<div id="plImg" class="pl-img" hidden></div>' +
       (p.name2 ? '<p class="pl-name2">Deutsch: ' + esc(p.name2) + '</p>' : '') +
       '<div class="pl-stars s' + p.sterne + '">' + (p.sterne ? C.starsText(p.sterne) : '–') +
         '<span>' + esc(st[String(p.sterne)] || '') + '</span></div>' +
       '<p class="pl-meta">' + esc(meta) + '</p>' +
-      (kurzText(p) ? '<p class="pl-desc">' + esc(kurzText(p)) + kurzNote(p) + '</p>' : '') +
+      '<p class="pl-desc" id="plDesc"' + (kurzText(p) ? '' : ' hidden') + '>' + esc(kurzText(p)) + kurzNote(p) + '</p>' +
+      '<div class="tell">' +
+        '<div class="seg" role="group" aria-label="Ausführlichkeit">' +
+          [['kurz', 'kurz'], ['normal', 'normal'], ['ausfuehrlich', 'ausführlich']].map(function (x) {
+            return '<button type="button" data-a="level" data-level="' + x[0] + '"' + (lv === x[0] ? ' class="on"' : '') + '>' + x[1] + '</button>';
+          }).join('') +
+        '</div>' +
+        '<select id="focusSel" class="focus" aria-label="Schwerpunkt"><option value="">Schwerpunkt: keiner</option>' +
+          foci.map(function (f) { return '<option' + (settings.focus === f ? ' selected' : '') + '>' + esc(f) + '</option>'; }).join('') +
+        '</select>' +
+        '<button class="btn primary big" type="button" data-a="tell">🎧 Erzähl mir davon</button>' +
+        '<div id="tellStatus" class="tell-status" hidden></div>' +
+        '<button class="btn heard-btn' + (heard[p.id] ? ' on' : '') + '" type="button" data-a="heard">' + (heard[p.id] ? '✓ Schon gehört' : 'Als gehört markieren') + '</button>' +
+      '</div>' +
       '<div class="actions">' +
         '<button class="btn" type="button" data-a="copy">Name kopieren</button>' +
         '<button class="btn" type="button" data-a="share">Teilen</button>' +
@@ -589,9 +611,94 @@
         rows.map(function (r) { return '<tr><td>' + esc(r[0]) + '</td><td>' + (r[1] == null ? '–' : r[1].toFixed(1)) + '</td></tr>'; }).join('') +
         '<tr><td><b>Punkte</b></td><td><b>' + (p.score == null ? '–' : p.score.toFixed(1)) + '</b></td></tr>' +
       '</table><p class="small">Faustregel aus Wikipedia/Wikidata. Gewichte und Schwellen stehen in config.json.</p></details>' +
+      '<details class="why" id="plIntro" hidden><summary>Wikipedia-Einleitung</summary><p class="intro" id="plIntroText"></p></details>' +
       '<p class="src">Quelle: Wikipedia (CC BY-SA 4.0), Wikidata (CC0)' + (p.ort ? ', Ortsname: Nominatim/© OpenStreetMap-Mitwirkende' : '') + '.</p>';
     openSheet(p.name, html);
     $('sheetBody').setAttribute('data-place', p.id);
+    if (kurzNeeded(p.id)) { kurzQueue[p.id] = 1; scheduleKurz(); }
+    prepareNarration(p);
+  }
+
+  // ---------------------------------------------------- narration (v0.3)
+  var narr = null; // {pid, cache: {kurz: Promise, full: Promise}, prompt, url}
+  var LANG_NOM = { de: 'Deutsch', en: 'Englisch', fr: 'Französisch', it: 'Italienisch', es: 'Spanisch', nl: 'Niederländisch', pt: 'Portugiesisch' };
+
+  function articleFor(level) {
+    var key = level === 'kurz' ? 'kurz' : 'full';
+    if (!narr.cache[key]) {
+      var p = findPlace(narr.pid);
+      narr.cache[key] = C.loadArticle(p, key, function (u, o) { return fetch(u, o); });
+      narr.cache[key].catch(function () { if (narr) delete narr.cache[key]; });
+    }
+    return narr.cache[key];
+  }
+
+  // Preload: intro + picture for the detail view, and the text for the chosen level,
+  // so that "Erzähl mir davon" can open Claude right away (within the tap).
+  function prepareNarration(p) {
+    narr = { pid: p.id, cache: {} };
+    var pid = p.id;
+    articleFor('kurz').then(function (art) {
+      if (!narr || narr.pid !== pid) return;
+      if (art.thumb && $('plImg')) {
+        $('plImg').innerHTML = '<img src="' + esc(art.thumb) + '" alt="" onerror="this.parentNode.hidden=true">';
+        $('plImg').hidden = false;
+      }
+      if (art.intro && $('plIntro')) {
+        $('plIntroText').textContent = art.intro;
+        $('plIntro').querySelector('summary').textContent = 'Wikipedia-Einleitung (' + (LANG_NOM[art.lang] || art.lang) + ')';
+        $('plIntro').hidden = false;
+      }
+      var k = kurzStore[pid];
+      if (k && k.t && $('plDesc')) { $('plDesc').innerHTML = esc(k.t) + kurzNote(p); $('plDesc').hidden = false; }
+    }, function () { /* no article: detail view without picture */ });
+    if (settings.level !== 'kurz') articleFor(settings.level).catch(function () {});
+  }
+
+  function distanceForPrompt(p) {
+    if (!userPos) return null;
+    var d = C.haversine(userPos.lat, userPos.lon, p.lat, p.lon);
+    return d < 30000 ? d : null;
+  }
+
+  function setTellStatus(html) {
+    var st = $('tellStatus');
+    if (!st) return;
+    st.innerHTML = html; st.hidden = !html;
+  }
+
+  function tell() {
+    var p = findPlace(narr && narr.pid);
+    if (!p) return;
+    var level = settings.level, t0 = Date.now();
+    setTellStatus('Lade Text …');
+    articleFor(level).catch(function () { return null; }).then(function (art) {
+      var pr = C.buildPrompt(p, { article: art, level: level, schwerpunkt: settings.focus, distance: distanceForPrompt(p) }, cfg);
+      narr.prompt = pr.text;
+      markHeard(p.id, true);
+      return copyText(pr.text).then(function (copied) {
+        var method = settings.uebergabe;
+        narr.url = method === 'kopieren' ? '' : method === 'kopieren-app' ? 'claude://claude.ai/new' : C.claudeNewUrl(pr.text);
+        var info = (copied ? 'Prompt kopiert' : 'Kopieren nicht möglich') + ' (' + pr.length.toLocaleString('de-DE') + ' Zeichen' +
+          (pr.truncated ? ', Quelltext gekürzt' : '') + (art ? '' : ', ohne Wikipedia-Text') + ').';
+        var hint = method === 'claude-new' ? ' Claude öffnet sich mit dem Text.' : method === 'kopieren-app' ? ' In Claude lange ins Eingabefeld tippen → Einfügen.' : ' In Claude einfügen.';
+        setTellStatus('<p>' + esc(info + hint) + '</p><div class="actions">' +
+          '<button class="btn" type="button" data-a="recopy">Nochmal kopieren</button>' +
+          (narr.url ? '<a class="btn primary" href="' + esc(narr.url) + '">Claude öffnen</a>' : '') + '</div>');
+        // open Claude directly if the tap is still "fresh"; otherwise the user taps "Claude öffnen"
+        if (narr.url && Date.now() - t0 < 4000) window.location.href = narr.url;
+      });
+    });
+  }
+
+  function markHeard(id, on) {
+    if (on) heard[id] = Date.now(); else delete heard[id];
+    LS.set(K.heard, heard);
+    var list = $('list'), top = list.scrollTop;
+    renderList();            // row shows "✓ gehört" and is greyed
+    list.scrollTop = top;
+    var b = document.querySelector('[data-a="heard"]');
+    if (b) { b.classList.toggle('on', !!on); b.textContent = on ? '✓ Schon gehört' : 'Als gehört markieren'; }
   }
 
   var LANG_NAMES = { en: 'Englischen', fr: 'Französischen', it: 'Italienischen', es: 'Spanischen', nl: 'Niederländischen',
@@ -650,6 +757,13 @@
       '<h3>Karten-App für „In Google Maps“ und „Pin“</h3>' +
       '<label class="opt"><input type="radio" name="kapp" value="google"' + (settings.kartenApp !== 'geo' ? ' checked' : '') + '> Google Maps (Web-Link, empfohlen)</label>' +
       '<label class="opt"><input type="radio" name="kapp" value="geo"' + (settings.kartenApp === 'geo' ? ' checked' : '') + '> Android-Karten-App (geo:-Link, Auswahl möglich)</label>' +
+      '<h3>„Erzähl mir davon“: Übergabe an Claude</h3>' +
+      [['claude-new', 'Claude-App mit fertigem Text öffnen (empfohlen)'], ['kopieren-app', 'Text kopieren und Claude-App öffnen'], ['kopieren', 'Nur kopieren']].map(function (o) {
+        return '<label class="opt"><input type="radio" name="uebergabe" value="' + o[0] + '"' + (settings.uebergabe === o[0] ? ' checked' : '') + '> ' + o[1] + '</label>';
+      }).join('') +
+      '<h3>Schon gehört</h3>' +
+      '<label class="opt"><input type="checkbox" id="hideHeard"' + (settings.hideHeard ? ' checked' : '') + '> Schon gehörte Orte in Liste und Karte ausblenden</label>' +
+      '<div class="actions"><button class="btn wide" type="button" data-a="clearheard">Liste „Schon gehört“ leeren (' + Object.keys(heard).length + ')</button></div>' +
       '<h3>Daten</h3>' +
       '<div class="actions"><button class="btn wide" type="button" data-a="clearcache">Zwischenspeicher leeren</button></div>' +
       '<p class="small">Löscht gespeicherte Orte, Wikidata-Daten und Kurztexte. Merkliste und Einstellungen bleiben.</p>' +
@@ -820,6 +934,20 @@
         if (confirm('Alle ' + merk.length + ' Orte aus der Merkliste entfernen?')) {
           merk = []; LS.set(K.merk, merk); renderMerkCount(); renderList(); openMerk();
         }
+      } else if (a === 'tell') {
+        tell();
+      } else if (a === 'level') {
+        settings.level = el.getAttribute('data-level'); saveSettings();
+        Array.prototype.forEach.call(document.querySelectorAll('[data-a="level"]'), function (b) { b.classList.toggle('on', b === el); });
+        setTellStatus('');
+        if (narr) articleFor(settings.level).catch(function () {});
+      } else if (a === 'recopy') {
+        if (narr && narr.prompt) copyText(narr.prompt).then(function (ok) { toast(ok ? 'Prompt nochmal kopiert' : 'Kopieren nicht möglich'); });
+      } else if (a === 'heard' && p) {
+        markHeard(p.id, !heard[p.id]);
+        if (settings.hideHeard) renderAll();
+      } else if (a === 'clearheard') {
+        if (confirm('Liste „Schon gehört“ leeren?')) { heard = {}; LS.set(K.heard, heard); renderAll(); toast('„Schon gehört“ geleert'); }
       } else if (a === 'hit') {
         var h = searchHits[parseInt(el.getAttribute('data-i'), 10)];
         if (h) goToHit(h);
@@ -833,6 +961,9 @@
       }
     });
     $('sheetBody').addEventListener('change', function (e) {
+      if (e.target.id === 'focusSel') { settings.focus = e.target.value; saveSettings(); setTellStatus(''); return; }
+      if (e.target.name === 'uebergabe') { settings.uebergabe = e.target.value; saveSettings(); toast('Übergabe gespeichert'); return; }
+      if (e.target.id === 'hideHeard') { settings.hideHeard = e.target.checked; saveSettings(); renderAll(); return; }
       if (e.target.name === 'kapp') {
         settings.kartenApp = e.target.value; saveSettings();
         toast(e.target.value === 'geo' ? 'Karten-App: geo:-Link' : 'Karten-App: Google Maps');

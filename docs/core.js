@@ -1,5 +1,5 @@
 /*
- * Reiseführer – core logic (v0.2.3)
+ * Reiseführer – core logic (v0.3.0)
  * Shared by the app (index.html), the diagnostics page (diag.html) and Node tests.
  * No DOM access here. Network access only through the injected fetch function.
  */
@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var CORE_VERSION = '0.2.3';
+  var CORE_VERSION = '0.3.0';
 
   // ---------------------------------------------------------------- helpers
 
@@ -759,6 +759,125 @@
     return next();
   }
 
+  // ------------------------------------------------------ narration (v0.3)
+
+  // Sections that carry no content for a spoken text
+  var TAIL_SECTIONS = /^(references|notes|see also|external links|further reading|bibliography|sources|citations|footnotes|gallery|einzelnachweise|anmerkungen|weblinks|literatur|siehe auch|quellen|galerie|références|notes et références|voir aussi|liens externes|bibliographie|note|voci correlate|collegamenti esterni|bibliografia|referencias|véase también|enlaces externos)$/i;
+
+  /** Plain article text: headings kept as own lines, reference/link sections at the end removed. */
+  function cleanArticle(text) {
+    var out = [], stop = false;
+    String(text || '').split('\n').forEach(function (line) {
+      if (stop) return;
+      var m = line.match(/^\s*(=+)\s*(.*?)\s*\1\s*$/);
+      if (m) {
+        if (TAIL_SECTIONS.test(m[2])) { if (m[1].length <= 2) stop = true; return; }
+        out.push('', m[2] + ':');
+        return;
+      }
+      out.push(line.trim());
+    });
+    // drop headings without content
+    var res = [];
+    for (var i = 0; i < out.length; i++) {
+      var isHead = /:$/.test(out[i]) && out[i - 1] === '';
+      if (isHead) {
+        var j = i + 1;
+        while (j < out.length && out[j] === '') j++;
+        if (j >= out.length || (/:$/.test(out[j]) && out[j - 1] === '')) continue;
+      }
+      res.push(out[i]);
+    }
+    return res.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  }
+
+  /** Cuts text to max characters at a sentence end. Returns {text, truncated}. */
+  function cutAtSentence(text, max) {
+    text = String(text || '');
+    if (text.length <= max) return { text: text, truncated: false };
+    var part = text.slice(0, max);
+    var best = -1, re = /[.!?](?=\s)/g, m;
+    while ((m = re.exec(part))) best = m.index;
+    if (best < max * 0.5) best = part.lastIndexOf(' ');
+    return { text: part.slice(0, best + 1).trim(), truncated: true };
+  }
+
+  /**
+   * Loads the article used as source for narration and the detail view.
+   * level: "kurz" = intro only, otherwise the whole article. Language: the longest article (PROJEKT.md 2).
+   * Resolves {lang, title, text, intro, thumb, url}.
+   */
+  function loadArticle(p, level, f, retryDelays) {
+    var w = String(p.wikipedia || ''), ix = w.indexOf(':');
+    var a = ix > 0 ? { lang: w.slice(0, ix), title: w.slice(ix + 1) } : articleFor(p);
+    if (!a) return Promise.reject(new Error('Kein Wikipedia-Artikel'));
+    var params = {
+      action: 'query', format: 'json', formatversion: 2, origin: '*', redirects: 1,
+      prop: 'extracts|pageimages', explaintext: 1, exsectionformat: 'wiki',
+      piprop: 'thumbnail', pithumbsize: 640, titles: a.title
+    };
+    if (level === 'kurz') params.exintro = 1;
+    var url = 'https://' + a.lang + '.wikipedia.org/w/api.php?' + qs(params);
+    return getJsonRetry(url, f, retryDelays).then(function (d) {
+      var pg = (d.query && d.query.pages && d.query.pages[0]) || {};
+      if (!pg.extract) throw new Error('Artikeltext nicht gefunden');
+      var text = cleanArticle(pg.extract);
+      var intro = text.split(/\n\n[^\n]+:\n/)[0].trim();
+      return {
+        lang: a.lang, title: pg.title || a.title, text: text, intro: intro,
+        thumb: pg.thumbnail ? pg.thumbnail.source : '',
+        url: 'https://' + a.lang + '.wikipedia.org/wiki/' + encodeURIComponent((pg.title || a.title).replace(/ /g, '_'))
+      };
+    });
+  }
+
+  var LANG_NOM = { de: 'Deutsch', en: 'Englisch', fr: 'Französisch', it: 'Italienisch', es: 'Spanisch', nl: 'Niederländisch',
+    pt: 'Portugiesisch', pl: 'Polnisch', cs: 'Tschechisch', sv: 'Schwedisch', da: 'Dänisch', no: 'Norwegisch', fi: 'Finnisch',
+    el: 'Griechisch', ja: 'Japanisch', zh: 'Chinesisch', ru: 'Russisch', hu: 'Ungarisch', hr: 'Kroatisch', ro: 'Rumänisch' };
+
+  /**
+   * Builds the narration prompt (PROJEKT.md section 8) from the template in config.erzaehlen.
+   * o: {article, level, schwerpunkt, distance (m or null)}. Resolves to {text, length, truncated}.
+   */
+  function buildPrompt(p, o, cfg) {
+    var e = cfg.erzaehlen;
+    var level = o.level || 'kurz';
+    var art = o.article;
+    var name = p.name + (p.name2 ? ' (deutsch: ' + p.name2 + ')' : '') + (p.ort && p.name.indexOf(p.ort) < 0 ? ', ' + p.ort : '');
+    var vars = {
+      name: name,
+      lat: p.lat.toFixed(5), lon: p.lon.toFixed(5),
+      entfernung: o.distance != null ? ', etwa ' + formatDistance(o.distance) + ' von mir entfernt' : '',
+      typ: p.typ_label || 'Sehenswürdigkeit',
+      laenge_text: e.laenge_text[level],
+      schwerpunkt: o.schwerpunkt || e.schwerpunkt_standard,
+      quellsprache: art ? (LANG_NOM[art.lang] || art.lang) : '',
+      gekuerzt: '',
+      extrakt: '',
+      wikivoyage: '',
+      wikipedia_url: art ? art.url : ''
+    };
+    var src = art ? (level === 'kurz' ? art.intro : art.text) : '';
+    if (!src) src = e.ohne_artikel;
+    function render() {
+      return e.vorlage.map(function (line) {
+        return line.replace(/\{(\w+)\}/g, function (m, k) { return vars[k] != null ? vars[k] : ''; });
+      }).filter(function (line) {
+        return !(/^Reisetipp/.test(line) && !vars.wikivoyage); // drop the Wikivoyage line when empty
+      }).join('\n').replace(/\n{3,}/g, '\n\n');
+    }
+    var max = e.max_zeichen || 12000;
+    var room = max - render().length - 40;
+    var lim = Math.min((e.quelltext_max && e.quelltext_max[level]) || 3000, room);
+    var cut = cutAtSentence(src, lim);
+    vars.extrakt = cut.text;
+    if (cut.truncated) vars.gekuerzt = ' – ' + e.hinweis_gekuerzt;
+    var text = render();
+    return { text: text, length: text.length, truncated: cut.truncated };
+  }
+
+  function claudeNewUrl(prompt) { return 'claude://claude.ai/new?q=' + encodeURIComponent(prompt); }
+
   // --------------------------------------------------------------- links
 
   function nameWithPlace(p) {
@@ -800,6 +919,8 @@
     searchPlaces: searchPlaces, isLatin: isLatin, pickNames: pickNames,
     shortLabel: shortLabel, stripLocation: stripLocation, firstSentence: firstSentence,
     articleFor: articleFor, loadIntros: loadIntros, translate: translate,
+    cleanArticle: cleanArticle, cutAtSentence: cutAtSentence, loadArticle: loadArticle,
+    buildPrompt: buildPrompt, claudeNewUrl: claudeNewUrl,
     _resetTranslators: function () { chromeTranslators = {}; myMemoryBlocked = false; },
     nameWithPlace: nameWithPlace, gmapsSearchUrl: gmapsSearchUrl, gmapsPinUrl: gmapsPinUrl,
     geoSearchUrl: geoSearchUrl, geoPinUrl: geoPinUrl, wikipediaUrl: wikipediaUrl,
