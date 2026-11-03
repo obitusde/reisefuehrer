@@ -394,7 +394,7 @@ try {
   await page.waitForSelector('#cprep:not([hidden])');
   await page.waitForFunction(() => /Stadt-Sterne neu berechnet/.test(document.getElementById('toast').textContent), null, { timeout: 20000 });
   const luRow = await page.textContent('[data-land="LU"]');
-  ok(/1 Städte \(★★★ 0, ★★ 1\)/.test(luRow) && luRow.includes('1 Ausflugsziele') && luRow.includes('(im Handy)'), 'v0.7 Luxembourg computed in the phone: ' + luRow);
+  ok(/1 Städte \(★★★ 1, ★★ 0\)/.test(luRow) && luRow.includes('1 Ausflugsziele') && luRow.includes('(im Handy)'), 'v0.7 Luxembourg computed in the phone: ' + luRow);
   const luStored = await page.evaluate(() => new Promise((res) => { const r = indexedDB.open('reisefuehrer', 1); r.onsuccess = () => { const q = r.result.transaction('kv').objectStore('kv').get('staedte:LU'); q.onsuccess = () => res(q.result); }; }));
   ok(luStored && luStored.staedte[0].name === 'Luxemburg' && luStored.orte[0].name === 'Burg Vianden' && !luStored.staedte.some((c) => /Kanton/.test(c.name)), 'v0.7 LU stored: ' + JSON.stringify(luStored && { s: luStored.staedte.map((c) => c.name + ' ' + c.score), o: luStored.orte.map((o) => o.name + ' ' + o.score) }));
   if (OUT) await page.screenshot({ path: OUT + '/12-einstellungen-staedte.png' });

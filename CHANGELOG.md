@@ -10,13 +10,13 @@ Wunsch Nutzer: Symbole je Art, beim Herauszoomen ein Stern pro Stadt (für Ausfl
   - Ab Zoom 12: die einzelnen Orte wie bisher.
   - Stadt antippen: die drei bekanntesten Sehenswürdigkeiten (antippen = dorthin zoomen und suchen), „🔍 Hineinzoomen und suchen“, Wikipedia.
 - **Wie gerechnet wird**: Für jede Kartenkachel (1°) holt eine Wikidata-Abfrage alles mit Koordinaten und mindestens 12 Sprachversionen. Daraus werden:
-  - **Städte**: Orte mit einer Stadt-, Gemeinde- oder Dorf-Klasse. Liegt ein kleinerer Ort im Radius eines größeren, gehört er zu diesem (z. B. Pariser Arrondissements → Paris). Der Radius kommt aus der Fläche (sonst aus der Einwohnerzahl).
+  - **Städte**: Orte mit einer Stadt-, Gemeinde- oder Dorf-Klasse. Ein Ort nahe der Mitte eines größeren wird mit ihm zusammengelegt, der bekanntere Name bleibt (Lyon statt „Métropole de Lyon“). Verwaltungseinheiten wie „Metropolitanstadt Rom“ oder „Landkreis“ zählen nicht als Stadt. Der Radius kommt aus der Fläche (sonst aus der Einwohnerzahl).
   - **Sehenswürdigkeiten**: nur echte Ziele, also Museum, Kirche, Schloss, Platz, Friedhof, Triumphbogen und Ähnliches. Sprachen, Ereignisse, Verträge, Firmen, Bahnhöfe, Flughäfen, Hochschulen, Stadien und Verwaltungsgebiete zählen nicht. Die Punkte sind wie bei den Orten: Sprachversionen + Denkmal/UNESCO + Art, ohne Artikellänge.
-  - **Stadt-Score**: Summe der 10 besten Sehenswürdigkeiten, +3 bei UNESCO-Welterbe, +1 für Hauptstädte.
+  - **Stadt-Score**: Summe der 10 besten Sehenswürdigkeiten, +3 bei UNESCO-Welterbe, +1 für Hauptstädte, + 0,1 × Sprachversionen der Stadt selbst (nur ab zwei Sehenswürdigkeiten). So kommen Bamberg, Regensburg oder York nicht unter Industriestädte. UNESCO-Welterbe zählt immer als Sehenswürdigkeit.
   - **Sterne**: ★★★ ab 45, ★★ ab 25, ★ ab 12. Eine einzelne weltberühmte Sehenswürdigkeit reicht auch: ab 12 Punkten ★★★ (z. B. Versailles), ab 10,5 ★★, ab 7 ★.
   - **Natur** (Berge, Seen, Gletscher, Wasserfälle) zählt nie für eine Stadt, sondern als eigenes Ausflugsziel. Sonst sammeln Bergdörfer mit großer Gemeindefläche Dutzende Gipfel.
 - **⚙ → „⭐ Stadt-Sterne (Ausflüge)“**: Stand und Zahl der Städte je Land, „Neu berechnen“ je Land oder „Alle Länder neu berechnen“. Das Handy fragt dabei selbst Wikidata ab, mit Fortschrittsleiste und Abbrechen; der Bildschirm bleibt an. Schalter „Stadt-Sterne auf der Karte zeigen“.
-- **Mitgelieferte Daten**: `docs/staedte/*.json`, berechnet von einer GitHub Action („Stadt-Sterne berechnen“, auf github.com mit „Run workflow“ startbar). Hat das Handy selbst neuer gerechnet, nimmt die App die eigenen Daten.
+- **Mitgelieferte Daten**: `docs/staedte/*.json` (alle 9 Länder, zusammen gut 200 KB), berechnet von einer GitHub Action („Stadt-Sterne berechnen“, auf github.com mit „Run workflow“ startbar). Die Abfrage aller Länder dauert etwa 75 Minuten; die Rohdaten bleiben 25 Tage gespeichert, neu rechnen mit geänderten Regeln dauert dann 3 Minuten. Hat das Handy selbst neuer gerechnet, nimmt die App die eigenen Daten.
 - **Symbole in den Kartenpunkten** (Farbe bleibt = Sterne): 🏛 Museum/Galerie, ✝ Kirche/Kathedrale/Kloster, Burg-Zinnen für Schloss/Burg/Palast/Herrenhaus, Obelisk für Denkmal/Welterbe/Kunst/Ausgrabung, Auge für Aussichtspunkt, Baum für Park/Natur. Alles andere bleibt ein schlichter Punkt. Punkte mit Symbol sind etwas größer.
 - **Installieren**: Das Manifest ist wieder „standalone“ (in v0.6.1 „fullscreen“) und hat eine feste `id`. Die installierte App schaltet beim ersten Antippen selbst auf Vollbild (abschaltbar in ⚙).
 - **Diagnose**: neuer Abschnitt v0.7. „Installieren“ zeigt, was Chrome sieht (Manifest, Symbole, Service Worker, ob Chrome Installieren anbietet), mit Feld für die Fehlermeldung. Dazu eine Checkliste für Symbole und Stadt-Sterne.
@@ -25,9 +25,10 @@ Wunsch Nutzer: Symbole je Art, beim Herauszoomen ein Stern pro Stadt (für Ausfl
 
 - **Neu berechnen geht im Handy**, nicht nur über die GitHub Action wie in PROJEKT.md 6c (Wunsch Nutzer: im Menü). Ein Knopf, der die GitHub Action direkt startet, ginge nur mit einem Schlüssel im Browsercode, und das verbietet PROJEKT.md.
 - **Stadt-Marker bis Zoom 11** (PROJEKT.md: bis 12). „Hier suchen“ geht ab Zoom 12, dort sollen die eigenen Orte sichtbar sein.
+- **Stadt-Score weicht von PROJEKT.md ab**: Zusätzlich zählt die Bekanntheit der Stadt (Sprachversionen). Nur mit der Summe der Sehenswürdigkeiten bekamen Bamberg, Regensburg und Heidelberg nur ★, weil ihre einzelnen Bauten wenige Sprachversionen haben.
 - **Stadt-Score ohne Artikellänge und Seitenaufrufe**: Dafür wären zehntausende Wikipedia-Abfragen nötig. Darum gelten eigene Schwellen, und sie lassen sich in `config.json` ändern, ohne neu zu rechnen.
 - **Bekannte Schwächen**:
-  - Städte ohne berühmte Einzelbauten (Manchester, Ostende) werden unterschätzt.
+  - Städte ohne berühmte Einzelbauten (Ostende, Quedlinburg ★, San Gimignano ★) werden unterschätzt. Manche Industrie- oder Vorstädte mit vielen Museen und Kirchen werden überschätzt (Essen, Derby, Courbevoie ★★★).
   - Orte mit wenigen Sprachversionen fehlen (unter 12, z. B. das Schloss Morges).
   - Bei Gemeinden mit vielen Ortsteilen steht der Marker am Gemeinde-Mittelpunkt.
 - **Installation**: Warum sie in v0.6.1 fehlschlug, ist nicht geklärt; ohne den Text der Fehlermeldung ist die Umstellung auf „standalone“ eine Vermutung. Bitte ⚙ → Diagnose → „Installieren“ ausfüllen, wenn es wieder nicht geht.
