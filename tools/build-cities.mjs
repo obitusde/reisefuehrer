@@ -42,7 +42,7 @@ async function probe(arg) {
     const res = core.computeCities(r.items, cfg, { ...land, bbox: core.bboxOf(land.bbox) });
     if (!res.staedte.length && !res.orte.length) continue;
     console.log('\n' + land.code, JSON.stringify(res.stats));
-    res.staedte.slice(0, 25).forEach((c) => console.log('  ' + c.score + ' ' + 'ⵙ'.repeat(core.cityStars(c.score, cfg)) + ' ' + c.name + ' (' + c.pop + ', ' + c.n + ' Orte) – ' + c.top.map((t) => t[0] + ' ' + t[3]).join(', ')));
+    res.staedte.slice(0, 25).forEach((c) => console.log('  ' + c.score + ' ' + 'ⵙ'.repeat(core.cityStars(c, cfg)) + ' ' + c.name + ' (' + c.pop + ', ' + c.n + ' Orte) – ' + c.top.map((t) => t[0] + ' ' + t[3]).join(', ')));
     res.orte.slice(0, 15).forEach((o) => console.log('  Ausflug ' + o.score + ' ' + o.name + ' (' + o.typ + ')'));
   }
 }
@@ -65,10 +65,10 @@ async function build(codes) {
     console.log('  ' + JSON.stringify(st));
     if (res.fehler.length) { anyFail = true; console.log('  FEHLER:', JSON.stringify(res.fehler).slice(0, 2000)); }
     const dist = { 3: 0, 2: 0, 1: 0, 0: 0 };
-    res.staedte.forEach((c) => dist[core.cityStars(c.score, cfg)]++);
+    res.staedte.forEach((c) => dist[core.cityStars(c, cfg)]++);
     console.log('  Städte in Datei: ' + res.staedte.length + ' – ★★★ ' + dist[3] + ' · ★★ ' + dist[2] + ' · ★ ' + dist[1] + ' · ohne ' + dist[0] + ' · Ausflugsziele ' + res.orte.length);
-    res.staedte.slice(0, 40).forEach((c, i) => console.log('  ' + (i + 1) + '. ' + c.name + ' ' + c.score + ' (' + c.n + ' Orte, ' + c.pop + ' Einw.) – ' + c.top.map((t) => t[0] + ' ' + t[3]).join(', ')));
-    const third = res.staedte.filter((c) => core.cityStars(c.score, cfg) === 1);
+    res.staedte.slice(0, 40).forEach((c, i) => console.log('  ' + (i + 1) + '. ' + c.name + ' ' + 'ⵙ'.repeat(core.cityStars(c, cfg)) + ' ' + c.score + ' (' + c.n + ' Orte, ' + c.pop + ' Einw.) – ' + c.top.map((t) => t[0] + ' ' + t[3]).join(', ')));
+    const third = res.staedte.filter((c) => core.cityStars(c, cfg) === 1);
     console.log('  Beispiele ★: ' + third.filter((_, i) => i % Math.max(1, Math.floor(third.length / 20)) === 0).slice(0, 20).map((c) => c.name + ' ' + c.score).join(', '));
     console.log('  Ausflugsziele: ' + res.orte.slice(0, 30).map((o) => o.name + ' ' + o.score + ' ' + o.typ).join(', '));
     const file = { land: land.code, version: res.version, stand: res.stand, stats: st, fehler: res.fehler, staedte: res.staedte, orte: res.orte };

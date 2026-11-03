@@ -1,4 +1,4 @@
-/* Reiseführer – app (v0.6.1). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.7.0). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
@@ -178,6 +178,7 @@
     initMap();
     initSplitter();
     bindUI();
+    autoFullscreen();
     renderMerkCount();
 
     if (last && last.places && last.bbox) drawSearchArea(last.bbox);
@@ -361,7 +362,7 @@
       var d = cityData[l.code];
       if (!d || d.then) { waiting = true; loadCityLand(l.code).then(scheduleCities); return; }
       (d.staedte || []).forEach(function (x) {
-        var st = C.cityStars(x.score, cfg);
+        var st = C.cityStars(x, cfg);
         if (st >= (big ? 2 : 1) && C.inBbox(x, pad) && !seen[x.q]) { seen[x.q] = 1; list.push({ k: 'c', x: x, s: st }); }
       });
       if (!big) (d.orte || []).forEach(function (x) { if (C.inBbox(x, pad) && !seen[x.q]) { seen[x.q] = 1; list.push({ k: 'o', x: x, s: 3 }); } });
@@ -442,7 +443,7 @@
       else if (d.keine) info = 'noch keine Daten';
       else {
         var cnt = { 3: 0, 2: 0, 1: 0 };
-        (d.staedte || []).forEach(function (x) { var st = C.cityStars(x.score, cfg); if (st) cnt[st]++; });
+        (d.staedte || []).forEach(function (x) { var st = C.cityStars(x, cfg); if (st) cnt[st]++; });
         info = (cnt[1] + cnt[2] + cnt[3]) + ' Städte (★★★ ' + cnt[3] + ', ★★ ' + cnt[2] + ') · ' + (d.orte || []).length + ' Ausflugsziele · Stand ' + dateText(d.stand) +
           (d.quelle === 'handy' ? ' (im Handy)' : '') + ((d.fehler || []).length ? ' · <span class="warnc">' + d.fehler.length + ' Kacheln fehlen</span>' : '');
       }
@@ -484,7 +485,7 @@
           if (res.stats.fehler >= res.stats.kacheln) throw new Error('Wikidata nicht erreichbar');
           res.quelle = 'handy';
           return IDB.set('staedte:' + code, res).then(function () {
-            cityData[code] = res; job.ok.push(l.name + ' ' + res.staedte.filter(function (x) { return C.cityStars(x.score, cfg) > 0; }).length);
+            cityData[code] = res; job.ok.push(l.name + ' ' + res.staedte.filter(function (x) { return C.cityStars(x, cfg) > 0; }).length);
           });
         }).catch(function (e) { job.bad.push(l.name + ' (' + (e && e.message || 'Fehler') + ')'); });
       });
@@ -1299,10 +1300,21 @@
   function isInstalled() {
     return window.matchMedia && (matchMedia('(display-mode: fullscreen)').matches || matchMedia('(display-mode: standalone)').matches);
   }
+  // v0.7.0: the manifest is "standalone" again (installing failed with "fullscreen" in v0.6.1, cause not confirmed);
+  // the installed app switches to full screen itself at the first tap.
+  function autoFullscreen() {
+    document.addEventListener('pointerup', function go() {
+      if (!isInstalled() || settings.vollbild === false || document.fullscreenElement || !document.documentElement.requestFullscreen) return;
+      try { document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(function () {}); } catch (e) { /* ignore */ }
+    }, true);
+  }
   function fullscreenHtml() {
-    if (isInstalled()) return '';
-    return '<h3>Vollbild</h3>' +
-      '<p class="small">Ohne Adresszeile und Android-Leiste: App installieren (Chrome-Menü ⋮ → „App installieren“ bzw. „Zum Startbildschirm hinzufügen“) und vom Startbildschirm öffnen.</p>' +
+    if (isInstalled()) {
+      return '<h3>Vollbild</h3><label class="opt"><input type="checkbox" id="autoFs"' + (settings.vollbild !== false ? ' checked' : '') + '> Beim ersten Antippen auf Vollbild schalten (ohne Android-Leiste)</label>';
+    }
+    return '<h3>App installieren / Vollbild</h3>' +
+      '<p class="small">Chrome-Menü ⋮ → „App installieren“ (oder „Zum Startbildschirm hinzufügen“ → „Installieren“) und vom Startbildschirm öffnen. Die installierte App schaltet beim ersten Antippen auf Vollbild. ' +
+      'Kommt eine Fehlermeldung: bitte Bildschirmfoto schicken; ⚙ → Diagnose → „Installieren“ zeigt, was Chrome sieht.</p>' +
       '<div class="actions">' +
         (installEvt ? '<button class="btn primary" type="button" data-a="install">📲 App installieren</button>' : '') +
         (document.documentElement.requestFullscreen ? '<button class="btn' + (installEvt ? '' : ' wide') + '" type="button" data-a="fullscreen">⛶ Vollbild jetzt</button>' : '') +
@@ -1762,6 +1774,7 @@
       if (e.target.id === 'focusSel') { settings.focus = e.target.value; saveSettings(); setTellStatus(''); return; }
       if (e.target.name === 'uebergabe') { settings.uebergabe = e.target.value; saveSettings(); toast('Übergabe gespeichert'); return; }
       if (e.target.id === 'useOsm') { settings.osm = e.target.checked; saveSettings(); toast('Gilt ab der nächsten Suche'); return; }
+      if (e.target.id === 'autoFs') { settings.vollbild = e.target.checked; saveSettings(); return; }
       if (e.target.id === 'showCities') { settings.staedte = e.target.checked; saveSettings(); renderMarkers(); scheduleCities(); return; }
       if (e.target.id === 'hideHeard') { settings.hideHeard = e.target.checked; saveSettings(); renderAll(); return; }
       if (e.target.name === 'kapp') {

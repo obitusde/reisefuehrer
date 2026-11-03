@@ -104,6 +104,29 @@
 <p class="muted">Tests für die aktuelle Etappe. Ergebnisse werden auf diesem Gerät gespeichert. Am Ende die Zusammenfassung kopieren und an Claude Code zurückmelden.</p>
 <p><a class="btn secondary" href="index.html">Zur App</a></p>
 
+<!-- ======================= v0.7 ======================= -->
+<section class="card" id="v07">
+  <h2>v0.7 – Installieren, Symbole, Stadt-Sterne</h2>
+  <h2 style="margin-top:12px">1. Installieren</h2>
+  <p class="muted">Was Chrome für die Installation sieht. Danach in Chrome ⋮ → „App installieren“ versuchen und unten ankreuzen.</p>
+  <div class="out" id="instOut">prüfe …</div>
+  <div class="results" id="instRes"></div>
+  <label for="v7err">Text der Fehlermeldung (falls eine kam)</label>
+  <input type="text" id="v7err" placeholder="z. B. „App konnte nicht installiert werden“" autocomplete="off">
+  <h2 style="margin-top:16px">2. In der App ausprobieren</h2>
+  <a class="btn secondary" href="index.html">App öffnen</a>
+  <div id="checklist7"></div>
+  <label for="v7note">Notiz (z. B. Stadt mit falschen Sternen)</label>
+  <input type="text" id="v7note" placeholder="z. B. „Morges hat keinen Stern, Lausanne ★★“" autocomplete="off">
+  <h2 style="margin-top:16px">Zusammenfassung v0.7</h2>
+  <textarea id="v7summary" readonly rows="12"></textarea>
+  <div class="row">
+    <button id="v7copy" type="button">Kopieren</button>
+    <button id="v7share" type="button" class="secondary">Teilen</button>
+  </div>
+  <div class="status" id="v7status"></div>
+</section>
+
 <!-- ======================= v0.5 / v0.6 ======================= -->
 <section class="card" id="v06">
   <h2>v0.5/v0.6 – Kartenausschnitt, Herkunft, OsmAnd, Gebiete</h2>
@@ -281,7 +304,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '0.6.1';
+  var VERSION = '0.7.0';
   var KEY = 'rf.diag.v1';
 
   var TESTS = [
@@ -592,14 +615,14 @@
   init();
 })();
 </script>
-<script src="core.js?v=0.6.1"></script>
+<script src="core.js?v=0.7.0"></script>
 <script>
 /* v0.2 diagnostics: API checks, gold list, manual checklist, summary */
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
   var KEY = 'rf.diag.v2';
-  var DV = '0.6.1';
+  var DV = '0.7.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function load() { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { return {}; } }
@@ -874,7 +897,7 @@
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
-  var KEY = 'rf.diag.v3', DV = '0.6.1';
+  var KEY = 'rf.diag.v3', DV = '0.7.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -951,7 +974,7 @@
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
-  var KEY = 'rf.diag.v6', DV = '0.6.1';
+  var KEY = 'rf.diag.v6', DV = '0.7.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -1046,6 +1069,94 @@
   });
   if (!navigator.share) $('v6share').style.display = 'none';
   $('v6share').addEventListener('click', function () { render(); navigator.share({ title: 'Reiseführer Diagnose v0.6', text: $('v6summary').value }).catch(function () {}); });
+})();
+</script>
+<script>
+/* v0.7 diagnostics: installability, checklist (symbols, city stars) */
+(function () {
+  'use strict';
+  var KEY = 'rf.diag.v7', DV = '0.7.0';
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
+  st.checks = st.checks || {};
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) { /* ignore */ } }
+  var RES = [['ok', 'Installiert, öffnet vom Startbildschirm'], ['fehler', 'Fehlermeldung'], ['keinmenue', '„App installieren“ fehlt im Menü'], ['nein', 'Nicht versucht']];
+  var CHECKS = [
+    ['s1', 'Karte: Museen, Kirchen, Schlösser, Denkmäler, Aussichtspunkte, Parks haben ein Symbol im Punkt'],
+    ['s2', 'Herauszoomen (Zoom 11 und weniger): Städte mit Sternen statt einzelner Orte'],
+    ['s3', 'Ganz weit draußen nur ★★ und ★★★ Städte'],
+    ['s4', 'Stadt antippen: bekannteste Sehenswürdigkeiten, „Hineinzoomen und suchen“ geht'],
+    ['s5', 'Ausflugsziele außerhalb von Städten erscheinen (z. B. Burgen, Berge)'],
+    ['s6', '⚙ → Stadt-Sterne → „Neu berechnen“ läuft bei einem Land durch'],
+    ['s7', 'Die Sterne der Städte passen ungefähr (Notiz unten)']
+  ];
+  var lines = [];
+  function add(k, v, ok) { lines.push([k, v, ok]); }
+  function show() {
+    $('instOut').innerHTML = '<table>' + lines.map(function (l) {
+      return '<tr><td>' + esc(l[0]) + '</td><td class="' + (l[2] === true ? 'pass' : l[2] === false ? 'fail' : '') + '">' + esc(l[1]) + '</td></tr>';
+    }).join('') + '</table>';
+    render();
+  }
+  var bip = false;
+  window.addEventListener('beforeinstallprompt', function () { bip = true; add('Chrome bietet Installieren an', 'ja (beforeinstallprompt)', true); show(); });
+  var mode = ['fullscreen', 'standalone', 'minimal-ui', 'browser'].filter(function (m) { return window.matchMedia && matchMedia('(display-mode: ' + m + ')').matches; })[0] || '?';
+  add('Läuft als', mode === 'browser' ? 'Browser-Tab' : 'installierte App (' + mode + ')', null);
+  add('Sicher (https)', window.isSecureContext ? 'ja' : 'nein', !!window.isSecureContext);
+  fetch('manifest.webmanifest', { cache: 'no-cache' }).then(function (r) { return r.json(); }).then(function (m) {
+    add('Manifest', 'ok: ' + m.name + ', display ' + m.display + ', start ' + m.start_url + ', id ' + (m.id || '–'), true);
+    return Promise.all((m.icons || []).map(function (ic) {
+      return new Promise(function (res) {
+        var im = new Image();
+        im.onload = function () { add('Symbol ' + ic.sizes + ' ' + (ic.purpose || ''), im.naturalWidth + '×' + im.naturalHeight + ' geladen', im.naturalWidth + 'x' + im.naturalHeight === ic.sizes); res(); };
+        im.onerror = function () { add('Symbol ' + ic.src, 'lädt nicht', false); res(); };
+        im.src = ic.src;
+      });
+    }));
+  }).catch(function (e) { add('Manifest', 'Fehler: ' + e.message, false); }).then(function () {
+    if (!navigator.serviceWorker) { add('Service Worker', 'nicht unterstützt', false); return; }
+    return navigator.serviceWorker.getRegistration().then(function (r) {
+      add('Service Worker', r && r.active ? 'aktiv' : 'nicht aktiv (App einmal öffnen)', !!(r && r.active));
+    });
+  }).then(function () {
+    if (navigator.getInstalledRelatedApps) return navigator.getInstalledRelatedApps().then(function (a) { add('Schon installiert', a.length ? 'ja' : 'nicht erkannt', null); }).catch(function () {});
+  }).then(function () {
+    setTimeout(function () { if (!bip) { add('Chrome bietet Installieren an', 'noch nicht (kann auch heißen: schon installiert)', null); show(); } }, 2500);
+    show();
+  });
+  $('instRes').innerHTML = RES.map(function (r) {
+    return '<label><input type="radio" name="inst" value="' + r[0] + '"' + (st.inst === r[0] ? ' checked' : '') + '> ' + esc(r[1]) + '</label>';
+  }).join('');
+  $('checklist7').innerHTML = CHECKS.map(function (c) {
+    return '<label class="check"><input type="checkbox" data-c="' + c[0] + '"' + (st.checks[c[0]] ? ' checked' : '') + '> ' + esc(c[1]) + '</label>';
+  }).join('');
+  $('v7err').value = st.err || '';
+  $('v7note').value = st.note || '';
+  function render() {
+    var L = ['Reiseführer Diagnose v' + DV + ' – Abnahme v0.7', 'Datum: ' + new Date().toLocaleString('de-DE'), 'Gerät: ' + navigator.userAgent, ''];
+    L.push('1 Installieren:');
+    lines.forEach(function (l) { L.push(l[0] + ': ' + l[1]); });
+    var r = RES.filter(function (x) { return x[0] === st.inst; })[0];
+    L.push('Ergebnis: ' + (r ? r[1] : 'nicht angekreuzt') + (st.err ? ' – Meldung: ' + st.err : ''));
+    L.push('');
+    L.push('2 In der App:');
+    CHECKS.forEach(function (c) { L.push((st.checks[c[0]] ? '[x] ' : '[ ] ') + c[1]); });
+    if (st.note) L.push('Notiz: ' + st.note);
+    $('v7summary').value = L.join('\n');
+  }
+  render();
+  $('instRes').addEventListener('change', function (e) { if (e.target.name === 'inst') { st.inst = e.target.value; save(); render(); } });
+  $('checklist7').addEventListener('change', function (e) { var c = e.target.getAttribute('data-c'); if (c) { st.checks[c] = e.target.checked; save(); render(); } });
+  $('v7err').addEventListener('input', function () { st.err = this.value; save(); render(); });
+  $('v7note').addEventListener('input', function () { st.note = this.value; save(); render(); });
+  $('v7copy').addEventListener('click', function () {
+    render();
+    (navigator.clipboard ? navigator.clipboard.writeText($('v7summary').value).then(function () { return true; }, function () { return false; }) : Promise.resolve(false))
+      .then(function (ok) { $('v7status').textContent = ok ? 'Zusammenfassung kopiert.' : 'Kopieren fehlgeschlagen – Text lange antippen und markieren.'; });
+  });
+  if (!navigator.share) $('v7share').style.display = 'none';
+  $('v7share').addEventListener('click', function () { render(); navigator.share({ title: 'Reiseführer Diagnose v0.7', text: $('v7summary').value }).catch(function () {}); });
 })();
 </script>
 </body>

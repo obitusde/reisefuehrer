@@ -1601,9 +1601,17 @@
     };
   }
 
-  function cityStars(score, cfg) {
-    var th = cfg.staedte.schwellen;
-    return score >= th['3'] ? 3 : score >= th['2'] ? 2 : score >= th['1'] ? 1 : 0;
+  /**
+   * Stars of a city (object from computeCities, or a bare score): from the sum, or from its best sight
+   * if that is higher (Versailles has one world-famous palace, not ten good sights).
+   */
+  function cityStars(c, cfg) {
+    var th = cfg.staedte.schwellen, eth = cfg.staedte.einzel_schwellen || {};
+    var score = typeof c === 'number' ? c : c.score;
+    var s = score >= th['3'] ? 3 : score >= th['2'] ? 2 : score >= th['1'] ? 1 : 0;
+    var best = typeof c === 'object' && c.top && c.top[0] ? c.top[0][3] : 0;
+    var e = best >= (eth['3'] || 99) ? 3 : best >= (eth['2'] || 99) ? 2 : 0;
+    return Math.max(s, e);
   }
 
   /**

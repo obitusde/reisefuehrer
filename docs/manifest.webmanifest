@@ -3,10 +3,10 @@
   "short_name": "Reiseführer",
   "description": "Sehenswertes auf der Karte, mit Sternen.",
   "lang": "de",
+  "id": "./",
   "start_url": "./",
   "scope": "./",
-  "display": "fullscreen",
-  "display_override": ["fullscreen", "standalone"],
+  "display": "standalone",
   "background_color": "#f5f4f0",
   "theme_color": "#0e6b7d",
   "icons": [
