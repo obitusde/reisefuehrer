@@ -402,6 +402,93 @@ const fbad = async (url) => url.includes('de.wikipedia') ? { ok: false, status: 
 const r4 = await core.loadPlaces({ lat: 53.4792, lon: -2.2442, radius: 1000, cfg, fetch: fbad, wdCache });
 ok(r4.places.length > 0 && r4.warnings.some(w => w.includes('Wikipedia de')), 'partial failure tolerated');
 
+// ---- v0.7.0: map symbols
+eq(core.iconFor('museum', cfg), 'museum', 'symbol museum');
+eq(core.iconFor('kathedrale', cfg), 'kirche', 'symbol cathedral = church');
+eq(core.iconFor('burg', cfg), 'schloss', 'symbol castle');
+eq(core.iconFor('park', cfg), 'natur', 'symbol park');
+eq(core.iconFor('rathaus', cfg), '', 'town hall: plain dot');
+eq(core.iconFor('sonstiges', cfg), '', 'other: plain dot');
+
+// ---- v0.7.0: city stars
+{
+  const tiles = core.cityTiles(core.bboxOf([49.44, 5.73, 50.19, 6.53]), 1);
+  eq(tiles.map((t) => t.south + ',' + t.west).join(' '), '49,5 49,6 50,5 50,6', 'city tiles on the 1° grid (shared between countries)');
+  const sp = core.splitTile({ south: 48, west: 2, north: 49, east: 3 });
+  ok(sp.length === 4 && sp[3].south === 48.5 && sp[3].west === 2.5 && sp[0].north === 48.5, 'tile split into four');
+  const q = core.citySparql({ south: 48, west: 2, north: 49, east: 3 }, cfg);
+  ok(q.includes('cornerSouthWest "Point(2 48)"') && q.includes('cornerNorthEast "Point(3 49)"') && q.includes('FILTER(?s >= 12)') && q.includes('psn:P2046'), 'SPARQL box query');
+  const rows = core.parseCityRows({ results: { bindings: [
+    { item: { value: 'http://www.wikidata.org/entity/Q90' }, coord: { value: 'Point(2.3514 48.8575)' }, sl: { value: '366' }, pop: { value: '2103778' },
+      area: { value: '105400000' }, cls: { value: 'national capital|metropolis' }, p31: { value: 'Q5119|Q200250' }, land: { value: 'Q142' }, de: { value: 'Paris' }, cap: { value: 'x' } },
+    { item: { value: 'http://www.wikidata.org/entity/Q1' }, coord: { value: 'Point(1 2)' }, sl: { value: '20' } }] } });
+  ok(rows.length === 1 && rows[0].q === 'Q90' && rows[0].lat === 48.8575 && rows[0].km2 === 105.4 && rows[0].cap && rows[0].cls.length === 2, 'parse SPARQL rows (items without name dropped)');
+  const it = (q, name, lat, lon, sl, cls, o = {}) => ({ q, name, name_en: name, lat, lon, sl, pop: o.pop || 0, km2: o.km2 || 0, p31: o.p31 || [], cls, h: o.h || [], land: o.land || ['Q142'], u: !!o.u, cap: !!o.cap, desc: '' });
+  ok(core.isCityItem(it('Q90', 'Paris', 0, 0, 1, ['commune of France'], { pop: 2e6 }), cfg), 'commune is a city');
+  ok(!core.isCityItem(it('Q133132', 'Pariser Kommune', 0, 0, 1, ['insurgency', 'commune']), cfg), 'Paris Commune (insurgency) is no city');
+  ok(!core.isCityItem(it('Q2', 'X', 0, 0, 1, ['commune']), cfg), 'bare "commune" without population is no city');
+  ok(!core.isCityItem(it('Q3', 'Hauts-de-Seine', 0, 0, 1, ['department of France'], { pop: 1e6 }), cfg), 'department is no city');
+  eq(Math.round(core.cityRadius(2e6, cfg, 105.4)), 6371, 'radius from area (Paris)');
+  eq(Math.round(core.cityRadius(1e5, cfg, 0)), 4500, 'radius from population without area');
+  eq(Math.round(core.cityRadius(1e5, cfg, 2000)), 12000, 'radius capped at max');
+  eq(core.sightScore(it('Q150', 'Französisch', 0, 0, 353, ['natural language', 'language']), cfg), null, 'a language is no sight');
+  eq(core.sightScore(it('Q4', 'Olympische Spiele', 0, 0, 118, ['Summer Olympic Games edition']), cfg), null, 'an event is no sight');
+  eq(core.sightScore(it('Q5', 'Flughafen', 0, 0, 64, ['international airport']), cfg), null, 'an airport is no sight');
+  ok(core.sightScore(it('Q64436', 'Triumphbogen', 0, 0, 86, ['triumphal arch']), cfg).score > 5, 'triumphal arch counts (extra word list)');
+  const louvre = core.sightScore(it('Q19675', 'Louvre', 0, 0, 170, ['art museum'], { p31: ['Q207694'] }), cfg);
+  ok(louvre.typ === 'museum' && louvre.score === 9.7 && !louvre.natur, 'Louvre: museum 9.7');
+  ok(core.sightScore(it('Q1374', 'Matterhorn', 0, 0, 100, ['mountain'], { p31: ['Q8502'] }), cfg).natur, 'mountain is nature');
+  const items = [
+    it('Q90', 'Paris', 48.8575, 2.3514, 366, ['national capital', 'metropolis'], { pop: 2103778, km2: 105.4, cap: true }),
+    it('Q161741', '1. Arrondissement', 48.8625, 2.3364, 65, ['municipal arrondissement of France', 'city district'], { pop: 15114 }),
+    it('Q999', 'Paris (Gemeinde-Eintrag)', 48.86, 2.35, 50, ['commune of France'], { pop: 2000000 }),
+    it('Q172455', 'Boulogne-Billancourt', 48.8353, 2.2411, 98, ['big city', 'commune of France'], { pop: 119019, km2: 6.17 }),
+    it('Q19675', 'Louvre', 48.8611, 2.3358, 170, ['art museum'], { p31: ['Q207694'] }),
+    it('Q2981', 'Notre-Dame', 48.853, 2.3499, 125, ['Catholic cathedral'], { p31: ['Q2977'], u: true }),
+    it('Q243', 'Eiffelturm', 48.8584, 2.2945, 191, ['observation tower']),
+    it('Q20', 'Jardin des Serres', 48.846, 2.252, 60, ['botanical garden']),
+    it('Q2946', 'Schloss Versailles', 48.8049, 2.1204, 109, ['château', 'royal palace'], { p31: ['Q751876'], u: true }),
+    it('Q21', 'Mont Test', 48.5, 2.6, 100, ['mountain'], { p31: ['Q8502'] }),
+    it('Q22', 'Brüsseler Platz', 50.85, 4.35, 60, ['square'], { land: ['Q31'] })
+  ];
+  const res = core.computeCities(items, cfg, { code: 'FR', qid: 'Q142', bbox: core.bboxOf([41.33, -5.15, 51.09, 9.56]) });
+  const byName = Object.fromEntries(res.staedte.map((c) => [c.name, c]));
+  ok(byName.Paris && !byName['1. Arrondissement'] && !byName['Paris (Gemeinde-Eintrag)'], 'one marker for Paris (arrondissement and duplicate merged/excluded)');
+  ok(byName.Paris.n === 3 && byName.Paris.unesco && byName.Paris.top[0][0] === 'Notre-Dame', 'Paris gets Louvre, Notre-Dame, Eiffel tower: ' + JSON.stringify(byName.Paris.top));
+  ok(byName['Boulogne-Billancourt'] && byName['Boulogne-Billancourt'].n === 1, 'garden next to Boulogne (small radius from area) goes to Boulogne');
+  eq(byName.Paris.score, Math.round((9.7 + 12.3 + 7.8 + 3 + 1) * 10) / 10, 'Paris score = sum of sights + UNESCO + capital');
+  ok(res.orte.some((o) => o.name === 'Schloss Versailles') && res.orte.some((o) => o.name === 'Mont Test'), 'castle outside cities and mountain are excursions: ' + res.orte.map((o) => o.name).join(', '));
+  ok(!res.orte.some((o) => o.name === 'Brüsseler Platz'), 'excursions only of the own country');
+  eq(core.cityStars(byName.Paris, cfg), 3, 'Paris ★★★ via Notre-Dame (UNESCO, 12.3) although the sample sum is only 33.8');
+  eq(core.cityStars({ score: 34.8, top: [['x', 0, 0, 9]] }, cfg), 2, 'sum 34.8 alone: ★★');
+  eq(core.cityStars({ score: 15, top: [['Schloss', 0, 0, 12.1]] }, cfg), 3, 'one world-famous sight gives ★★★');
+  eq(core.cityStars({ score: 5, top: [['Burg', 0, 0, 7.2]] }, cfg), 1, 'one good castle gives ★');
+  eq(core.cityStars(5, cfg), 0, 'low score: no star');
+  eq(core.ortStars(9.5, cfg) + '' + core.ortStars(7.6, cfg) + core.ortStars(6.6, cfg), '321', 'excursion stars');
+  ok(core.cityWikiUrl('Q90') === 'https://www.wikidata.org/wiki/Special:GoToLinkedPage/dewiki/Q90', 'city Wikipedia link');
+
+  // loading: a tile that times out is split, a 400 is a query error, the cache is used
+  const cfgT = JSON.parse(JSON.stringify(cfg)); cfgT.staedte.pause_ms = 0;
+  let calls = 0;
+  const fSplit = async (url) => {
+    calls++;
+    const qq = decodeURIComponent(url.split('query=')[1]);
+    const m = /Point\(([-\d.]+) ([-\d.]+)\)"\^\^geo:wktLiteral; wikibase:cornerNorthEast "Point\(([-\d.]+) ([-\d.]+)\)/.exec(qq);
+    if (+m[3] - +m[1] > 0.9) return { ok: false, status: 504, json: async () => ({}) };
+    return { ok: true, status: 200, json: async () => ({ results: { bindings: [{ item: { value: 'x/Q' + m[1] + '_' + m[2] }, coord: { value: 'Point(' + m[1] + ' ' + m[2] + ')' }, sl: { value: '20' }, de: { value: 'T' } }] } }) };
+  };
+  const cache = new Map();
+  const lr = await core.loadCityTiles([{ south: 48, west: 2, north: 49, east: 3 }], cfgT, fSplit, { cache });
+  ok(lr.splits === 1 && lr.items.length === 4 && lr.failed.length === 0 && calls === 5, 'timeout → tile split into 4: ' + JSON.stringify({ s: lr.splits, n: lr.items.length, calls }));
+  const lr2 = await core.loadCityTiles(core.splitTile({ south: 48, west: 2, north: 49, east: 3 }), cfgT, fSplit, { cache });
+  ok(lr2.queries === 0 && lr2.items.length === 4, 'tiles from the shared cache');
+  const lr3 = await core.loadCityTiles([{ south: 48, west: 2, north: 48.5, east: 2.5 }], cfgT, async () => ({ ok: false, status: 400, json: async () => ({}) }), {});
+  ok(lr3.failed.length === 1 && lr3.splits === 0, 'query error (400): not split, reported');
+  const ctl = { cancelled: true };
+  const lr4 = await core.loadCityTiles(core.cityTiles(core.bboxOf([47, 5, 55, 15]), 1), cfgT, fSplit, { control: ctl });
+  ok(lr4.queries === 0, 'cancel stops before the next tile');
+}
+
 // ---- version consistency across files
 const v = JSON.parse(fs.readFileSync(path.join(ROOT, 'docs/version.json'), 'utf8')).version;
 const read = p => fs.readFileSync(path.join(ROOT, p), 'utf8');

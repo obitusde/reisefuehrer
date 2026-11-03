@@ -331,6 +331,8 @@ score = 3.0 * log10(1 + sprachversionen)
 
 **Hinweis:** Städte ohne klassische Altstadt (Beispiel Manchester) werden unterschätzt. Das ist ein bekanntes Risiko, kein Fehler.
 
+**Stand:** Umgesetzt in v0.7.0, vorgezogen auf Wunsch des Nutzers. Abweichungen: Berechnung je Land als `docs/staedte/<LAND>.json`, zusätzlich im Handy unter ⚙ neu berechenbar; Stadt-Marker bis Zoom 11. Details im CHANGELOG.
+
 ---
 
 ## 7. UI-Spezifikation (mobil zuerst)

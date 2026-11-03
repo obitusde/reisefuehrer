@@ -1,5 +1,37 @@
 # Changelog
 
+## v0.7.0 – 03.11.2026 – Stadt-Sterne für Ausflüge, Symbole auf der Karte, Installieren
+
+Wunsch Nutzer: Symbole je Art, beim Herauszoomen ein Stern pro Stadt (für Ausflüge), Installation reparieren. Vorgezogen aus v0.9 (PROJEKT.md 6c).
+
+- **Stadt-Sterne beim Herauszoomen** (Deutschland, Österreich, Schweiz, Frankreich, Belgien, Niederlande, Luxemburg, Italien, Großbritannien):
+  - Zoom 9–11: Städte als Sterne-Schild („★★★ Brügge“), dazu große Ausflugsziele außerhalb von Städten (Burgen, Berge, Seen …) mit Symbol.
+  - Zoom 8 und weiter draußen: nur Städte mit ★★ und ★★★.
+  - Ab Zoom 12: die einzelnen Orte wie bisher.
+  - Stadt antippen: die drei bekanntesten Sehenswürdigkeiten (antippen = dorthin zoomen und suchen), „🔍 Hineinzoomen und suchen“, Wikipedia.
+- **Wie gerechnet wird**: Für jede Kartenkachel (1°) holt eine Wikidata-Abfrage alles mit Koordinaten und mindestens 12 Sprachversionen. Daraus werden:
+  - **Städte**: Orte mit einer Stadt-, Gemeinde- oder Dorf-Klasse. Liegt ein kleinerer Ort im Radius eines größeren, gehört er zu diesem (z. B. Pariser Arrondissements → Paris). Der Radius kommt aus der Fläche (sonst aus der Einwohnerzahl).
+  - **Sehenswürdigkeiten**: nur echte Ziele, also Museum, Kirche, Schloss, Platz, Friedhof, Triumphbogen und Ähnliches. Sprachen, Ereignisse, Verträge, Firmen, Bahnhöfe, Flughäfen, Hochschulen, Stadien und Verwaltungsgebiete zählen nicht. Die Punkte sind wie bei den Orten: Sprachversionen + Denkmal/UNESCO + Art, ohne Artikellänge.
+  - **Stadt-Score**: Summe der 10 besten Sehenswürdigkeiten, +3 bei UNESCO-Welterbe, +1 für Hauptstädte.
+  - **Sterne**: ★★★ ab 45, ★★ ab 25, ★ ab 12. Eine einzelne weltberühmte Sehenswürdigkeit reicht auch: ab 12 Punkten ★★★ (z. B. Versailles), ab 10,5 ★★, ab 7 ★.
+  - **Natur** (Berge, Seen, Gletscher, Wasserfälle) zählt nie für eine Stadt, sondern als eigenes Ausflugsziel. Sonst sammeln Bergdörfer mit großer Gemeindefläche Dutzende Gipfel.
+- **⚙ → „⭐ Stadt-Sterne (Ausflüge)“**: Stand und Zahl der Städte je Land, „Neu berechnen“ je Land oder „Alle Länder neu berechnen“. Das Handy fragt dabei selbst Wikidata ab, mit Fortschrittsleiste und Abbrechen; der Bildschirm bleibt an. Schalter „Stadt-Sterne auf der Karte zeigen“.
+- **Mitgelieferte Daten**: `docs/staedte/*.json`, berechnet von einer GitHub Action („Stadt-Sterne berechnen“, auf github.com mit „Run workflow“ startbar). Hat das Handy selbst neuer gerechnet, nimmt die App die eigenen Daten.
+- **Symbole in den Kartenpunkten** (Farbe bleibt = Sterne): 🏛 Museum/Galerie, ✝ Kirche/Kathedrale/Kloster, Burg-Zinnen für Schloss/Burg/Palast/Herrenhaus, Obelisk für Denkmal/Welterbe/Kunst/Ausgrabung, Auge für Aussichtspunkt, Baum für Park/Natur. Alles andere bleibt ein schlichter Punkt. Punkte mit Symbol sind etwas größer.
+- **Installieren**: Das Manifest ist wieder „standalone“ (in v0.6.1 „fullscreen“) und hat eine feste `id`. Die installierte App schaltet beim ersten Antippen selbst auf Vollbild (abschaltbar in ⚙).
+- **Diagnose**: neuer Abschnitt v0.7. „Installieren“ zeigt, was Chrome sieht (Manifest, Symbole, Service Worker, ob Chrome Installieren anbietet), mit Feld für die Fehlermeldung. Dazu eine Checkliste für Symbole und Stadt-Sterne.
+
+### Annahmen/Abweichungen
+
+- **Neu berechnen geht im Handy**, nicht nur über die GitHub Action wie in PROJEKT.md 6c (Wunsch Nutzer: im Menü). Ein Knopf, der die GitHub Action direkt startet, ginge nur mit einem Schlüssel im Browsercode, und das verbietet PROJEKT.md.
+- **Stadt-Marker bis Zoom 11** (PROJEKT.md: bis 12). „Hier suchen“ geht ab Zoom 12, dort sollen die eigenen Orte sichtbar sein.
+- **Stadt-Score ohne Artikellänge und Seitenaufrufe**: Dafür wären zehntausende Wikipedia-Abfragen nötig. Darum gelten eigene Schwellen, und sie lassen sich in `config.json` ändern, ohne neu zu rechnen.
+- **Bekannte Schwächen**:
+  - Städte ohne berühmte Einzelbauten (Manchester, Ostende) werden unterschätzt.
+  - Orte mit wenigen Sprachversionen fehlen (unter 12, z. B. das Schloss Morges).
+  - Bei Gemeinden mit vielen Ortsteilen steht der Marker am Gemeinde-Mittelpunkt.
+- **Installation**: Warum sie in v0.6.1 fehlschlug, ist nicht geklärt; ohne den Text der Fehlermeldung ist die Umstellung auf „standalone“ eine Vermutung. Bitte ⚙ → Diagnose → „Installieren“ ausfüllen, wenn es wieder nicht geht.
+
 ## v0.6.1 – 03.11.2026 – Mehr Platz für die Liste, Herkunft auf einen Blick
 
 Rückmeldungen vom Test in Morges (OSM kam erst nach 170 s; Liste zu klein; offline/online nicht erkennbar).
