@@ -1,14 +1,14 @@
-/* Reiseführer – app (v0.2.1). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.2.2). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.2.1';
+  var VERSION = '0.2.2';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
   var K = {
     settings: 'rf.settings', last: 'rf.last', merk: 'rf.merk', wd: 'rf.wdcache',
-    ort: 'rf.ortcache2', view: 'rf.view', split: 'rf.split'
+    ort: 'rf.ortcache2', view: 'rf.view', split: 'rf.split', recent: 'rf.recent'
   };
   var LS = {
     get: function (k, d) {
@@ -298,6 +298,7 @@
       return C.loadPlaces({
         lat: lat, lon: lon, radius: radius, cfg: cfg, wdCache: wdCache,
         langs: C.languagesFor(info, cfg),
+        localLang: C.localLanguage(info, cfg),
         fetch: function (u, o) { return fetch(u, o); },
         onProgress: function (t) { setStatus(t, 'busy'); }
       });
@@ -390,6 +391,7 @@
         '<div class="it-main">' +
           '<span class="it-stars s' + p.sterne + '">' + (p.sterne ? C.starsText(p.sterne) : '·') + '</span>' +
           '<span class="it-text"><span class="it-name">' + esc(p.name) + '</span>' +
+          (p.name2 ? '<span class="it-name2">' + esc(p.name2) + '</span>' : '') +
           '<span class="it-meta">' + esc(meta) + '</span>' +
           (p.beschreibung ? '<span class="it-desc">' + esc(p.beschreibung) + '</span>' : '') +
           '</span></div>' +
@@ -466,6 +468,7 @@
       ['Typ: ' + p.typ_label + (p.klassen && p.klassen.length ? ' (Wikidata: ' + p.klassen.join(', ') + ')' : ''), t.typ]
     ];
     var html =
+      (p.name2 ? '<p class="pl-name2">Deutsch: ' + esc(p.name2) + '</p>' : '') +
       '<div class="pl-stars s' + p.sterne + '">' + (p.sterne ? C.starsText(p.sterne) : '–') +
         '<span>' + esc(st[String(p.sterne)] || '') + '</span></div>' +
       '<p class="pl-meta">' + esc(meta) + '</p>' +
@@ -549,6 +552,49 @@
     $('sheetBody').removeAttribute('data-place');
   }
 
+  // ------------------------------------------------------- place search
+  var searchHits = [];
+  function hitsHtml(list, title) {
+    if (!list.length) return '';
+    return '<h3>' + esc(title) + '</h3><ul class="hits">' + list.map(function (h, i) {
+      return '<li><button type="button" data-a="hit" data-i="' + i + '"><b>' + esc(h.name) + '</b>' +
+        (h.detail ? '<span>' + esc(h.detail) + '</span>' : '') + '</button></li>';
+    }).join('') + '</ul>';
+  }
+  function openSearch() {
+    var recent = LS.get(K.recent, []) || [];
+    searchHits = recent;
+    openSheet('Ort suchen',
+      '<form class="search-form" id="searchForm" autocomplete="off">' +
+        '<input id="searchInput" type="search" enterkeyhint="search" placeholder="z. B. Lyon, Morges, Altstadt Bern" aria-label="Ort">' +
+        '<button class="btn primary" type="submit">Suchen</button></form>' +
+      '<div id="searchHits">' + hitsHtml(recent, 'Zuletzt gesucht') + '</div>' +
+      '<p class="small">Die Karte springt zum Ort und sucht dort Sehenswertes im eingestellten Umkreis. Ortssuche: Nominatim/© OpenStreetMap-Mitwirkende.</p>');
+    $('sheetBody').removeAttribute('data-place');
+    $('searchForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var q = $('searchInput').value.trim();
+      if (!q) return;
+      $('searchInput').blur();
+      $('searchHits').innerHTML = '<p class="small">Suche „' + esc(q) + '“ …</p>';
+      C.searchPlaces(q, function (u, o) { return fetch(u, o); }).then(function (list) {
+        searchHits = list;
+        $('searchHits').innerHTML = list.length ? hitsHtml(list, 'Treffer') : '<p class="small">Nichts gefunden. Anders schreiben, z. B. mit Land: „Morges, Schweiz“.</p>';
+      }, function (err) {
+        $('searchHits').innerHTML = '<p class="small">Suche fehlgeschlagen: ' + esc(err.message) + '</p>';
+      });
+    });
+    setTimeout(function () { try { $('searchInput').focus(); } catch (e) { /* ignore */ } }, 50);
+  }
+  function goToHit(h) {
+    var recent = (LS.get(K.recent, []) || []).filter(function (r) { return r.name !== h.name || r.detail !== h.detail; });
+    recent.unshift({ name: h.name, detail: h.detail, lat: h.lat, lon: h.lon });
+    LS.set(K.recent, recent.slice(0, 5));
+    closeSheet();
+    map.setView([h.lat, h.lon], 15, { animate: false });
+    doSearch(h.lat, h.lon, true);
+  }
+
   // ---------------------------------------------------------- UI events
   function bindUI() {
     $('btnLocate').addEventListener('click', locate);
@@ -557,6 +603,7 @@
       doSearch(c.lat, c.lng, false);
     });
     $('btnMerk').addEventListener('click', openMerk);
+    $('btnSearch').addEventListener('click', openSearch);
     $('btnSettings').addEventListener('click', openSettings);
     $('sheetClose').addEventListener('click', closeSheet);
     window.addEventListener('popstate', function () { if (!$('sheet').hidden) hideSheet(); });
@@ -621,6 +668,9 @@
         if (confirm('Alle ' + merk.length + ' Orte aus der Merkliste entfernen?')) {
           merk = []; LS.set(K.merk, merk); renderMerkCount(); renderList(); openMerk();
         }
+      } else if (a === 'hit') {
+        var h = searchHits[parseInt(el.getAttribute('data-i'), 10)];
+        if (h) goToHit(h);
       } else if (a === 'clearcache') {
         if (confirm('Gespeicherte Orte und Wikidata-Daten löschen?')) {
           LS.del(K.last); LS.del(K.wd); LS.del(K.ort);

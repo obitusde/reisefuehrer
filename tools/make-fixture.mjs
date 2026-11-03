@@ -74,6 +74,10 @@ const fixture = {
   center: { lat: 53.4792, lon: -2.2442 },
   wikipedia: { en: [en1, en2], de: [de], fr: [fr] },
   wikidata: { entities },
+  nominatimSearch: [
+    { place_id: 2, name: 'Manchester', display_name: 'Manchester, Greater Manchester, England, Vereinigtes Königreich', lat: '53.4794892', lon: '-2.2451148', boundingbox: ['53.3400', '53.5445', '-2.3199', '-2.1468'] },
+    { place_id: 3, name: 'Manchester', display_name: 'Manchester, Hillsborough County, New Hampshire, Vereinigte Staaten', lat: '42.9956', lon: '-71.4548', boundingbox: ['42.93', '43.06', '-71.51', '-71.37'] }
+  ],
   nominatim: { place_id: 1, name: 'Manchester', address: { city: 'Manchester', county: 'Greater Manchester', 'ISO3166-2-lvl4': 'GB-ENG', country: 'Vereinigtes Königreich', country_code: 'gb' } }
 };
 fs.writeFileSync(process.argv[2], JSON.stringify(fixture) + '\n');

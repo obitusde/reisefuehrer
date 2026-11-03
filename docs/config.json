@@ -1,5 +1,5 @@
 {
-  "_hinweis": "Alle Stellschrauben der App. Startwerte, nach Goldliste in diag.html anpassen. Diese Datei darf direkt auf github.com bearbeitet werden. Achtung: gültiges JSON (Kommas, Anführungszeichen).",
+  "_hinweis": "Alle Stellschrauben der App. min_sterne/max_sterne je Typ begrenzen die Sterne (z. B. Museen immer mindestens ★). Startwerte, nach Goldliste in diag.html anpassen. Diese Datei darf direkt auf github.com bearbeitet werden. Achtung: gültiges JSON (Kommas, Anführungszeichen).",
 
   "wikipedia": {
     "sprachen": ["de", "en"],
@@ -64,7 +64,7 @@
       "qids": ["Q16560"], "woerter": ["palace", "palast", "palais"] },
     { "id": "rathaus", "label": "Rathaus", "gewicht": 2.5, "kategorie": "gebaeude",
       "qids": ["Q25550691", "Q543654"], "woerter": ["town hall", "city hall", "guildhall", "hôtel de ville", "hotel de ville", "mairie", "rathaus", "municipio", "ayuntamiento"] },
-    { "id": "museum", "label": "Museum", "gewicht": 3, "kategorie": "museum",
+    { "id": "museum", "label": "Museum", "gewicht": 3, "min_sterne": 1, "kategorie": "museum",
       "qids": ["Q33506", "Q207694", "Q1007870"], "woerter": ["museum", "*museum", "art gallery", "gallery", "galerie", "kunsthalle", "musée", "museo", "museu", "muzeum"] },
     { "id": "bibliothek", "label": "Bibliothek", "gewicht": 2.5, "kategorie": "gebaeude",
       "qids": ["Q7075"], "woerter": ["library", "bibliothek", "*bibliothek", "bibliothèque", "biblioteca"] },
@@ -85,6 +85,8 @@
       "qids": ["Q179700", "Q860861", "Q838948", "Q219423"], "woerter": ["statue", "sculpture", "mural", "artwork", "public art", "skulptur", "plastik", "wandbild", "kunstwerk"] },
     { "id": "industrie", "label": "Industriebau/Mühle", "gewicht": 1, "kategorie": "industrie",
       "qids": ["Q44494", "Q83405"], "woerter": ["mill", "cotton mill", "factory", "warehouse", "mühle", "*mühle", "fabrik", "lagerhaus", "spinnerei"] },
+    { "id": "aussicht", "label": "Aussichtspunkt", "gewicht": 1, "min_sterne": 1, "kategorie": "natur",
+      "qids": [], "woerter": ["viewpoint", "scenic viewpoint", "lookout", "observation deck", "observation tower", "belvedere", "belvédère", "point de vue", "panorama", "aussichtspunkt", "aussichtsturm", "aussichtsplattform", "mirador", "belvedere"] },
     { "id": "turm", "label": "Turm", "gewicht": 1, "kategorie": "gebaeude",
       "qids": ["Q12518"], "woerter": ["tower", "clock tower", "turm", "*turm"] },
     { "id": "archaeologie", "label": "Archäologie/Ruine", "gewicht": 1, "kategorie": "denkmal",
@@ -98,7 +100,7 @@
     { "id": "park", "label": "Park/Garten", "gewicht": 0, "kategorie": "natur",
       "qids": ["Q22698", "Q1107656", "Q167346"], "woerter": ["park", "garden", "gardens", "botanical garden", "garten", "*garten", "*park"] },
     { "id": "natur", "label": "Natur", "gewicht": 1, "kategorie": "natur",
-      "qids": ["Q8502", "Q34038", "Q23397"], "woerter": ["mountain", "peak", "waterfall", "lake", "viewpoint", "berg", "gipfel", "wasserfall", "aussichtspunkt"] },
+      "qids": ["Q8502", "Q34038", "Q23397"], "woerter": ["mountain", "peak", "waterfall", "lake", "berg", "gipfel", "wasserfall"] },
     { "id": "sport", "label": "Sportstätte", "gewicht": 0, "kategorie": "sonstiges",
       "qids": ["Q483110"], "woerter": ["stadium", "arena", "stadion"] },
     { "id": "bildung", "label": "Schule/Hochschule", "gewicht": 0, "kategorie": "sonstiges",
@@ -138,11 +140,14 @@
 
   "landessprachen": {
     "_hinweis": "Zusätzliche Wikipedia-Sprache je Land (Ländercode) oder Region (ISO 3166-2, hat Vorrang). Daten von Nominatim.",
+    "de": "de", "at": "de", "li": "de",
     "fr": "fr", "be": ["fr", "nl"], "lu": "fr", "mc": "fr", "it": "it", "sm": "it", "es": "es", "pt": "pt", "nl": "nl",
     "pl": "pl", "cz": "cs", "sk": "sk", "hu": "hu", "si": "sl", "hr": "hr", "dk": "da", "se": "sv", "no": "no",
     "fi": "fi", "is": "is", "gr": "el", "tr": "tr", "ro": "ro", "bg": "bg", "ie": "en", "gb": "en", "us": "en",
     "ch": "de", "CH-VD": "fr", "CH-GE": "fr", "CH-NE": "fr", "CH-JU": "fr", "CH-FR": "fr", "CH-VS": "fr", "CH-TI": "it",
-    "IT-32": "de"
+    "IT-32": "de",
+    "ru": "ru", "ua": "uk", "rs": "sr", "jp": "ja", "cn": "zh", "tw": "zh", "kr": "ko", "il": "he", "th": "th",
+    "eg": "ar", "ae": "ar", "ma": "fr", "tn": "fr"
   },
 
   "goldlisten": [

@@ -44,7 +44,8 @@ async function mockApis(ctx) {
     const entities = {}; ids.forEach((id) => { entities[id] = fx.wikidata.entities[id] || { id, missing: '' }; });
     route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ entities }) });
   });
-  await ctx.route(/nominatim\.openstreetmap\.org/, (route) => route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(fx.nominatim) }));
+  await ctx.route(/nominatim\.openstreetmap\.org/, (route) => route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
+    body: JSON.stringify(new URL(route.request().url()).pathname.startsWith('/search') ? fx.nominatimSearch : fx.nominatim) }));
   await ctx.route(/tile\.openstreetmap\.org/, (route) => route.fulfill({ status: 200, contentType: 'image/png', headers: { 'access-control-allow-origin': '*' }, body: PNG }));
 }
 
@@ -70,7 +71,7 @@ try {
   const page = await ctx.newPage(); const errs = []; watch(page, errs);
   await page.goto(BASE + 'index.html');
   await page.waitForSelector('.empty');
-  ok((await page.textContent('#version')) === 'v0.2.1', 'footer version');
+  ok((await page.textContent('#version')) === 'v0.2.2', 'footer version');
   if (OUT) await page.screenshot({ path: OUT + '/01-start.png' });
 
   await page.click('#btnLocate');
@@ -78,6 +79,8 @@ try {
   const items = await page.$$eval('.item', (els) => els.map((e) => ({ s: e.querySelector('.it-stars').textContent, n: e.querySelector('.it-name').textContent })));
   ok(items.length >= 8, 'list has items: ' + items.length);
   ok(items[0].s === '★★★', 'first item 3 stars');
+  const th = await page.$eval('.item:has(.it-name2)', (e) => e.querySelector('.it-name').textContent + '|' + e.querySelector('.it-name2').textContent).catch(() => '');
+  ok(th.includes('|'), 'list shows local and German name: ' + th);
   ok(!items.some((i) => i.n === 'River Tib'), 'River Tib hidden at ★+ filter');
   ok((await page.$$('.mk3')).length >= 4, '3-star markers on map');
   ok((await page.textContent('#ortLabel')) === 'Manchester', 'ort label');
@@ -156,6 +159,25 @@ try {
   const after = (await page.$('#mapWrap').then((e) => e.boundingBox())).height;
   ok(after < before - 100, 'splitter shrinks map ' + before + ' -> ' + after);
 
+  // place search: jump to a place and search there
+  await page.evaluate(() => { localStorage.removeItem('rf.last'); });
+  await page.click('#btnSearch');
+  await page.waitForSelector('#searchInput');
+  await page.fill('#searchInput', 'Manchester');
+  await page.press('#searchInput', 'Enter');
+  await page.waitForSelector('.hits button');
+  const hitTexts = await page.$$eval('.hits b', (els) => els.map((e) => e.textContent));
+  ok(hitTexts.length === 2, 'search shows hits');
+  if (OUT) await page.screenshot({ path: OUT + '/09-suche.png' });
+  await page.click('.hits button >> nth=0');
+  await page.waitForSelector('#sheet', { state: 'hidden' });
+  await page.waitForFunction(() => !document.getElementById('btnHere').disabled);
+  const cen = await page.evaluate(() => JSON.parse(localStorage.getItem('rf.last')));
+  ok(cen && Math.abs(cen.lat - 53.4795) < 0.001 && cen.places.length > 5, 'search jumped and loaded places');
+  await page.click('#btnSearch');
+  ok((await page.textContent('#searchHits')).includes('Zuletzt gesucht'), 'recent searches remembered');
+  await page.click('#sheetClose');
+
   // persistence after reload
   await page.reload();
   await page.waitForSelector('.item');
@@ -163,10 +185,10 @@ try {
   ok(Math.abs((await page.$('#mapWrap').then((e) => e.boundingBox())).height - after) < 10, 'split persisted');
 
   // update banner (fake newer version, then ?testupdate=1)
-  fakeVersion = '0.2.2';
+  fakeVersion = '0.2.3';
   await page.reload();
   await page.waitForSelector('#banner:not([hidden])');
-  ok((await page.textContent('#bannerText')).includes('v0.2.2'), 'banner shows remote version');
+  ok((await page.textContent('#bannerText')).includes('v0.2.3'), 'banner shows remote version');
   if (OUT) await page.screenshot({ path: OUT + '/05-banner.png' });
   fakeVersion = null;
   await page.click('#bannerBtn');
@@ -220,9 +242,9 @@ try {
   const swOk = await p3.evaluate(() => navigator.serviceWorker.ready.then((r) => !!r.active)).catch(() => false);
   ok(swOk, 'service worker active');
   const cacheKeys = await p3.evaluate(async () => { await new Promise((r) => setTimeout(r, 800)); return caches.keys(); });
-  ok(cacheKeys.includes('rf-app-0.2.1'), 'app cache with version: ' + cacheKeys.join(','));
-  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.2.1')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
-  ok(cached.some((u) => u.includes('app.js?v=0.2.1')), 'shell precached');
+  ok(cacheKeys.includes('rf-app-0.2.2'), 'app cache with version: ' + cacheKeys.join(','));
+  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.2.2')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
+  ok(cached.some((u) => u.includes('app.js?v=0.2.2')), 'shell precached');
   ok(errs3.length === 0, 'sw: no JS errors ' + errs3.join(' | '));
   await ctx3.close();
 

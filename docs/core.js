@@ -1,5 +1,5 @@
 /*
- * Reiseführer – core logic (v0.2.1)
+ * Reiseführer – core logic (v0.2.2)
  * Shared by the app (index.html), the diagnostics page (diag.html) and Node tests.
  * No DOM access here. Network access only through the injected fetch function.
  */
@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var CORE_VERSION = '0.2.1';
+  var CORE_VERSION = '0.2.2';
 
   // ---------------------------------------------------------------- helpers
 
@@ -44,6 +44,11 @@
   }
 
   function starsText(n) { return n > 0 ? new Array(n + 1).join('★') : ''; }
+
+  // True if the text uses only Latin letters (plus digits, punctuation, accents): readable for the user
+  function isLatin(s) {
+    return !!s && /^[\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]+$/u.test(String(s));
+  }
 
   // Removes a trailing disambiguation like "Name (Manchester)"
   function cleanTitle(t) { return String(t || '').replace(/\s*\([^)]*\)\s*$/, '').trim(); }
@@ -179,6 +184,7 @@
     var s = score >= th['3'] ? 3 : score >= th['2'] ? 2 : score >= th['1'] ? 1 : 0;
     var t = typeInfo(typ, cfg);
     if (typeof t.max_sterne === 'number') s = Math.min(s, t.max_sterne);
+    if (typeof t.min_sterne === 'number') s = Math.max(s, t.min_sterne);
     return s;
   }
 
@@ -262,18 +268,24 @@
   }
 
   /** Compact info kept per Wikidata item (also what is cached). */
-  function compactEntity(e, cfg) {
+  function langValues(obj) {
+    var o = {};
+    Object.keys(obj || {}).forEach(function (l) { if (obj[l] && obj[l].value) o[l] = obj[l].value; });
+    return o;
+  }
+
+  function compactEntity(e, cfg, langs) {
     var claims = e.claims || {};
     var p1435 = claimIds(claims, 'P1435');
     var unescoQ = cfg.score.unesco_qids || [];
-    var desc = e.descriptions || {};
     return {
       s: sitelinkCount(e.sitelinks),
       p31: claimIds(claims, 'P31'),
       h: p1435,
       u: !!(claims.P757 && claims.P757.length) || p1435.some(function (q) { return unescoQ.indexOf(q) >= 0; }),
-      de: desc.de ? desc.de.value : '',
-      en: desc.en ? desc.en.value : '',
+      lab: langValues(e.labels),     // names per language
+      desc: langValues(e.descriptions),
+      l: langs.join('|'),            // languages requested (cache is valid for these)
       t: Date.now()
     };
   }
@@ -293,11 +305,12 @@
   var WD_TTL = 30 * 24 * 3600 * 1000;
 
   // Generic batched wbgetentities loader with cache {get,set}; cache keys get a prefix.
-  function loadEntities(ids, props, prefix, toInfo, f, cache, onProgress, retryDelays, missingInfo) {
+  // o: {ids, props, langs, prefix, toInfo(e), valid(cached), missingInfo(), f, cache, onProgress, retryDelays}
+  function loadEntities(o) {
     var out = {}, need = [], now = Date.now();
-    ids.forEach(function (id) {
-      var c = cache && cache.get(prefix + id);
-      if (c && now - (c.t || 0) < WD_TTL) out[id] = c; else need.push(id);
+    o.ids.forEach(function (id) {
+      var c = o.cache && o.cache.get(o.prefix + id);
+      if (c && now - (c.t || 0) < WD_TTL && (!o.valid || o.valid(c))) out[id] = c; else need.push(id);
     });
     var batches = [];
     for (var i = 0; i < need.length; i += 50) batches.push(need.slice(i, i + 50));
@@ -305,43 +318,56 @@
     return runLimited(batches, 4, function (batch) {
       var url = 'https://www.wikidata.org/w/api.php?' + qs({
         action: 'wbgetentities', format: 'json', origin: '*',
-        ids: batch.join('|'), props: props, languages: 'de|en'
+        ids: batch.join('|'), props: o.props, languages: o.langs.join('|')
       });
-      return getJsonRetry(url, f, retryDelays).then(function (data) {
+      return getJsonRetry(url, o.f, o.retryDelays).then(function (data) {
         var ents = data.entities || {};
         Object.keys(ents).forEach(function (k) {
           var e = ents[k];
           if (!e || e.missing !== undefined) {
             // remember missing ids too (if wanted), so they are not requested on every search
-            if (missingInfo && cache) cache.set(prefix + k, missingInfo());
+            if (o.missingInfo && o.cache) o.cache.set(o.prefix + k, o.missingInfo());
             return;
           }
-          var info = toInfo(e);
+          var info = o.toInfo(e);
           out[k] = info;
           if (e.id && e.id !== k) out[e.id] = info; // redirects
-          if (cache) cache.set(prefix + k, info);
+          if (o.cache) o.cache.set(o.prefix + k, info);
         });
       }, function () { failed++; }).then(function () {
         done++;
-        if (onProgress) onProgress(done, batches.length);
+        if (o.onProgress) o.onProgress(done, batches.length);
       });
     }).then(function () {
-      return { info: out, requests: batches.length, cached: ids.length - need.length, failedBatches: failed };
+      return { info: out, requests: batches.length, cached: o.ids.length - need.length, failedBatches: failed };
     });
   }
 
-  /** Wikidata info for items (sitelinks, P31, heritage, descriptions). */
-  function loadWikidata(ids, cfg, f, cache, onProgress, retryDelays) {
-    return loadEntities(ids, 'sitelinks|claims|descriptions', '', function (e) { return compactEntity(e, cfg); },
-      f, cache, onProgress, retryDelays);
+  /** Wikidata info for items (sitelinks, P31, heritage, labels, descriptions) in de, en and the local language. */
+  function loadWikidata(ids, cfg, f, cache, onProgress, retryDelays, langs) {
+    langs = langs || ['de', 'en'];
+    return loadEntities({
+      ids: ids, props: 'sitelinks|claims|descriptions|labels', langs: langs, prefix: '',
+      toInfo: function (e) { return compactEntity(e, cfg, langs); },
+      valid: function (c) {
+        var have = String(c.l || '').split('|');
+        return !!c.lab && langs.every(function (l) { return have.indexOf(l) >= 0; });
+      },
+      f: f, cache: cache, onProgress: onProgress, retryDelays: retryDelays
+    });
   }
 
-  /** Labels of Wikidata classes (P31 values), e.g. Q7075 -> ["library", "Bibliothek"]. */
+  /** Labels of Wikidata classes (P31 values), e.g. Q7075 -> {en: "library", de: "Bibliothek"}. */
   function loadClassLabels(ids, f, cache, retryDelays) {
-    return loadEntities(ids, 'labels', 'cls:', function (e) {
-      var l = e.labels || {};
-      return { en: l.en ? l.en.value : '', de: l.de ? l.de.value : '', t: Date.now() };
-    }, f, cache, null, retryDelays, function () { return { en: '', de: '', t: Date.now() }; });
+    return loadEntities({
+      ids: ids, props: 'labels', langs: ['de', 'en'], prefix: 'cls:',
+      toInfo: function (e) {
+        var l = e.labels || {};
+        return { en: l.en ? l.en.value : '', de: l.de ? l.de.value : '', t: Date.now() };
+      },
+      missingInfo: function () { return { en: '', de: '', t: Date.now() }; },
+      f: f, cache: cache, retryDelays: retryDelays
+    });
   }
 
   // ------------------------------------------------------------- places
@@ -350,7 +376,21 @@
    * Builds unified place objects (format of PROJEKT.md 5b plus internal fields).
    * langResults: [{lang, pages:[...]}, ...] in preference order (first = display language).
    */
-  function buildPlaces(langResults, wd, classes, cfg, center) {
+  /**
+   * Display names: local name first if written in Latin letters, otherwise English;
+   * German name as second line if different. Returns {name, name2}.
+   */
+  function pickNames(n) {
+    var first;
+    if (n.local && isLatin(n.local)) first = n.local;                       // e.g. "Hôtel de ville de Morges"
+    else if (n.local) first = (isLatin(n.en) && n.en) || n.de || n.local;   // e.g. Japanese: English first
+    else first = n.de || n.en || '';                                        // local name unknown: German
+
+    var second = n.de && n.de.toLowerCase() !== first.toLowerCase() ? n.de : '';
+    return { name: first, name2: second };
+  }
+
+  function buildPlaces(langResults, wd, classes, cfg, center, localLang) {
     var groups = {}, order = [];
     langResults.forEach(function (lr) {
       lr.pages.forEach(function (pg) {
@@ -376,15 +416,25 @@
         if (!longest || (pg.length || 0) > (longest.length || 0)) longest = pg;
         if (lat == null) { lat = pg.lat; lon = pg.lon; }
       });
-      var nameSrc = artikel[langs[0]] || titles[0];
+      var lab = (info && info.lab) || {}, dsc = (info && info.desc) || {};
+      var names = {
+        de: cleanTitle(artikel.de || lab.de || ''),
+        en: cleanTitle(artikel.en || lab.en || ''),
+        local: localLang ? cleanTitle(artikel[localLang] || lab[localLang] || '') : ''
+      };
+      if (!names.de && !names.en && !names.local) names.local = cleanTitle(titles[0]);
+      var nm = pickNames(names);
       var p31 = info ? info.p31 : [];
       var classLabels = [];
       p31.forEach(function (q) { var c = classes[q]; if (c) { classLabels.push(c.en, c.de); } });
-      var typ = classify(p31, classLabels, info ? [info.en, info.de] : [], titles, cfg);
+      var descs = [dsc.en, dsc.de].concat(localLang && localLang !== 'en' && localLang !== 'de' ? [dsc[localLang]] : []);
+      var typ = classify(p31, classLabels, descs, titles, cfg);
       var t = typeInfo(typ, cfg);
       var p = {
         id: key,
-        name: cleanTitle(nameSrc),
+        name: nm.name,
+        name2: nm.name2,
+        namen: names,
         lat: lat, lon: lon,
         wikidata: g.wikidata,
         wikipedia: longest ? longest.lang + ':' + longest.title : '',
@@ -398,7 +448,7 @@
         geprueft: true,
         warum: '',
         dauer_min: 0,
-        beschreibung: info ? (info.de || info.en || '') : '',
+        beschreibung: dsc.de || dsc.en || (localLang ? dsc[localLang] : '') || '',
         klassen: classLabels.filter(Boolean).filter(function (x, i, a) { return a.indexOf(x) === i; }).slice(0, 4),
         sprachversionen: info ? info.s : Object.keys(artikel).length,
         laenge: longest ? (longest.length || 0) : 0,
@@ -422,6 +472,14 @@
     });
   }
 
+  /** Main local language of a place (from Nominatim country/region), e.g. "fr" for Morges, "en" for Manchester. */
+  function localLanguage(placeInfo, cfg) {
+    var map = cfg.landessprachen || {};
+    var cc = placeInfo && placeInfo.cc, region = placeInfo && placeInfo.region;
+    var v = (region && map[region]) || (cc && map[cc]) || null;
+    return Array.isArray(v) ? v[0] : v;
+  }
+
   /** Wikipedia languages for a place: configured ones plus the local language(s). */
   function languagesFor(placeInfo, cfg) {
     var langs = (cfg.wikipedia.sprachen || ['de', 'en']).slice();
@@ -435,7 +493,7 @@
 
   /**
    * Full pipeline: Wikipedia (all languages) -> Wikidata items -> class labels -> places.
-   * opts: {lat, lon, radius, cfg, fetch, wdCache, langs, onProgress(text), retryDelays}
+   * opts: {lat, lon, radius, cfg, fetch, wdCache, langs, localLang, onProgress(text), retryDelays}
    */
   function loadPlaces(opts) {
     var cfg = opts.cfg, f = opts.fetch, prog = opts.onProgress || function () {};
@@ -455,9 +513,11 @@
       ok.forEach(function (lr) { lr.pages.forEach(function (pg) { if (pg.wikidata) ids[pg.wikidata] = 1; }); });
       var idList = Object.keys(ids);
       prog('Lade Wikidata (' + idList.length + ' Einträge) …');
+      var labelLangs = ['de', 'en'];
+      if (opts.localLang && labelLangs.indexOf(opts.localLang) < 0) labelLangs.push(opts.localLang);
       return loadWikidata(idList, cfg, f, opts.wdCache, function (d, n) {
         prog('Lade Wikidata ' + d + '/' + n + ' …');
-      }, opts.retryDelays).then(function (wdr) {
+      }, opts.retryDelays, labelLangs).then(function (wdr) {
         requests += wdr.requests;
         if (wdr.failedBatches) warnings.push('Wikidata: ' + wdr.failedBatches + ' Abfrage(n) fehlgeschlagen');
         var cls = {};
@@ -466,7 +526,7 @@
         return loadClassLabels(Object.keys(cls), f, opts.wdCache, opts.retryDelays).then(function (cr) {
           requests += cr.requests;
           if (cr.failedBatches) warnings.push('Wikidata-Klassen: ' + cr.failedBatches + ' Abfrage(n) fehlgeschlagen');
-          var places = sortPlaces(buildPlaces(ok, wdr.info, cr.info, cfg, { lat: opts.lat, lon: opts.lon }));
+          var places = sortPlaces(buildPlaces(ok, wdr.info, cr.info, cfg, { lat: opts.lat, lon: opts.lon }, opts.localLang || null));
           return {
             places: places,
             warnings: warnings,
@@ -495,6 +555,24 @@
         cc: (a.country_code || '').toLowerCase(),
         region: a['ISO3166-2-lvl4'] || ''
       };
+    });
+  }
+
+  /** Search a place by name (Nominatim, only on explicit user action, no autocomplete). */
+  function searchPlaces(q, f) {
+    var url = 'https://nominatim.openstreetmap.org/search?' + qs({
+      q: q, format: 'jsonv2', limit: 5, 'accept-language': 'de'
+    });
+    return getJson(url, f).then(function (list) {
+      return (list || []).map(function (r) {
+        var parts = String(r.display_name || '').split(', ');
+        return {
+          name: r.name || parts[0] || q,
+          detail: parts.slice(1).filter(function (x, i, a) { return i < 3 || i === a.length - 1; }).join(', '),
+          lat: parseFloat(r.lat), lon: parseFloat(r.lon),
+          bbox: r.boundingbox ? r.boundingbox.map(parseFloat) : null // [south, north, west, east]
+        };
+      }).filter(function (r) { return !isNaN(r.lat) && !isNaN(r.lon); });
     });
   }
 
@@ -535,7 +613,8 @@
     wikipediaQueryUrl: wikipediaQueryUrl, loadWikipedia: loadWikipedia, loadWikidata: loadWikidata,
     loadClassLabels: loadClassLabels, getJsonRetry: getJsonRetry,
     buildPlaces: buildPlaces, sortPlaces: sortPlaces, loadPlaces: loadPlaces,
-    reverseGeocode: reverseGeocode, languagesFor: languagesFor,
+    reverseGeocode: reverseGeocode, languagesFor: languagesFor, localLanguage: localLanguage,
+    searchPlaces: searchPlaces, isLatin: isLatin, pickNames: pickNames,
     nameWithPlace: nameWithPlace, gmapsSearchUrl: gmapsSearchUrl, gmapsPinUrl: gmapsPinUrl,
     geoSearchUrl: geoSearchUrl, geoPinUrl: geoPinUrl, wikipediaUrl: wikipediaUrl,
     tripadvisorUrl: tripadvisorUrl, merkZeile: merkZeile

@@ -1,4 +1,4 @@
-/* Reiseführer – styles (v0.2.1). Mobile first, tuned for ~412 px wide phones (Pixel 8). */
+/* Reiseführer – styles (v0.2.2). Mobile first, tuned for ~412 px wide phones (Pixel 8). */
 
 :root {
   --bg: #f5f4f0; --card: #ffffff; --text: #1c1b19; --muted: #66645e; --line: #e2e0da;
@@ -55,7 +55,7 @@ button { cursor: pointer; }
 .map-top .spacer { flex: 1; pointer-events: none; }
 .banner:not([hidden]) ~ #mapWrap .map-top { top: 10px; }
 .chip {
-  max-width: 55%; padding: 6px 12px; border-radius: 16px; background: var(--card); color: var(--text);
+  max-width: calc(100% - 170px); padding: 6px 12px; border-radius: 16px; background: var(--card); color: var(--text);
   box-shadow: var(--shadow); font-size: 14px; font-weight: 600;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
@@ -145,6 +145,7 @@ button { cursor: pointer; }
   display: block; font-weight: 600; font-size: 16px; line-height: 22px;
   user-select: text; -webkit-user-select: text; overflow-wrap: anywhere;
 }
+.it-name2 { display: block; font-size: 14px; line-height: 19px; color: var(--text); opacity: .8; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
 .it-meta, .it-desc { display: block; font-size: 13px; color: var(--muted); line-height: 18px; }
 .it-desc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .it-merk {
@@ -174,6 +175,21 @@ button { cursor: pointer; }
   user-select: text; -webkit-user-select: text; overflow-wrap: anywhere;
 }
 .sheet-body { overflow-y: auto; padding: 0 16px calc(16px + var(--safe-bottom)); overscroll-behavior: contain; }
+.pl-name2 { margin: -2px 0 6px; font-size: 15px; color: var(--muted); user-select: text; -webkit-user-select: text; }
+.search-form { display: flex; gap: 8px; margin: 4px 0 8px; }
+.search-form input {
+  flex: 1; min-width: 0; min-height: 48px; padding: 0 12px; border-radius: 12px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--text); font-size: 16px;
+}
+.search-form button { flex: 0 0 auto; padding: 0 16px; }
+.hits { list-style: none; margin: 0; padding: 0; }
+.hits li { border-bottom: 1px solid var(--line); }
+.hits button {
+  display: block; width: 100%; min-height: 52px; padding: 8px 2px; border: 0; background: transparent;
+  text-align: left; color: var(--text);
+}
+.hits b { display: block; font-weight: 600; }
+.hits span { display: block; font-size: 13px; color: var(--muted); }
 .pl-stars { font-size: 18px; font-weight: 700; margin: 2px 0; }
 .pl-stars span { font-size: 15px; font-weight: 600; color: var(--text); margin-left: 6px; }
 .pl-meta { margin: 2px 0; color: var(--muted); font-size: 14px; }

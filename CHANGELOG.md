@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.2.2 – 03.11.2026 – Ortssuche, lokale Namen, Museen und Aussichtspunkte immer
+
+- **Ort suchen** (🔍 oben rechts): Ortsname eingeben, aus bis zu 5 Treffern wählen. Die Karte springt hin und sucht sofort Sehenswertes im eingestellten Umkreis. Die letzten 5 Suchen werden gemerkt. Suche über Nominatim, nur auf „Suchen“ (keine Vorschläge beim Tippen, so verlangen es die Nutzungsregeln).
+- **Namen** (Entscheidung Nutzer): In Liste und Ortsfenster steht zuerst der **lokale Name**, darunter der **deutsche**, wenn er anders lautet. Ist der lokale Name nicht in lateinischer Schrift (z. B. Griechisch, Japanisch), steht zuerst der **englische** Name. Ist die Landessprache unbekannt, der deutsche. „Name kopieren“, Google Maps und Teilen benutzen die erste Zeile. Lokale Namen kommen aus der Wikipedia der Landessprache oder aus Wikidata.
+- **Museen immer mit mindestens ★** (`min_sterne` je Typ in `config.json`).
+- **Aussichtspunkte:** neuer Typ „Aussichtspunkt“ (auch Aussichtsturm, Belvédère), immer mindestens ★. In Wikipedia selten, mehr kommen mit OpenStreetMap (v0.4).
+- **Parks** unverändert: Sterne nur, wenn die Punkte es hergeben (Entscheidung Nutzer).
+- Wikidata-Beschreibungen jetzt auch in der Landessprache (z. B. „musée à Morges“), dadurch bessere Typ-Erkennung.
+- Landessprachen ergänzt (u. a. Deutschland/Österreich, Russland, Japan, China, Korea).
+
+### Annahmen/Abweichungen
+
+- Die Ortssuche ist in PROJEKT.md nicht vorgesehen; auf Wunsch des Nutzers ergänzt.
+- „Lesbar“ = lateinische Schrift (inkl. Umlaute/Akzente, z. B. Polnisch, Tschechisch). Griechisch, Kyrillisch, Arabisch, Hebräisch und ostasiatische Schriften gelten als nicht lesbar.
+- Wikidata-Zwischenspeicher aus v0.2.1 wird beim ersten Suchen einmal neu geladen (jetzt mit Namen).
+
 ## v0.2.1 – 03.11.2026 – Sterne nach erstem Handy-Test korrigiert
 
 Anlass: Goldliste am Handy (v0.2.0) nicht bestanden (Science and Industry Museum ★★), Reihenfolge wirr, Wikipedia de „too busy“, Museen in Morges fehlten.
