@@ -1,8 +1,8 @@
-/* Reiseführer – app (v0.7.0). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.7.1). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.7.0';
+  var VERSION = '0.7.1';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
@@ -68,6 +68,8 @@
   var wdCache = { get: function (k) { return wdStore[k]; }, set: function (k, v) { wdStore[k] = v; } };
   var userPos = null, busy = false, selectedId = null;
   var map, markerLayer, searchCircle, userMarker, userAcc, areaLayer;
+  // v0.7.1: a search hit only moves the map; the search runs when "Hier suchen" is tapped
+  var pendingHit = null, hitMarker = null;
   var run = null;      // running search {t0, text, phase, control, cancelled, timer}
   var areas = [];      // prepared areas (index; places are in IndexedDB "area:<id>")
   var prep = null;     // running preparation
@@ -422,7 +424,7 @@
       html = '<p class="stars s' + it.s + '">' + C.starsText(it.s) + ' <span class="small">Ausflugsziel außerhalb von Städten · ' + esc(C.typeInfo(x.typ, cfg).label) + (x.unesco ? ' · UNESCO-Welterbe' : '') + '</span></p>';
     }
     html += '<div class="actions">' +
-        '<button class="btn primary" type="button" data-a="cityzoom">🔍 Hineinzoomen und suchen</button>' +
+        '<button class="btn primary" type="button" data-a="cityzoom">🔍 Hineinzoomen</button>' +
         '<a class="btn" href="' + C.cityWikiUrl(x.q) + '" target="_blank" rel="noopener">Wikipedia</a>' +
       '</div>' +
       '<p class="small">Stadt-Sterne sind eine Faustregel: Summe der bekanntesten Sehenswürdigkeiten (Wikidata, Sprachversionen und Denkmalstatus)' + (stand ? ', Stand ' + esc(stand) : '') + '.</p>';
@@ -433,7 +435,7 @@
   function cityZoom(lat, lon, z) {
     closeSheet();
     map.setView([lat, lon], z, { animate: false });
-    doSearch(viewBbox());
+    toast('Ausschnitt einstellen, dann „Hier suchen“ tippen.', 3500);
   }
 
   // ---- (re)compute in the phone, one country after the other
@@ -1622,22 +1624,40 @@
     rememberHit(h);
     closeSheet();
     map.setView([h.lat, h.lon], h.poi ? 15 : (cfg.suche.standort_zoom || 14), { animate: false });
-    doSearch(viewBbox(), { onDone: h.poi ? function () {
-      // a sight was searched: open the nearest loaded place (within 250 m)
+    // only move the map: the user sets the section first and then taps "Hier suchen"
+    if (hitMarker) { map.removeLayer(hitMarker); hitMarker = null; }
+    pendingHit = h.poi ? h : null;
+    if (h.poi) {
+      hitMarker = L.marker([h.lat, h.lon], {
+        icon: L.divIcon({ className: 'mk-wrap', html: '<div class="hit-pin"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }),
+        interactive: false, keyboard: false, zIndexOffset: 2500
+      }).addTo(map);
+    }
+    toast('Karte steht bei „' + h.name + '“. Ausschnitt einstellen, dann „Hier suchen“ tippen.', 4000);
+  }
+  /** "Hier suchen": search the visible section; after a sight was searched, open it if it is in the list. */
+  function searchHere() {
+    var h = pendingHit, b = viewBbox();
+    doSearch(b, { onDone: h ? function () {
+      // the hit stays marked until a search really ran (not when the section was too large)
+      if (pendingHit === h) pendingHit = null;
+      if (hitMarker && !pendingHit) { map.removeLayer(hitMarker); hitMarker = null; }
+      if (!C.inBbox(h, b)) return;
+      // open the nearest loaded place (within 250 m) of the searched sight
       var best = null, bd = 250;
       (last && last.places || []).forEach(function (p) {
         var d = C.haversine(h.lat, h.lon, p.lat, p.lon);
         if (d < bd) { bd = d; best = p; }
       });
       if (best) select(best.id, 'list');
-      else toast('„' + h.name + '“ hat keinen Wikipedia-Eintrag hier – Karte steht dort.', 4000);
+      else toast('„' + h.name + '“ hat keinen Wikipedia-Eintrag hier.', 4000);
     } : null });
   }
 
   // ---------------------------------------------------------- UI events
   function bindUI() {
     $('btnLocate').addEventListener('click', locate);
-    $('btnHere').addEventListener('click', function () { doSearch(viewBbox()); });
+    $('btnHere').addEventListener('click', searchHere);
     $('status').addEventListener('click', function (e) {
       var el = e.target.closest('[data-a]');
       if (!el) return;

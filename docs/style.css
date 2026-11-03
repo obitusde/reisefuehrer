@@ -325,3 +325,6 @@ details.why summary { min-height: 40px; display: flex; align-items: center; colo
 @media (min-width: 700px) {
   .sheet { left: auto; right: 16px; width: 420px; bottom: 16px; border-radius: 16px; }
 }
+
+/* v0.7.1: where a searched sight is (until "Hier suchen") */
+.hit-pin { width: 18px; height: 18px; border-radius: 50%; border: 3px solid #d93025; background: rgba(217, 48, 37, .15); box-sizing: border-box; }

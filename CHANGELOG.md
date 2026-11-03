@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.7.1 – 03.11.2026 – Suche springt nur noch
+
+Wunsch Nutzer: Nach dem Springen zu einem Suchtreffer nicht gleich suchen, sondern erst die Karte einstellen und dann im gewählten Ausschnitt suchen.
+
+- **Suchtreffer (🔎)**: Die Karte springt nur noch dorthin. Gesucht wird erst mit „Hier suchen“, und zwar im Ausschnitt, den man bis dahin eingestellt hat.
+- **Gesuchte Sehenswürdigkeit** (z. B. ein Museum): Ein roter Ring zeigt, wo sie liegt. Liegt sie nach „Hier suchen“ im Ausschnitt, öffnet sich ihr Fenster wie bisher. Danach verschwindet der Ring.
+- **Stadt-Sterne**: „🔍 Hineinzoomen“ (vorher „Hineinzoomen und suchen“) und das Antippen einer Sehenswürdigkeit im Stadtfenster zoomen nur noch.
+
+### Annahmen/Abweichungen
+
+- **„📍 Standort“ sucht weiterhin sofort**: Der Wunsch betraf die Suche nach Orten. Das lässt sich genauso umstellen, falls gewünscht.
+- Ist der Ausschnitt bei „Hier suchen“ zu groß, bleibt der rote Ring stehen, bis eine Suche wirklich gelaufen ist.
+
 ## v0.7.0 – 03.11.2026 – Stadt-Sterne für Ausflüge, Symbole auf der Karte, Installieren
 
 Wunsch Nutzer: Symbole je Art, beim Herauszoomen ein Stern pro Stadt (für Ausflüge), Installation reparieren. Vorgezogen aus v0.9 (PROJEKT.md 6c).

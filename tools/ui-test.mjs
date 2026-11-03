@@ -126,7 +126,7 @@ try {
   if (process.env.DEBUG) { page.on('request', (r) => { if (/extracts|mymemory/.test(r.url())) console.log('REQ', decodeURIComponent(r.url()).slice(0, 160)); }); page.on('requestfailed', (r) => console.log('FAILED', r.url().slice(0, 120), r.failure() && r.failure().errorText)); page.on('console', (m) => console.log('CONSOLE', m.text())); }
   await page.goto(BASE + 'index.html');
   await page.waitForSelector('.empty');
-  ok((await page.textContent('#version')) === 'v0.7.0', 'footer version');
+  ok((await page.textContent('#version')) === 'v0.7.1', 'footer version');
   if (OUT) await page.screenshot({ path: OUT + '/01-start.png' });
 
   await page.click('#btnLocate');
@@ -306,7 +306,12 @@ try {
   if (OUT) await page.screenshot({ path: OUT + '/09-suche.png' });
   await page.click('.hits button >> nth=0');
   await page.waitForSelector('#sheet', { state: 'hidden' });
-  await page.waitForFunction(() => !document.getElementById('btnHere').disabled);
+  // v0.7.1: the hit only moves the map, the search starts with "Hier suchen"
+  await page.waitForTimeout(400);
+  ok(!(await page.evaluate(() => localStorage.getItem('rf.last'))) && (await page.textContent('#btnHere')) === 'Hier suchen' && Math.abs((await page.evaluate(() => window.__rfMap.getCenter().lat)) - 53.4795) < 0.01,
+    'v0.7.1 search hit moves the map without searching');
+  await page.click('#btnHere');
+  await page.waitForFunction(() => localStorage.getItem('rf.last') && !document.getElementById('btnHere').disabled);
   const cen = await page.evaluate(() => JSON.parse(localStorage.getItem('rf.last')));
   ok(cen && Math.abs(cen.lat - 53.4795) < 0.001 && cen.places.length > 5, 'search jumped and loaded places');
   await page.click('#btnSearch');
@@ -357,7 +362,11 @@ try {
   await page.waitForFunction(() => document.getElementById('searchHits').textContent.includes('Imperial War Museum North'));
   ok((await page.textContent('#searchHits')).includes('Museum ·'), 'sight hit typed as museum');
   await page.click('#searchHits .hits button >> nth=0');
+  await page.waitForSelector('#sheet', { state: 'hidden' });
+  ok(await page.isVisible('.hit-pin'), 'v0.7.1 searched sight marked on the map');
+  await page.click('#btnHere');
   await page.waitForFunction(() => !document.getElementById('sheet').hidden && !document.getElementById('sheetTitle').textContent.includes('suchen'), null, { timeout: 10000 });
+  ok(!(await page.$('.hit-pin')), 'v0.7.1 mark removed after the search');
   ok(true, 'POI search opens a place sheet: ' + await page.textContent('#sheetTitle'));
   await page.evaluate(() => history.back());
   await page.waitForSelector('#sheet', { state: 'hidden' });
@@ -383,6 +392,8 @@ try {
   ok((await page.getAttribute('#sheetBody a.btn', 'href')).includes('Special:GoToLinkedPage/dewiki/Q18125'), 'v0.7 city Wikipedia link');
   if (OUT) await page.screenshot({ path: OUT + '/11-stadt.png' });
   await page.click('[data-a="cityzoom"]');
+  await page.waitForFunction(() => window.__rfMap.getZoom() === 14);
+  await page.click('#btnHere');
   await page.waitForFunction(() => window.__rfMap.getZoom() === 14 && document.querySelectorAll('.mk').length > 0, null, { timeout: 10000 });
   ok((await page.$$('.ct')).length === 0, 'v0.7 zoom in: city markers gone, places back');
   await page.waitForSelector('.item', { timeout: 10000 });
@@ -410,10 +421,10 @@ try {
   ok(splitNow && +splitNow > 12, 'split persisted: ' + splitNow);
 
   // update banner (fake newer version, then ?testupdate=1)
-  fakeVersion = '0.7.1';
+  fakeVersion = '0.7.2';
   await page.reload();
   await page.waitForSelector('#banner:not([hidden])');
-  ok((await page.textContent('#bannerText')).includes('v0.7.1'), 'banner shows remote version');
+  ok((await page.textContent('#bannerText')).includes('v0.7.2'), 'banner shows remote version');
   if (OUT) await page.screenshot({ path: OUT + '/05-banner.png' });
   fakeVersion = null;
   await page.click('#bannerBtn');
@@ -544,9 +555,9 @@ try {
   const swOk = await p3.evaluate(() => navigator.serviceWorker.ready.then((r) => !!r.active)).catch(() => false);
   ok(swOk, 'service worker active');
   const cacheKeys = await p3.evaluate(async () => { await new Promise((r) => setTimeout(r, 800)); return caches.keys(); });
-  ok(cacheKeys.includes('rf-app-0.7.0'), 'app cache with version: ' + cacheKeys.join(','));
-  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.7.0')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
-  ok(cached.some((u) => u.includes('app.js?v=0.7.0')), 'shell precached');
+  ok(cacheKeys.includes('rf-app-0.7.1'), 'app cache with version: ' + cacheKeys.join(','));
+  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.7.1')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
+  ok(cached.some((u) => u.includes('app.js?v=0.7.1')), 'shell precached');
   ok(errs3.length === 0, 'sw: no JS errors ' + errs3.join(' | '));
   await ctx3.close();
 
