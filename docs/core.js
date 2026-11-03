@@ -220,15 +220,15 @@
   }
 
   function isTransient(e) {
-    return (e && (e.status === 429 || e.status >= 500)) || /busy|too many|try again|timeout/i.test((e && e.message) || '');
+    return (e && (e.status === 429 || e.status >= 500 || e.timeout)) || /busy|too many|try again|timeout/i.test((e && e.message) || '');
   }
 
   // Retries transient failures (Wikipedia "Search is currently too busy", HTTP 429/5xx)
-  function getJsonRetry(url, f, delays) {
+  function getJsonRetry(url, f, delays, timeoutMs) {
     delays = delays || [1500, 3000];
     var attempt = 0;
     function go() {
-      return getJson(url, f).then(function (d) {
+      return getJson(url, f, timeoutMs).then(function (d) {
         if (d && d.error) { var e = new Error(d.error.info || d.error.code || 'API-Fehler'); e.api = true; throw e; }
         return d;
       }).catch(function (e) {
@@ -1653,23 +1653,9 @@
     return Math.max(s, e);
   }
 
-  /**
-   * Cities and big sights of one country from the loaded items.
-   * land: {code, qid, bbox}. Returns {staedte: [...], orte: [...], stats}.
-   * Stars are computed again in the app from `score` (thresholds in config), so they can be tuned without recomputing.
-   */
-  function computeCities(items, cfg, land) {
-    var c = cfg.staedte, cell = 0.2, merge = c.zusammen_faktor || 0.5;
-    var cands = [], sights = [];
-    items.forEach(function (x) {
-      if (isCityItem(x, cfg)) { if (isUnesco(x, cfg)) x.u = true; cands.push(x); }
-      else {
-        var s = sightScore(x, cfg);
-        if (s) sights.push({ x: x, score: s.score, typ: s.typ, natur: s.natur });
-        else x.fate = 'zählt nicht';
-      }
-    });
-    // One marker per city: candidates inside the radius of a bigger one are merged into it
+  /** One marker per city: candidates inside the radius of a bigger one are merged into it. */
+  function mergeCityCands(cands, cfg, sights) {
+    var cell = 0.2, merge = cfg.staedte.zusammen_faktor || 0.5;
     cands.sort(function (a, b) { return (b.pop - a.pop) || (b.sl - a.sl); });
     var kept = [], keptGrid = {};
     cands.forEach(function (x) {
@@ -1696,6 +1682,26 @@
       var key = a + ',' + b;
       (keptGrid[key] = keptGrid[key] || []).push(x);
     });
+    return kept;
+  }
+
+  /**
+   * Cities and big sights of one country from the loaded items.
+   * land: {code, qid, bbox}. Returns {staedte: [...], orte: [...], stats}.
+   * Stars are computed again in the app from `score` (thresholds in config), so they can be tuned without recomputing.
+   */
+  function computeCities(items, cfg, land) {
+    var c = cfg.staedte, cell = 0.2;
+    var cands = [], sights = [];
+    items.forEach(function (x) {
+      if (isCityItem(x, cfg)) { if (isUnesco(x, cfg)) x.u = true; cands.push(x); }
+      else {
+        var s = sightScore(x, cfg);
+        if (s) sights.push({ x: x, score: s.score, typ: s.typ, natur: s.natur });
+        else x.fate = 'zählt nicht';
+      }
+    });
+    var kept = mergeCityCands(cands, cfg, sights);
     var near = gridIndex(kept, cell);
     var outside = [];
     sights.forEach(function (s) {
@@ -1760,17 +1766,18 @@
         (byTitle[key] = byTitle[key] || []).push(x);
         if (byTitle[key].length === 1) titles.push(t);
       });
-      for (var i = 0; i < titles.length; i += 50) jobs.push({ l: l, titles: titles.slice(i, i + 50) });
+      var n = c.aufrufe_stapel || 50;
+      for (var i = 0; i < titles.length; i += n) jobs.push({ l: l, titles: titles.slice(i, i + n) });
     });
     items.forEach(function (x) { x.pv = 0; });
-    var done = 0, failed = 0, t0 = Date.now();
+    var done = 0, failed = 0, errors = {}, t0 = Date.now();
     function one(job) {
       var sum = {}, norm = {};
       function req(cont) {
         var url = 'https://' + job.l + '.wikipedia.org/w/api.php?' + qs(Object.assign({
           action: 'query', format: 'json', formatversion: 2, prop: 'pageviews', pvipdays: days, origin: '*', titles: job.titles.join('|')
         }, cont || {}));
-        return getJsonRetry(url, f, [2000, 5000]).then(function (d) {
+        return getJsonRetry(url, f, [2000, 5000, 10000], (c.aufrufe_timeout_s || 40) * 1000).then(function (d) {
           var q = d.query || {};
           (q.normalized || []).forEach(function (n) { norm[n.to] = n.from; });
           (q.pages || []).forEach(function (pg) {
@@ -1784,12 +1791,133 @@
       }
       return req().then(function () {
         Object.keys(sum).forEach(function (t) { (byTitle[job.l + ':' + t] || []).forEach(function (x) { x.pv += sum[t] / days; }); });
-      }, function () { failed++; }).then(function () { done++; if (o.onProgress) o.onProgress(done, jobs.length); });
+      }, function (e) { failed++; var k = (e && e.message) || '?'; errors[k] = (errors[k] || 0) + 1; })
+        .then(function () { done++; if (o.onProgress) o.onProgress(done, jobs.length); });
     }
     return runLimited(jobs, c.aufrufe_parallel || 4, one).then(function () {
       items.forEach(function (x) { x.pv = Math.round(x.pv * 10) / 10; });
-      return { requests: jobs.length, failed: failed, ms: Date.now() - t0 };
+      return { requests: jobs.length, failed: failed, errors: errors, ms: Date.now() - t0 };
     });
+  }
+
+  /**
+   * Article titles (x.titel) and Wikivoyage flag (x.wv) for a few items, from Wikidata wbgetentities (50 per request).
+   * Much lighter than asking for them in the tile query.
+   */
+  function loadSitelinks(items, cfg, f, o) {
+    o = o || {};
+    var c = cfg.staedte, langs = c.titel_sprachen || ['de', 'en'], sites = langs.map(function (l) { return l + 'wiki'; });
+    var wvs = c.wikivoyage ? langs.map(function (l) { return l + 'wikivoyage'; }) : [];
+    var byQ = {}, ids = [];
+    items.forEach(function (x) { if (!byQ[x.q]) { byQ[x.q] = []; ids.push(x.q); } byQ[x.q].push(x); });
+    var jobs = [];
+    for (var i = 0; i < ids.length; i += 50) jobs.push(ids.slice(i, i + 50));
+    var failed = 0, t0 = Date.now();
+    return runLimited(jobs, 2, function (batch) {
+      var url = 'https://www.wikidata.org/w/api.php?' + qs({
+        action: 'wbgetentities', format: 'json', origin: '*', props: 'sitelinks', sitefilter: sites.concat(wvs).join('|'), ids: batch.join('|')
+      });
+      return getJsonRetry(url, f, [2000, 5000], 40000).then(function (d) {
+        Object.keys(d.entities || {}).forEach(function (q) {
+          var sl = d.entities[q].sitelinks || {};
+          (byQ[q] || []).forEach(function (x) {
+            x.titel = {};
+            langs.forEach(function (l) { if (sl[l + 'wiki']) x.titel[l] = sl[l + 'wiki'].title; });
+            x.wv = wvs.some(function (k) { return !!sl[k]; });
+          });
+        });
+      }, function () { failed++; });
+    }).then(function () { return { requests: jobs.length, failed: failed, ms: Date.now() - t0 }; });
+  }
+
+  function sameNameKey(name) {
+    return norm(String(name || '').replace(/\([^)]*\)/g, ' ')).replace(/^ (the|le|la|les|l|il|der|die|das) /, ' ');
+  }
+  function starsFrom(score, th) {
+    return score >= th['3'] ? 3 : score >= th['2'] ? 2 : score >= th['1'] ? 1 : 0;
+  }
+
+  /** Items worth asking page views for: the best sights and the best-known places (before page views are known). */
+  function directoryCandidates(items, cfg) {
+    var v = cfg.verzeichnis, sights = [], places = [];
+    items.forEach(function (x) {
+      if (isCityItem(x, cfg)) { if (x.pop >= (v.min_einwohner || 0)) places.push(x); return; }
+      var s = sightScore(x, cfg);
+      if (s && s.score >= (v.aufrufe_ab || 0)) sights.push({ x: x, s: s.score });
+    });
+    sights.sort(function (a, b) { return b.s - a.s; });
+    places.sort(function (a, b) { return b.sl - a.sl; });
+    return sights.slice(0, v.aufrufe_orte || 250).map(function (o) { return o.x; }).concat(places.slice(0, v.aufrufe_staedte || 150));
+  }
+
+  /**
+   * Directory of a region like a printed guide: every sight with points and stars, every town with stars,
+   * and for each marker the zoom from which it is shown (z):
+   *   ★★★ sights and ★★/★★★ towns everywhere; ★★ sights, ★ towns and ★ sights outside starred towns from `zoom.region`;
+   *   all other sights with at least `nah_ab` points from `zoom.nah`.
+   * Sights shown on their own (★★ and more) count only partly for their town, so that a village is not
+   * starred just because a famous castle lies in it (it gets its own marker instead).
+   */
+  function computeDirectory(items, cfg, land) {
+    var v = cfg.verzeichnis, c = cfg.staedte, cell = 0.2, zr = (v.zoom && v.zoom.region) || 9, zn = (v.zoom && v.zoom.nah) || 12;
+    var cands = [], sights = [];
+    items.forEach(function (x) {
+      if (isCityItem(x, cfg) && x.pop >= (v.min_einwohner || 0)) { if (isUnesco(x, cfg)) x.u = true; cands.push(x); return; }
+      var s = sightScore(x, cfg);
+      if (s) sights.push({ x: x, score: s.score, typ: s.typ, natur: s.natur });
+      else x.fate = isCityItem(x, cfg) ? 'kleiner Ort (' + x.pop + ' Einw.)' : 'zählt nicht';
+    });
+    // the same place twice (building and collection, "Musée Ariana" in two items): keep the better one
+    sights.sort(function (a, b) { return b.score - a.score; });
+    var seen = {}, uniq = [];
+    sights.forEach(function (s) {
+      var k = sameNameKey(s.x.name), dup = (seen[k] || []).filter(function (o) { return haversine(o.x.lat, o.x.lon, s.x.lat, s.x.lon) < (v.doppelt_m || 500); })[0];
+      if (dup) { s.x.fate = 'doppelt zu ' + dup.x.name; return; }
+      (seen[k] = seen[k] || []).push(s);
+      uniq.push(s);
+    });
+    sights = uniq;
+    var kept = mergeCityCands(cands, cfg, sights);
+    var near = gridIndex(kept, cell);
+    sights.forEach(function (s) {
+      s.st = starsFrom(s.score, v.sterne);
+      s.alone = s.st >= 2;
+      if (s.natur) { s.x.fate = 'Natur ' + s.score; return; }
+      var best = null, bestQ = Infinity;
+      near(s.x.lat, s.x.lon).forEach(function (k) {
+        var d = haversine(k.lat, k.lon, s.x.lat, s.x.lon);
+        if (d < k.r && d / k.r < bestQ) { bestQ = d / k.r; best = k; }
+      });
+      s.city = best;
+      s.x.fate = (best ? 'zu ' + best.name : 'außerhalb') + ' ' + s.score + ' (' + s.typ + ')';
+      if (best) best.sights.push(s);
+    });
+    var inLand = function (x) { return !land || (x.land.length ? x.land.indexOf(land.qid) >= 0 : inBbox(x, land.bbox)); };
+    var g = v.stadt || {}, staedte = [];
+    kept.forEach(function (k) {
+      k.sights.sort(function (a, b) { return b.score - a.score; });
+      // how well-known the town is, plus what there is to see (only the part above `basis` points counts)
+      var fame = (g.sprachen || 0) * log10p(k.sl) + (g.aufrufe || 0) * log10p(k.pv) + (k.wv ? g.wikivoyage || 0 : 0) + (k.cap ? g.hauptstadt || 0 : 0);
+      var see = 0;
+      k.sights.slice(0, g.top_n || 5).forEach(function (s) { see += Math.max(0, s.score - (g.basis || 5)) * (s.alone ? (g.einzel_anteil != null ? g.einzel_anteil : 1) : 1); });
+      var sum = round1(fame + see);
+      k.st = starsFrom(sum, v.stadt_sterne);
+      k.score = sum;
+      if (!inLand(k) || (!k.sights.length && !k.st)) return;
+      staedte.push({
+        name: k.name, q: k.q, lat: +k.lat.toFixed(4), lon: +k.lon.toFixed(4), score: sum, st: k.st, z: k.st >= 2 ? 0 : k.st ? zr : zn,
+        pop: k.pop, sl: k.sl, pv: k.pv, wv: k.wv || undefined, n: k.sights.length, bekannt: round1(fame), sehen: round1(see),
+        top: k.sights.slice(0, 3).map(function (s) { return [s.x.name, s.score]; })
+      });
+    });
+    staedte.sort(function (a, b) { return b.score - a.score; });
+    var orte = sights.filter(function (s) { return s.score >= (v.nah_ab || 0) && inLand(s.x); }).map(function (s) {
+      var inStar = s.city && s.city.st > 0;
+      var z = s.st >= 3 ? 0 : s.st === 2 ? zr : s.st === 1 && !inStar ? zr : zn;
+      return { name: s.x.name, q: s.x.q, lat: +s.x.lat.toFixed(4), lon: +s.x.lon.toFixed(4), score: s.score, st: s.st, z: z, typ: s.typ,
+        natur: s.natur || undefined, unesco: s.x.u || undefined, stadt: s.city ? s.city.name : undefined };
+    });
+    return { staedte: staedte, orte: orte, stats: { items: items.length, kandidaten: cands.length, staedte_gesamt: kept.length, orte_gesamt: sights.length } };
   }
 
   /** Whole country: tiles over its bounding box, load, compute. */
@@ -1837,8 +1965,8 @@
     nameWithPlace: nameWithPlace, gmapsSearchUrl: gmapsSearchUrl, gmapsPinUrl: gmapsPinUrl,
     geoSearchUrl: geoSearchUrl, geoPinUrl: geoPinUrl, wikipediaUrl: wikipediaUrl,
     tripadvisorUrl: tripadvisorUrl, merkZeile: merkZeile,
-    iconFor: iconFor, cityTiles: cityTiles, splitTile: splitTile, citySparql: citySparql, parseCityRows: parseCityRows,
+    iconFor: iconFor, cityTiles: cityTiles, tileKey: tileKey, splitTile: splitTile, citySparql: citySparql, parseCityRows: parseCityRows,
     loadCityTiles: loadCityTiles, isCityItem: isCityItem, cityRadius: cityRadius, sightScore: sightScore,
-    computeCities: computeCities, loadPageviews: loadPageviews, cityStars: cityStars, ortStars: ortStars, loadCountryCities: loadCountryCities, bboxOf: bboxOf, cityWikiUrl: cityWikiUrl
+    computeCities: computeCities, loadPageviews: loadPageviews, loadSitelinks: loadSitelinks, directoryCandidates: directoryCandidates, computeDirectory: computeDirectory, cityStars: cityStars, ortStars: ortStars, loadCountryCities: loadCountryCities, bboxOf: bboxOf, cityWikiUrl: cityWikiUrl
   };
 });
