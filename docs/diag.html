@@ -80,12 +80,62 @@
   .stat b { font-variant-numeric: tabular-nums; }
   footer { text-align: center; color: var(--muted); font-size: 0.85rem; margin-top: 24px; }
   @media (max-width: 380px) { .results { grid-template-columns: 1fr; } }
+  details.fold > summary { list-style: none; cursor: pointer; }
+  details.fold > summary::-webkit-details-marker { display: none; }
+  details.fold > summary h2 { display: inline; }
+  details.fold > summary::after { content: " ▾"; color: var(--muted); }
+  details.fold[open] > summary::after { content: " ▴"; }
+  .out { font-size: 14px; margin: 4px 0 8px; }
+  .out:empty { display: none; }
+  .out table { width: 100%; border-collapse: collapse; }
+  .out td { padding: 4px 4px 4px 0; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .out td:first-child { white-space: nowrap; }
+  .pass { color: var(--ok); font-weight: 600; } .fail { color: var(--bad); font-weight: 600; } .warnc { color: var(--warn); font-weight: 600; }
+  .check { display: flex; align-items: center; gap: 10px; min-height: 48px; margin: 0; font-weight: 500;
+           border-bottom: 1px solid var(--border); }
+  .check input { width: 22px; height: 22px; flex: none; margin: 0; }
+  pre.top { font: 12px/1.45 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; word-break: break-word;
+            max-height: 320px; overflow: auto; background: var(--bg); padding: 8px; border-radius: 8px; margin: 6px 0; }
 </style>
 </head>
 <body>
 
-<h1>Diagnose: Link-Test</h1>
-<p class="muted">Prüft, welche Links auf diesem Handy funktionieren. Jeden Knopf antippen, zurück in den Browser wechseln, Ergebnis ankreuzen. Alles wird auf diesem Gerät gespeichert. Am Ende die Zusammenfassung kopieren und an Claude Code zurückmelden.</p>
+<h1>Diagnose</h1>
+<p class="muted">Tests für die aktuelle Etappe. Ergebnisse werden auf diesem Gerät gespeichert. Am Ende die Zusammenfassung kopieren und an Claude Code zurückmelden.</p>
+<p><a class="btn secondary" href="index.html">Zur App</a></p>
+
+<!-- ======================= v0.2 ======================= -->
+<section class="card" id="v02">
+  <h2>v0.2 – Karte, Orte, Sterne</h2>
+  <p class="muted">Schritt 1 und 2 brauchen Internet und dauern zusammen etwa 10–30 Sekunden.</p>
+  <button id="btnApi" type="button">1. Schnittstellen prüfen</button>
+  <div id="apiOut" class="out"></div>
+  <button id="btnGold" type="button">2. Goldliste Manchester prüfen</button>
+  <div id="goldStatus" class="status"></div>
+  <div id="goldOut" class="out"></div>
+
+  <h2 style="margin-top:16px">3. In der App ausprobieren</h2>
+  <p class="muted">App öffnen, Karte nach Manchester schieben (oder „Mein Standort“), „Hier suchen“, einen Ort antippen. Danach hierher zurück und abhaken.</p>
+  <a class="btn secondary" href="index.html">App öffnen</a>
+  <div id="checklist"></div>
+  <a class="btn secondary" href="index.html?testupdate=1">Update-Banner testen</a>
+  <p class="muted">Öffnet die App so, als gäbe es eine neue Version. Der Banner oben muss erscheinen; „Neu laden“ lädt die App normal neu.</p>
+  <label for="v2note">Notiz (was fiel auf?)</label>
+  <input type="text" id="v2note" placeholder="z. B. „Kathedrale nur ★★“" autocomplete="off">
+
+  <h2 style="margin-top:16px">Zusammenfassung v0.2</h2>
+  <textarea id="v2summary" readonly rows="12"></textarea>
+  <div class="row">
+    <button id="v2copy" type="button">Kopieren</button>
+    <button id="v2share" type="button" class="secondary">Teilen</button>
+  </div>
+  <div class="status" id="v2status"></div>
+</section>
+
+<!-- ======================= v0.1 ======================= -->
+<details class="fold card" id="v01">
+<summary><h2>v0.1 – Link-Test (erledigt)</h2></summary>
+<p class="muted">Prüft, welche Links auf diesem Handy funktionieren. Jeden Knopf antippen, zurück in den Browser wechseln, Ergebnis ankreuzen.</p>
 
 <!-- 5: Prompt length -->
 <section class="card" id="prompt-card">
@@ -176,13 +226,15 @@
   <button id="btnReset" class="secondary">Ergebnisse löschen</button>
 </section>
 
+</details>
+
 <footer>Reiseführer · Diagnose · <span id="version"></span></footer>
 
 <script>
 (function () {
   'use strict';
 
-  var VERSION = '0.1.1';
+  var VERSION = '0.2.0';
   var KEY = 'rf.diag.v1';
 
   var TESTS = [
@@ -403,7 +455,7 @@
 
   function renderSummary() {
     var lines = [];
-    lines.push('Reiseführer Diagnose v' + VERSION + ' – Link-Test');
+    lines.push('Reiseführer Diagnose v' + VERSION + ' – v0.1 Link-Test');
     lines.push('Datum: ' + new Date().toLocaleString('de-DE'));
     lines.push('Gerät: ' + navigator.userAgent);
     lines.push('Clipboard-API vorhanden: ' + (navigator.clipboard ? 'ja' : 'nein') +
@@ -491,6 +543,223 @@
   window.__diag = { buildPrompt: buildPrompt, extractId: extractId, urls: urls };
 
   init();
+})();
+</script>
+<script src="core.js?v=0.2.0"></script>
+<script>
+/* v0.2 diagnostics: API checks, gold list, manual checklist, summary */
+(function () {
+  'use strict';
+  var C = window.RF && window.RF.core;
+  var KEY = 'rf.diag.v2';
+  var GOLD_CENTER_TEXT = 'Manchester Rathaus 53.4792, -2.2442';
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function load() { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { return {}; } }
+  var st = load();
+  st.checks = st.checks || {};
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) { /* ignore */ } }
+  var f = function (u, o) { return fetch(u, o); };
+  var cfg = null;
+  function getCfg() {
+    if (cfg) return Promise.resolve(cfg);
+    return fetch('config.json', { cache: 'no-cache' }).then(function (r) { return r.text(); }).then(function (t) {
+      try { cfg = JSON.parse(t); } catch (e) { throw new Error('config.json ist kein gültiges JSON: ' + e.message); }
+      return cfg;
+    });
+  }
+
+  var CHECKS = [
+    ['c1', '„Name kopieren“ legt den Namen in die Zwischenablage'],
+    ['c2', '„In Google Maps“ öffnet den Ort'],
+    ['c3', '„Pin“ zeigt die richtige Stelle'],
+    ['c4', 'Merkliste: „Liste kopieren“/„Liste teilen“ funktioniert'],
+    ['c5', 'Update-Banner erscheint (Knopf unten)'],
+    ['c6', 'App lässt sich installieren (Chrome-Menü → „App installieren“)'],
+    ['c7', 'Alles passt auf den Bildschirm, nichts abgeschnitten'],
+    ['c8', '„Mein Standort“ funktioniert']
+  ];
+
+  function timed(p) {
+    var t0 = Date.now();
+    return p.then(function (v) { return { ok: true, v: v, ms: Date.now() - t0 }; },
+      function (e) { return { ok: false, e: (e && e.message) || String(e), ms: Date.now() - t0 }; });
+  }
+  function getJson(u) { return f(u).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }); }
+
+  function runApi() {
+    var out = $('apiOut');
+    out.innerHTML = '<p class="muted">Prüfe …</p>';
+    var rows = [];
+    getCfg().then(function (c) {
+      var lat = c.goldliste.lat, lon = c.goldliste.lon;
+      var wp = function (lang) {
+        return getJson(C.wikipediaQueryUrl(lang, lat, lon, 500, c)).then(function (d) {
+          var pages = (d.query && d.query.pages) || [];
+          var withPv = pages.filter(function (p) { return p.pageviews; }).length;
+          var withWd = pages.filter(function (p) { return p.pageprops && p.pageprops.wikibase_item; }).length;
+          var withCo = pages.filter(function (p) { return p.coordinates; }).length;
+          return { text: pages.length + ' Artikel, Koord. ' + withCo + ', Wikidata ' + withWd + ', Aufrufe ' + (withPv || (d.continue ? 'folgen in Fortsetzung' : 0)),
+                   warn: !pages.length || (!withPv && !d.continue), qid: (pages.filter(function (p) { return p.pageprops && p.pageprops.wikibase_item; })[0] || {}).pageprops };
+        });
+      };
+      return Promise.all([timed(wp('en')), timed(wp('de'))]).then(function (r) {
+        rows.push(['Wikipedia en', r[0]]); rows.push(['Wikipedia de', r[1]]);
+        var q = (r[0].ok && r[0].v.qid && r[0].v.qid.wikibase_item) || 'Q42';
+        var wd = getJson('https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&origin=*&ids=' + q + '&props=sitelinks|claims|descriptions&languages=de|en')
+          .then(function (d) {
+            var e = d.entities[q];
+            return { text: q + ': ' + C.sitelinkCount(e.sitelinks) + ' Sprachversionen, P31 ' + ((e.claims.P31 || []).length) + ', „' + ((e.descriptions.en || e.descriptions.de || {}).value || '') + '“' };
+          });
+        var nom = C.reverseGeocode(lat, lon, f).then(function (n) { return { text: 'Ort: ' + (n || '(leer)'), warn: !n }; });
+        var tile = f('https://tile.openstreetmap.org/12/2020/1325.png', { mode: 'cors' }).then(function (r) {
+          return { text: 'CORS ' + (r.ok ? 'ja' : 'HTTP ' + r.status) + ' (Kacheln können zwischengespeichert werden)' };
+        });
+        return Promise.all([timed(wd), timed(nom), timed(tile)]).then(function (r2) {
+          rows.push(['Wikidata', r2[0]]); rows.push(['Nominatim', r2[1]]); rows.push(['OSM-Kacheln', r2[2]]);
+        });
+      });
+    }).catch(function (e) {
+      rows.push(['config.json', { ok: false, e: e.message, ms: 0 }]);
+    }).then(function () {
+      var env = [];
+      env.push('Standort-API ' + ('geolocation' in navigator ? 'ja' : 'nein'));
+      env.push('Zwischenablage ' + (navigator.clipboard ? 'ja' : 'nein'));
+      env.push('Teilen ' + (navigator.share ? 'ja' : 'nein'));
+      env.push('Service Worker ' + ('serviceWorker' in navigator ? 'ja' : 'nein'));
+      var swP = ('serviceWorker' in navigator) ? navigator.serviceWorker.getRegistration('./').then(function (r) { return r ? 'aktiv' : 'noch nicht (App einmal öffnen)'; }).catch(function () { return '?'; }) : Promise.resolve('–');
+      return swP.then(function (sw) {
+        env.push('SW-Registrierung: ' + sw);
+        var standalone = window.matchMedia && matchMedia('(display-mode: standalone)').matches;
+        env.push('Bildschirm ' + screen.width + '×' + screen.height + ', Fenster ' + innerWidth + '×' + innerHeight + ', DPR ' + devicePixelRatio + (standalone ? ', installiert' : ''));
+        var lines = rows.map(function (r) {
+          var x = r[1];
+          return r[0] + ': ' + (x.ok ? (x.v.warn ? 'WARNUNG ' : 'OK ') + x.v.text : 'FEHLER ' + x.e) + ' (' + x.ms + ' ms)';
+        });
+        st.api = lines.concat(['Umgebung: ' + env.join(', ')]);
+        save();
+        out.innerHTML = '<table>' + rows.map(function (r) {
+          var x = r[1];
+          var cls = x.ok ? (x.v.warn ? 'warnc' : 'pass') : 'fail';
+          return '<tr><td class="' + cls + '">' + esc(r[0]) + '</td><td>' + esc(x.ok ? x.v.text : x.e) + ' <span class="muted">' + x.ms + ' ms</span></td></tr>';
+        }).join('') + '</table><p class="muted">' + esc(env.join(' · ')) + '</p>';
+        renderSummary();
+      });
+    });
+  }
+
+  function matchName(p, n) {
+    n = n.toLowerCase();
+    return [p.name, p.artikel && p.artikel.en, p.artikel && p.artikel.de].some(function (t) { return t && t.toLowerCase().indexOf(n) >= 0; });
+  }
+  function k(n) { return n >= 10000 ? Math.round(n / 1000) + 'k' : String(n); }
+  function line(p) {
+    var t = p.teile;
+    return 'S' + p.sterne + ' ' + p.score.toFixed(1) + ' ' + p.name + ' [' + p.typ + ']' +
+      ' SV=' + t.sprachversionen + '(' + p.sprachversionen + ')' +
+      ' AU=' + t.aufrufe + '(' + (p.aufrufe90 == null ? '?' : k(p.aufrufe90)) + ')' +
+      ' LA=' + t.laenge + '(' + k(p.laenge) + ')' +
+      (t.denkmal ? ' DM=' + t.denkmal : '') + ' TY=' + t.typ;
+  }
+
+  function runGold() {
+    var out = $('goldOut'), status = $('goldStatus');
+    $('btnGold').disabled = true;
+    out.innerHTML = '';
+    getCfg().then(function (c) {
+      var g = c.goldliste;
+      var cache = {};
+      return C.loadPlaces({
+        lat: g.lat, lon: g.lon, radius: g.radius_m, cfg: c, fetch: f,
+        wdCache: { get: function (k) { return cache[k]; }, set: function (k, v) { cache[k] = v; } },
+        onProgress: function (t) { status.textContent = t; }
+      }).then(function (res) {
+        status.textContent = '';
+        var P = res.places, checks = [];
+        g.drei_sterne.forEach(function (n) {
+          var p = P.filter(function (x) { return matchName(x, n); })[0];
+          checks.push({ ok: !!p && p.sterne === 3, text: n + ': ' + (p ? C.starsText(p.sterne) || 'kein Stern' : 'nicht gefunden'), p: p });
+        });
+        (g.ohne_stern_namen || []).forEach(function (n) {
+          var p = P.filter(function (x) { return matchName(x, n); })[0];
+          checks.push({ ok: !p || p.sterne === 0, text: n + ': ' + (p ? (p.sterne ? C.starsText(p.sterne) + ' (soll keiner)' : 'kein Stern') : 'nicht im Umkreis'), p: p });
+        });
+        (g.ohne_stern_typen || []).forEach(function (t) {
+          var bad = P.filter(function (x) { return x.typ === t && x.sterne > 0; });
+          checks.push({ ok: !bad.length, text: 'Typ ' + t + ' ohne Stern: ' + (bad.length ? bad.map(function (x) { return x.name; }).join(', ') : 'ok') });
+        });
+        var cnt = [0, 0, 0, 0]; P.forEach(function (p) { cnt[p.sterne]++; });
+        var allOk = checks.every(function (x) { return x.ok; });
+        var head = 'Goldliste ' + (allOk ? 'BESTANDEN' : 'NICHT bestanden') + ' (' + GOLD_CENTER_TEXT + ', ' + g.radius_m + ' m)';
+        var stats = P.length + ' Orte (' + res.stats.perLang + '), ★★★ ' + cnt[3] + ' · ★★ ' + cnt[2] + ' · ★ ' + cnt[1] + ' · ohne ' + cnt[0] +
+          ', ' + (res.stats.ms / 1000).toFixed(1) + ' s, ' + res.stats.requests + ' Anfragen';
+        var top = P.slice(0, 40).map(line);
+        var extra = P.filter(function (p) { return ['bach', 'fluss', 'strasse', 'kanal'].indexOf(p.typ) >= 0 && P.indexOf(p) >= 40; }).map(line);
+        st.gold = [head, stats].concat(checks.map(function (x) { return (x.ok ? 'OK ' : 'FEHLER ') + x.text; }))
+          .concat(res.warnings.map(function (w) { return 'Hinweis: ' + w; }))
+          .concat(['Top 40 (S=Sterne, Punkte, SV=Sprachversionen, AU=Aufrufe 90 T., LA=Länge, DM=Denkmal, TY=Typ):'], top)
+          .concat(extra.length ? ['Flüsse/Straßen weiter unten:'].concat(extra) : []);
+        save();
+        out.innerHTML = '<p class="' + (allOk ? 'pass' : 'fail') + '">' + esc(head) + '</p>' +
+          '<p class="muted">' + esc(stats) + '</p><table>' +
+          checks.map(function (x) { return '<tr><td class="' + (x.ok ? 'pass' : 'fail') + '">' + (x.ok ? 'OK' : 'FEHLER') + '</td><td>' + esc(x.text) + '</td></tr>'; }).join('') +
+          '</table>' + (res.warnings.length ? '<p class="warnc">' + esc(res.warnings.join('; ')) + '</p>' : '') +
+          '<details><summary>Top 40 mit Punkten</summary><pre class="top">' + esc(top.join('\n')) + '</pre></details>';
+        renderSummary();
+      });
+    }).catch(function (e) {
+      status.textContent = '';
+      out.innerHTML = '<p class="fail">Fehler: ' + esc(e.message) + '</p>';
+      st.gold = ['Goldliste: FEHLER ' + e.message]; save(); renderSummary();
+    }).then(function () { $('btnGold').disabled = false; });
+  }
+
+  function renderChecklist() {
+    $('checklist').innerHTML = CHECKS.map(function (c) {
+      return '<label class="check"><input type="checkbox" data-c="' + c[0] + '"' + (st.checks[c[0]] ? ' checked' : '') + '> ' + esc(c[1]) + '</label>';
+    }).join('');
+  }
+
+  function renderSummary() {
+    var L = ['Reiseführer Diagnose v0.2.0 – Abnahme v0.2', 'Datum: ' + new Date().toLocaleString('de-DE'), 'Gerät: ' + navigator.userAgent, ''];
+    L.push('1 Schnittstellen:'); L = L.concat(st.api || ['nicht geprüft']); L.push('');
+    L.push('2 Goldliste:'); L = L.concat(st.gold || ['nicht geprüft']); L.push('');
+    L.push('3 In der App:');
+    CHECKS.forEach(function (c) { L.push((st.checks[c[0]] ? '[x] ' : '[ ] ') + c[1]); });
+    if (st.note) L.push('Notiz: ' + st.note);
+    $('v2summary').value = L.join('\n');
+  }
+
+  function copy(text) {
+    if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text).then(function () { return true; }, function () { return false; });
+    return Promise.resolve(false);
+  }
+
+  if (!C) { $('apiOut').innerHTML = '<p class="fail">core.js nicht geladen</p>'; return; }
+  renderChecklist();
+  $('v2note').value = st.note || '';
+  renderSummary();
+  if (st.api) $('apiOut').innerHTML = '<p class="muted">Letztes Ergebnis:</p><pre class="top">' + esc(st.api.join('\n')) + '</pre>';
+  if (st.gold) $('goldOut').innerHTML = '<p class="muted">Letztes Ergebnis:</p><pre class="top">' + esc(st.gold.slice(0, 12).join('\n')) + '</pre>';
+  $('btnApi').addEventListener('click', runApi);
+  $('btnGold').addEventListener('click', runGold);
+  $('checklist').addEventListener('change', function (e) {
+    var c = e.target.getAttribute('data-c'); if (!c) return;
+    st.checks[c] = e.target.checked; save(); renderSummary();
+  });
+  $('v2note').addEventListener('input', function () { st.note = this.value; save(); renderSummary(); });
+  $('v2copy').addEventListener('click', function () {
+    renderSummary();
+    copy($('v2summary').value).then(function (ok) {
+      $('v2status').textContent = ok ? 'Zusammenfassung kopiert.' : 'Kopieren fehlgeschlagen – Text lange antippen und markieren.';
+      $('v2status').className = 'status ' + (ok ? 'ok' : 'bad');
+    });
+  });
+  if (!navigator.share) $('v2share').style.display = 'none';
+  $('v2share').addEventListener('click', function () {
+    renderSummary();
+    navigator.share({ title: 'Reiseführer Diagnose v0.2', text: $('v2summary').value }).catch(function () {});
+  });
 })();
 </script>
 </body>

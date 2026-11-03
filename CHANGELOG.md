@@ -1,5 +1,34 @@
 # Changelog
 
+## v0.2.0 – 03.11.2026 – Karte, Wikipedia-Orte, Sterne, Aktionen, Merkliste, PWA
+
+- **App** (`docs/index.html`, `app.js`, `style.css`): Leaflet-Karte mit OpenStreetMap-Kacheln, „Mein Standort“ und „Hier suchen“ (sucht um die Kartenmitte). Radius 300 m / 1 km / 3 km / 10 km.
+- **Orte** aus Wikipedia (de + en, GeoSearch), über die Wikidata-ID zusammengeführt, im einheitlichen Format aus Abschnitt 5b (`quellen: ["W"]`).
+- **Sterne** nach Abschnitt 6: Sprachversionen, Seitenaufrufe, Artikellänge, Denkmal/UNESCO, Typ-Gewicht. Marker nach Sternen (★★★ groß/rot mit Namen, ★★ orange, ★ grau erst ab Zoom 16). Liste nach Sternen sortiert. „Warum ★★★?“ zeigt die Punkte je Ort.
+- **Filter:** Mindeststerne (inkl. „Alle Orte“), Radius, Kategorie.
+- **Aktionen pro Ort:** Name kopieren („Name, Ort“), In Google Maps (Name), Pin (Koordinaten), Teilen, Wikipedia, Bei Tripadvisor suchen, Merken.
+- **Merkliste** mit „Liste kopieren“, „Liste teilen“, Entfernen. Zeilenformat `Name – ★★★ – Ort – Maps-Link`.
+- **Einstellungen:** Karten-App (Google-Maps-Link oder `geo:`), Zwischenspeicher leeren, Quellen/Lizenzen.
+- **PWA:** `manifest.webmanifest`, Icons, Service Worker `sw.js` (App-Dateien network-first, Kacheln cache-first, Cache-Name mit Version), Update-Banner „Neue Version – Neu laden“ über `version.json`.
+- **Bedienung am Handy:** Trennleiste zwischen Karte und Liste ist verschiebbar (Doppeltipp = Standard 55 %). Android-Zurück schließt das Ortsfenster. Hell/dunkel automatisch.
+- **Stellschrauben** in `docs/config.json` (Gewichte, Schwellen, Typen mit Wikidata-Klassen und Stichwörtern, Kategorien, Goldliste).
+- **Diagnose v0.2** in `diag.html`: Schnittstellen-Check, Goldliste Manchester mit Punkten je Ort, Abhakliste für die App, Zusammenfassung zum Kopieren. Der v0.1-Link-Test ist eingeklappt weiter verfügbar.
+- **Tests:** `node tools/test.mjs` (Logik mit synthetischen Testdaten, Versionsnummern, Dateiverweise), `tools/ui-test.mjs` (Playwright, Oberfläche mit nachgebildeten Schnittstellen).
+
+### Annahmen/Abweichungen
+
+- **Nicht live geprüft:** Diese Cloud-Session erreicht Wikipedia, Wikidata und Nominatim nicht. Logik und Oberfläche sind nur mit **synthetischen** Testdaten (`docs/testdata/manchester-synthetisch.json`, erfundene Werte) geprüft. Ob die Goldliste mit echten Daten besteht, zeigt erst `diag.html` am Handy.
+- **Seitenaufrufe** über `prop=pageviews` der Wikipedia-API (60 Tage, in derselben Abfrage wie die Orte) statt der Pageviews-REST-API (eine Anfrage pro Artikel). Der Wert wird auf 90 Tage hochgerechnet.
+- **Schwellen angehoben:** Mit Seitenaufrufen liegen die Punkte deutlich höher als in PROJEKT.md angenommen. Startwerte deshalb ★★★ ≥ 14, ★★ ≥ 11, ★ ≥ 8. Die Werte aus PROJEKT.md (8/6/4) gelten, wenn keine Aufrufe verfügbar sind (`schwellen_ohne_aufrufe`).
+- **Typ-Erkennung:** erst Wikidata-Klasse (P31), sonst das Hauptwort der Wikidata-Beschreibung, sonst des Titels. Die Wikidata-Klassen-IDs in `config.json` sind aus dem Gedächtnis und nicht geprüft; falsche IDs wirken nur nicht, die Stichwörter fangen das meist auf.
+- **Zusätzliche Typen** (Haltestelle, Stadt/Ort, Liste, Ereignis, Gastronomie u. a.), damit z. B. Straßenbahnhaltestellen oder der Artikel „Manchester“ selbst keine Sterne bekommen. `max_sterne: 0` für Stadt/Ort, Liste, Person.
+- **Ortsname** für „Name, Ort“ kommt per Nominatim (Rückwärtssuche, eine Anfrage pro Suche, zwischengespeichert). Fehlt er, wird nur der Name verwendet.
+- **Anzeigename:** deutscher Artikeltitel, sonst englischer. Ohne Klammerzusatz.
+- **Detailansicht** ist in v0.2 ein einfaches Ortsfenster mit Aktionen. Bild, Kurzinfo und „Erzähl mir davon“ kommen mit v0.3.
+- **Nicht in v0.2:** Filter Quelle, Geheimtipps, „schon gehört“ und Tag (folgen mit den passenden Etappen). Modus-Schalter Stadt | Unterwegs folgt mit v0.8. Manuelles Hoch-/Herabstufen ist noch offen.
+- Leaflet 1.9.4 liegt im Repo (`docs/lib/leaflet/`), keine externe Einbindung.
+- Kartenkacheln werden nur zwischengespeichert, wenn der Kachelserver CORS erlaubt (sonst normal geladen). `diag.html` prüft das.
+
 ## v0.1.1 – 03.11.2026 – Ergebnisse Link-Test
 
 Getestet vom Nutzer auf Android 10, Chrome 156, Claude-App installiert.
