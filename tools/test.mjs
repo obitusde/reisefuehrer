@@ -438,6 +438,10 @@ eq(core.iconFor('sonstiges', cfg), '', 'other: plain dot');
       it('Q1', 'Métropole de Lyon', 45.76, 4.84, 90, ['metropolis'], { pop: 1.4e6, km2: 534 }),
       it('Q456', 'Lyon', 45.7578, 4.832, 197, ['commune of France', 'big city'], { pop: 519127, km2: 47.9 }),
       it('Q5', 'Fourvière', 45.7622, 4.8226, 40, ['basilica'], { p31: ['Q163687'] })], cfg, { code: 'FR', qid: 'Q142', bbox: core.bboxOf([41, -5, 51, 9]) });
+    const cc = core.computeCities([
+      it('Q6582', 'Carcassonne', 43.2128, 2.3537, 107, ['commune of France'], { pop: 46080, km2: 65 }),
+      it('Q389269', 'Cité von Carcassonne', 43.2063, 2.3634, 38, ['citadel', 'fortress', 'fortified town'], { km2: 13.6, u: true })], cfg, { code: 'FR', qid: 'Q142', bbox: core.bboxOf([41, -5, 51, 9]) });
+    ok(cc.staedte.length === 1 && cc.staedte[0].top[0][0] === 'Cité von Carcassonne' && core.cityStars(cc.staedte[0], cfg) === 2, 'fortified town without inhabitants counts as sight of Carcassonne: ' + JSON.stringify(cc.staedte[0] && cc.staedte[0].top));
     ok(lyon.staedte.length === 1 && lyon.staedte[0].name === 'Lyon' && lyon.staedte[0].q === 'Q456', 'merged: the better-known item names the city: ' + JSON.stringify(lyon.staedte.map((c) => c.name)));
   }
   ok(core.isCityItem(it('Q1726', 'München', 0, 0, 1, ['urban district of Germany', 'big city', 'municipality of Germany'], { pop: 1.5e6 }), cfg), 'Munich (urban district) is a city');
@@ -470,8 +474,9 @@ eq(core.iconFor('sonstiges', cfg), '', 'other: plain dot');
   const byName = Object.fromEntries(res.staedte.map((c) => [c.name, c]));
   ok(byName.Paris && !byName['1. Arrondissement'] && !byName['Paris (Gemeinde-Eintrag)'], 'one marker for Paris (arrondissement and duplicate merged/excluded)');
   ok(byName.Paris.n === 3 && byName.Paris.unesco && byName.Paris.top[0][0] === 'Notre-Dame', 'Paris gets Louvre, Notre-Dame, Eiffel tower: ' + JSON.stringify(byName.Paris.top));
+  ok(byName['Boulogne-Billancourt'].score === 5.4, 'one sight only: no language-version bonus: ' + byName['Boulogne-Billancourt'].score);
   ok(byName['Boulogne-Billancourt'] && byName['Boulogne-Billancourt'].n === 1, 'garden next to Boulogne (small radius from area) goes to Boulogne');
-  eq(byName.Paris.score, Math.round((9.7 + 12.3 + 7.8 + 3 + 1) * 10) / 10, 'Paris score = sum of sights + UNESCO + capital');
+  eq(byName.Paris.score, Math.round((9.7 + 12.3 + 7.8 + 3 + 1 + 36.6) * 10) / 10, 'Paris score = sum of sights + UNESCO + capital + 0.1 × language versions');
   ok(res.orte.some((o) => o.name === 'Schloss Versailles') && res.orte.some((o) => o.name === 'Mont Test'), 'castle outside cities and mountain are excursions: ' + res.orte.map((o) => o.name).join(', '));
   ok(!res.orte.some((o) => o.name === 'Brüsseler Platz'), 'excursions only of the own country');
   eq(core.cityStars(byName.Paris, cfg), 3, 'Paris ★★★ via Notre-Dame (UNESCO, 12.3) although the sample sum is only 33.8');

@@ -328,7 +328,7 @@
     "timeout_s": 70,
     "radius_km": {"basis": 1.5, "pro_zehnfach": 1.5, "min": 1, "max": 12},
     "top_n": 10,
-    "bonus": {"unesco": 3, "hauptstadt": 1},
+    "bonus": {"unesco": 3, "hauptstadt": 1, "sprachversionen_faktor": 0.1},
     "schwellen": {"3": 45, "2": 25, "1": 12},
     "einzel_schwellen": {"3": 12, "2": 10.5, "1": 7},
     "min_score_datei": 5,

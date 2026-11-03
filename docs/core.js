@@ -1669,6 +1669,9 @@
           ['name', 'name_en', 'q', 'lat', 'lon', 'sl', 'land'].forEach(function (f) { inside[f] = x[f]; });
           inside.u = inside.u || x.u; inside.cap = inside.cap || x.cap;
         } else x.fate = 'zusammengelegt mit ' + inside.name;
+        // a "fortified town" without inhabitants (Cité de Carcassonne) is a sight of the city it lies in
+        var ss = !x.pop && sightScore(x, cfg);
+        if (ss) { x.fate += ', zählt als Sehenswürdigkeit'; sights.push({ x: x, score: ss.score, typ: ss.typ, natur: ss.natur }); }
         return;
       }
       x.fate = 'Stadt, Radius ' + Math.round(x.r) + ' m';
@@ -1701,6 +1704,9 @@
       k.sights.slice(0, topN).forEach(function (s) { sum += s.score; });
       var unesco = k.u || k.sights.some(function (s) { return s.x.u; });
       if (unesco) sum += bonus.unesco || 0;
+      // how well-known the city itself is (language versions), so that Bamberg or York with few famous single
+      // buildings are not below an industrial city; only for cities that have at least two sights
+      if (k.sights.length >= 2) sum += (bonus.sprachversionen_faktor || 0) * k.sl;
       if (k.cap) sum += bonus.hauptstadt || 0;
       sum = round1(sum);
       if (sum < minScore) return;
