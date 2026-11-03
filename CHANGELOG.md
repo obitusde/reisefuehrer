@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.4.1 – 03.11.2026 – Suche hängt nicht mehr
+
+Anlass: Am Handy blieb die Suche bei „Lade Wikipedia (de, en, fr) und OpenStreetMap …“ stehen.
+
+- **Zeitgrenze für alle Anfragen** (20 s, Overpass 25 s). Vorher konnte ein Server, der nicht antwortet, die Suche endlos blockieren.
+- **Höchstens 20 s Warten auf OpenStreetMap** (`osm.max_wartezeit_s`): Danach zeigt die App die Wikipedia-Orte mit Hinweis. OSM lädt im Hintergrund weiter und wird gespeichert, sodass es bei der nächsten Suche sofort da ist.
+- **Kleinere OSM-Kacheln** (0,05° statt 0,1°): Jede Overpass-Abfrage ist etwa viermal kleiner und schneller. Zwischenspeicher-Version 2 (alte Kacheln werden nicht mehr benutzt).
+- Statuszeile zeigt „Wikipedia fertig – warte auf OpenStreetMap …“.
+- Zwischenspeicher (IndexedDB) blockiert höchstens 2 s.
+
+### Annahmen/Abweichungen
+
+- Ursache am Handy nicht direkt messbar; wahrscheinlich ein überlasteter Overpass-Server ohne Antwort. Die Diagnose („1. Schnittstellen prüfen“) zeigt die Antwortzeit von Overpass.
+
 ## v0.4.0 – 03.11.2026 – OpenStreetMap dazu, Duplikate zusammenführen
 
 - **OpenStreetMap als zweite Quelle** (PROJEKT.md 5d): Overpass-Abfrage nach benannten Sehenswürdigkeiten (`tourism` attraction/museum/gallery/viewpoint/artwork, `historic` Burg, Denkmal, Ruine, Kirche …, `amenity` theatre/library/arts_centre, benannte Parks/Gärten, Gipfel/Wasserfälle). Abfrage pro Kachel (0,1°), 30 Tage im Gerät gespeichert (IndexedDB), höchstens 2 gleichzeitig, Ausweich-Server, wenn einer nicht antwortet.

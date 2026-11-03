@@ -209,7 +209,7 @@ ok(pK.text.includes('Quelltext (Englisch, Wikipedia):'), 'prompt source label wi
 eq(core.nameSimilarity('Manchester Cathedral', 'Manchester Cathedral'), 1, 'similarity equal');
 ok(core.nameSimilarity('Musée Alexis-Forel', 'Musee Alexis Forel') === 1, 'similarity ignores accents and dashes');
 ok(core.nameSimilarity('Town Hall', 'Manchester Town Hall') < 0.85, 'different names stay apart');
-eq(core.tileKeys(53.4792, -2.2442, 10000).length, 12, 'tiles for 10 km (3 x 4)');
+eq(core.tileKeys(53.4792, -2.2442, 10000, 0.1).length, 12, 'tiles for 10 km with 0.1° (3 x 4)');
 ok(core.claudeNewUrl('a b?').startsWith('claude://claude.ai/new?q=a%20b%3F'), 'claude url');
 const rv = core.buildReviewPrompt(th, cfg);
 ok(rv.text.startsWith('Ich überlege, ob ich diese Sehenswürdigkeit besuchen soll.') && rv.text.includes('Ort: Manchester Town Hall (deutsch: Rathaus Manchester)') &&
@@ -245,13 +245,24 @@ const wdCache = { get: k => cache.get(k), set: (k, v) => cache.set(k, v) };
 const osmStore = new Map();
 const osmCache = { get: async (k) => osmStore.get(k), set: async (k, v) => { osmStore.set(k, v); } };
 const res = await core.loadPlaces({ lat: fx.center.lat, lon: fx.center.lon, radius: 1000, cfg, fetch: f, wdCache, osmCache, langs: ['de', 'en', 'fr'], localLang: 'en' });
-eq(f.calls.filter(u => u.includes('overpass')).length, 1, 'one Overpass request for one tile');
+eq(f.calls.filter(u => u.includes('overpass')).length, 2, 'one Overpass request per tile (2 tiles of 0.05°)');
 const f5 = mockFetch(fx);
 await core.loadPlaces({ lat: fx.center.lat, lon: fx.center.lon, radius: 1000, cfg, fetch: f5, wdCache, osmCache, localLang: 'en' });
 eq(f5.calls.filter(u => u.includes('overpass')).length, 0, 'Overpass tile cached');
 const f6 = mockFetch(Object.assign({}, fx, { __overpassDown: true }));
 const r6 = await core.loadPlaces({ lat: fx.center.lat, lon: fx.center.lon, radius: 1000, cfg, fetch: f6, wdCache, localLang: 'en' });
 ok(f6.calls.some(u => u.includes('overpass.kumi.systems')) && r6.places.some(p => p.name === 'Alan Turing Memorial'), 'Overpass fallback server used');
+// v0.4.1: a hanging Overpass server must not block the search
+core._setFetchTimeout(300);
+const hang = (url) => /overpass|mail\.ru/.test(url) ? new Promise(() => {}) : mockFetch(fx)(url);
+const cfgFast = JSON.parse(JSON.stringify(cfg)); cfgFast.osm.max_wartezeit_s = 0.3; cfgFast.osm.version = 99;
+const tHang = Date.now();
+const r8 = await core.loadPlaces({ lat: fx.center.lat, lon: fx.center.lon, radius: 1000, cfg: cfgFast, fetch: hang, wdCache, localLang: 'en' });
+ok(Date.now() - tHang < 3000 && r8.places.length >= 20 && r8.warnings.some(w => /OpenStreetMap antwortet gerade langsam/.test(w)), 'hanging OSM: results without OSM after the waiting time');
+const tTo = Date.now();
+const toErr = await core.getJsonRetry('https://de.wikipedia.org/w/api.php?x=1', () => new Promise(() => {}), []).then(() => 'none', (e) => e.message);
+eq(toErr, 'Zeitüberschreitung', 'hanging request ends by time limit (' + (Date.now() - tTo) + ' ms)');
+core._setFetchTimeout(20000);
 const r7 = await core.loadPlaces({ lat: fx.center.lat, lon: fx.center.lon, radius: 1000, cfg, fetch: mockFetch(fx), wdCache, localLang: 'en', osm: false });
 ok(!r7.places.some(p => p.quellen.includes('O')), 'OSM can be switched off');
 const by = n => res.places.find(p => (p.artikel.en || p.artikel.de || '').includes(n) || p.name.includes(n));

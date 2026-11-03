@@ -1,5 +1,5 @@
 /*
- * Reiseführer – core logic (v0.4.0)
+ * Reiseführer – core logic (v0.4.1)
  * Shared by the app (index.html), the diagnostics page (diag.html) and Node tests.
  * No DOM access here. Network access only through the injected fetch function.
  */
@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var CORE_VERSION = '0.4.0';
+  var CORE_VERSION = '0.4.1';
 
   // ---------------------------------------------------------------- helpers
 
@@ -190,11 +190,27 @@
 
   // --------------------------------------------------------- networking
 
-  function getJson(url, f) {
-    return f(url, { headers: { 'Accept': 'application/json' } }).then(function (r) {
+  var FETCH_TIMEOUT = 20000;
+
+  // Every request has a time limit, so that a hanging server never blocks the app (v0.4.1)
+  function getJson(url, f, timeoutMs) {
+    // (in tests FETCH_TIMEOUT is lowered; longer explicit limits are capped at twice the default)
+    var ms = Math.min(timeoutMs || FETCH_TIMEOUT, FETCH_TIMEOUT * 2);
+    var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var timer = null;
+    var req = Promise.resolve().then(function () {
+      return f(url, ctrl ? { headers: { 'Accept': 'application/json' }, signal: ctrl.signal } : { headers: { 'Accept': 'application/json' } });
+    }).then(function (r) {
       if (!r.ok) { var e = new Error('HTTP ' + r.status); e.status = r.status; throw e; }
       return r.json();
     });
+    var to = new Promise(function (res, rej) {
+      timer = setTimeout(function () {
+        if (ctrl) { try { ctrl.abort(); } catch (e) { /* ignore */ } }
+        var e = new Error('Zeitüberschreitung'); e.timeout = true; rej(e);
+      }, ms);
+    });
+    return Promise.race([req, to]).then(function (v) { clearTimeout(timer); return v; }, function (e) { clearTimeout(timer); throw e; });
   }
 
   function qs(obj) {
@@ -501,16 +517,28 @@
     var useOsm = !!(cfg.osm && cfg.osm.aktiv !== false && opts.osm !== false);
     var t0 = Date.now(), warnings = [], requests = 0;
     prog('Lade Wikipedia (' + langs.join(', ') + ')' + (useOsm ? ' und OpenStreetMap' : '') + ' …');
-    var osmP = useOsm ? loadOsm(opts.lat, opts.lon, opts.radius, cfg, f, opts.osmCache, null).catch(function (e) {
-      warnings.push('OpenStreetMap: ' + e.message);
-      return null;
-    }) : Promise.resolve(null);
-    return Promise.all([Promise.all(langs.map(function (l) {
+    // OpenStreetMap: wait at most max_wartezeit_s, then go on without it (loading continues in the
+    // background and fills the cache, so the next search has it)
+    var osmFull = useOsm ? loadOsm(opts.lat, opts.lon, opts.radius, cfg, f, opts.osmCache, null) : null;
+    var osmP = !useOsm ? Promise.resolve(null) : Promise.race([
+      osmFull.catch(function (e) { warnings.push('OpenStreetMap: ' + e.message); return null; }),
+      sleep((cfg.osm.max_wartezeit_s || 20) * 1000).then(function () { return 'timeout'; })
+    ]).then(function (r) {
+      if (r === 'timeout') { warnings.push('OpenStreetMap antwortet gerade langsam – Orte ohne OSM. Bei der nächsten Suche sind sie meist da.'); return null; }
+      return r;
+    });
+    var wikiDone = false; // eslint-disable-line no-unused-vars
+    var wikiP = Promise.all(langs.map(function (l) {
       return loadWikipedia(l, opts.lat, opts.lon, opts.radius, cfg, f, opts.retryDelays).catch(function (e) {
         warnings.push('Wikipedia ' + l + ': ' + e.message);
         return null;
       });
-    })), osmP]).then(function (both) {
+    })).then(function (r) {
+      wikiDone = true;
+      if (useOsm) prog('Wikipedia fertig – warte auf OpenStreetMap …');
+      return r;
+    });
+    return Promise.all([wikiP, osmP]).then(function (both) {
       var lrs = both[0], osm = both[1];
       var ok = lrs.filter(Boolean);
       if (!ok.length && !(osm && osm.els.length)) throw new Error('Wikipedia nicht erreichbar (' + warnings.join('; ') + ')');
@@ -990,7 +1018,7 @@
     var p = key.split(',').map(Number);
     var bbox = [p[0], p[1], p[0] + size, p[1] + size].map(function (x) { return x.toFixed(4); }).join(',');
     var parts = (cfg.osm.filter || []).map(function (flt) { return 'nwr["name"]' + flt + '(' + bbox + ');'; });
-    return '[out:json][timeout:25];(' + parts.join('') + ');out tags center qt;';
+    return '[out:json][timeout:' + (cfg.osm.server_timeout_s || 20) + '];(' + parts.join('') + ');out tags center qt;';
   }
 
   var OSM_KEYS = ['tourism', 'historic', 'amenity', 'leisure', 'natural', 'building', 'man_made'];
@@ -1020,14 +1048,15 @@
   function loadOsmTile(key, cfg, f, cache) {
     var ttl = (cfg.osm.cache_tage || 30) * 24 * 3600 * 1000;
     var ck = 'osm:' + (cfg.osm.version || 1) + ':' + key;
-    return Promise.resolve(cache ? cache.get(ck) : null).catch(function () { return null; }).then(function (hit) {
+    var cached = cache ? Promise.race([Promise.resolve(cache.get(ck)), sleep(2000).then(function () { return null; })]) : Promise.resolve(null);
+    return cached.catch(function () { return null; }).then(function (hit) {
       if (hit && Date.now() - hit.t < ttl) return { els: hit.els, cached: true };
       var q = overpassQuery(key, cfg), servers = cfg.osm.server || ['https://overpass-api.de/api/interpreter'];
       var i = 0, lastErr = null;
       function next() {
         if (i >= servers.length) return Promise.reject(lastErr || new Error('Overpass nicht erreichbar'));
         var url = servers[i++] + '?data=' + encodeURIComponent(q);
-        return getJson(url, f).then(function (d) {
+        return getJson(url, f, ((cfg.osm.server_timeout_s || 20) + 5) * 1000).then(function (d) {
           if (d && d.remark && /runtime error|timed out|out of memory/i.test(d.remark)) throw new Error('Overpass: ' + d.remark);
           return d;
         }).catch(function (e) { lastErr = e; return next(); });
@@ -1250,6 +1279,7 @@
     articleFor: articleFor, loadIntros: loadIntros, translate: translate,
     cleanArticle: cleanArticle, cutAtSentence: cutAtSentence, loadArticle: loadArticle,
     buildPrompt: buildPrompt, buildReviewPrompt: buildReviewPrompt, claudeNewUrl: claudeNewUrl,
+    _setFetchTimeout: function (ms) { FETCH_TIMEOUT = ms; },
     tileKeys: tileKeys, overpassQuery: overpassQuery, compactOsm: compactOsm, loadOsm: loadOsm,
     nameSimilarity: nameSimilarity, mergeOsm: mergeOsm, osmFacts: osmFacts,
     _resetTranslators: function () { chromeTranslators = {}; myMemoryBlocked = false; },
