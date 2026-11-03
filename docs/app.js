@@ -1,8 +1,8 @@
-/* Reiseführer – app (v0.3.2). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.3.3). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.3.2';
+  var VERSION = '0.3.3';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
@@ -602,16 +602,15 @@
           foci.map(function (f) { return '<option' + (settings.focus === f ? ' selected' : '') + '>' + esc(f) + '</option>'; }).join('') +
         '</select>' +
         '<button class="btn primary big" type="button" data-a="tell">🎧 Erzähl mir davon</button>' +
+        '<button class="btn big review-btn" type="button" data-a="review">💬 Lohnt sich das?</button>' +
         '<div id="tellStatus" class="tell-status" hidden></div>' +
         '<button class="btn heard-btn' + (heard[p.id] ? ' on' : '') + '" type="button" data-a="heard">' + (heard[p.id] ? '✓ Schon gehört' : 'Als gehört markieren') + '</button>' +
       '</div>' +
       '<div class="actions">' +
         '<button class="btn" type="button" data-a="copy">Name kopieren</button>' +
-        '<button class="btn" type="button" data-a="share">Teilen</button>' +
+        (p.wikipedia ? '<a class="btn" href="' + esc(C.wikipediaUrl(p)) + '" target="_blank" rel="noopener">Wikipedia</a>' : '') +
         '<a class="btn primary" href="' + esc(ml.name) + '"' + ml.target + '>' + ml.label + '</a>' +
         '<a class="btn" href="' + esc(ml.pin) + '"' + ml.target + '>Pin</a>' +
-        (p.wikipedia ? '<a class="btn" href="' + esc(C.wikipediaUrl(p)) + '" target="_blank" rel="noopener">Wikipedia</a>' : '') +
-        '<a class="btn" href="' + esc(C.tripadvisorUrl(p)) + '" target="_blank" rel="noopener">Bei Tripadvisor suchen</a>' +
         '<button class="btn wide' + (on ? ' on' : '') + '" type="button" data-a="merk">' + (on ? '★ Gemerkt' : '☆ Merken') + '</button>' +
       '</div>' +
       '<details class="why"><summary>Warum ' + (p.sterne ? C.starsText(p.sterne) : 'kein Stern') + '?</summary><table>' +
@@ -681,20 +680,31 @@
     setTellStatus('Lade Text …');
     articleFor(level).catch(function () { return null; }).then(function (art) {
       var pr = C.buildPrompt(p, { article: art, level: level, schwerpunkt: settings.focus, distance: distanceForPrompt(p) }, cfg);
-      narr.prompt = pr.text;
       markHeard(p.id, true);
-      return copyText(pr.text).then(function (copied) {
-        var method = settings.uebergabe;
-        narr.url = method === 'kopieren' ? '' : method === 'kopieren-app' ? 'claude://claude.ai/new' : C.claudeNewUrl(pr.text);
-        var info = (copied ? 'Prompt kopiert' : 'Kopieren nicht möglich') + ' (' + pr.length.toLocaleString('de-DE') + ' Zeichen' +
-          (pr.truncated ? ', Quelltext gekürzt' : '') + (art ? '' : ', ohne Wikipedia-Text') + ').';
-        var hint = method === 'claude-new' ? ' Claude öffnet sich mit dem Text.' : method === 'kopieren-app' ? ' In Claude lange ins Eingabefeld tippen → Einfügen.' : ' In Claude einfügen.';
-        setTellStatus('<p>' + esc(info + hint) + '</p><div class="actions">' +
-          '<button class="btn" type="button" data-a="recopy">Nochmal kopieren</button>' +
-          (narr.url ? '<a class="btn primary" href="' + esc(narr.url) + '">Claude öffnen</a>' : '') + '</div>');
-        // open Claude directly if the tap is still "fresh"; otherwise the user taps "Claude öffnen"
-        if (narr.url && Date.now() - t0 < 4000) window.location.href = narr.url;
-      });
+      handOver(pr, (pr.truncated ? ', Quelltext gekürzt' : '') + (art ? '' : ', ohne Wikipedia-Text'), t0);
+    });
+  }
+
+  // "Lohnt sich das?": Claude searches and sums up visitor reviews
+  function review() {
+    var p = findPlace(narr && narr.pid);
+    if (!p) return;
+    handOver(C.buildReviewPrompt(p, cfg), '', Date.now());
+  }
+
+  // Copies the prompt and opens Claude (method from the settings)
+  function handOver(pr, extra, t0) {
+    narr.prompt = pr.text;
+    return copyText(pr.text).then(function (copied) {
+      var method = settings.uebergabe;
+      narr.url = method === 'kopieren' ? '' : method === 'kopieren-app' ? 'claude://claude.ai/new' : C.claudeNewUrl(pr.text);
+      var info = (copied ? 'Prompt kopiert' : 'Kopieren nicht möglich') + ' (' + pr.length.toLocaleString('de-DE') + ' Zeichen' + (extra || '') + ').';
+      var hint = method === 'claude-new' ? ' Claude öffnet sich mit dem Text.' : method === 'kopieren-app' ? ' In Claude lange ins Eingabefeld tippen → Einfügen.' : ' In Claude einfügen.';
+      setTellStatus('<p>' + esc(info + hint) + '</p><div class="actions">' +
+        '<button class="btn" type="button" data-a="recopy">Nochmal kopieren</button>' +
+        (narr.url ? '<a class="btn primary" href="' + esc(narr.url) + '">Claude öffnen</a>' : '') + '</div>');
+      // open Claude directly if the tap is still "fresh"; otherwise the user taps "Claude öffnen"
+      if (narr.url && Date.now() - t0 < 4000) window.location.href = narr.url;
     });
   }
 
@@ -938,6 +948,8 @@
         }
       } else if (a === 'tell') {
         tell();
+      } else if (a === 'review') {
+        review();
       } else if (a === 'level') {
         settings.level = el.getAttribute('data-level'); saveSettings();
         Array.prototype.forEach.call(document.querySelectorAll('[data-a="level"]'), function (b) { b.classList.toggle('on', b === el); });

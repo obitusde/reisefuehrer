@@ -145,6 +145,26 @@
   "karten_app_standard": "google",
   "claude_uebergabe": "claude-new",
 
+  "besucher": {
+    "_hinweis": "Prompt für den Knopf „Lohnt sich das?“: Claude sucht Bewertungen und Erfahrungen von Besuchern im Netz und fasst sie zusammen.",
+    "vorlage": [
+      "Ich überlege, ob ich diese Sehenswürdigkeit besuchen soll.",
+      "",
+      "Ort: {name}",
+      "Wo: {lat}, {lon}",
+      "Art: {typ}",
+      "Wikipedia: {wikipedia_url}",
+      "",
+      "Bitte suche im Internet nach aktuellen Bewertungen und Erfahrungen von Besuchern, zum Beispiel bei Google Maps, Tripadvisor und in Reiseforen oder Reiseblogs, und fasse alles zusammen:",
+      "- Wie wird der Ort bewertet? Nenne je Quelle die Sterne und die Zahl der Bewertungen, wenn du sie findest.",
+      "- Was loben Besucher am häufigsten, was kritisieren sie?",
+      "- Lohnt sich ein Besuch? Für wen besonders, für wen eher nicht?",
+      "- Praktische Tipps für den Besuch: beste Zeit, wie lange man braucht, Eintritt oder Tickets, Andrang, worauf man achten sollte.",
+      "",
+      "Regeln: Antworte auf Deutsch, kurz und so, dass man es gut vorlesen kann. Nenne bei Zahlen die Quelle. Wenn du nichts Aktuelles findest, sage das deutlich und erfinde nichts."
+    ]
+  },
+
   "erzaehlen": {
     "_hinweis": "Prompt für „Erzähl mir davon“ (PROJEKT.md Abschnitt 8). Platzhalter in {geschweiften Klammern}. claude_uebergabe oben: claude-new = Claude-App mit Text, kopieren-app = kopieren und Claude öffnen, kopieren = nur kopieren.",
     "max_zeichen": 12000,

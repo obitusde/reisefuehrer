@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.3.3 – 03.11.2026 – „Lohnt sich das?“
+
+- **Neuer Knopf „💬 Lohnt sich das?“** im Ortsfenster (Wunsch Nutzer): schickt einen Prompt an die Claude-App. Claude sucht im Netz Bewertungen und Erfahrungen von Besuchern (Google Maps, Tripadvisor, Foren, Blogs) und fasst zusammen: Bewertung je Quelle, was gelobt und kritisiert wird, ob sich der Besuch lohnt, praktische Tipps. Vorlage in `config.json` → `besucher.vorlage`.
+- **Entfernt** (Wunsch Nutzer): Link „Bei Tripadvisor suchen“ und Knopf „Teilen“ im Ortsfenster. „Liste teilen“ in der Merkliste bleibt.
+
+### Annahmen/Abweichungen
+
+- Abweichung von PROJEKT.md Regel 10 und Abschnitt 2 (Tripadvisor nur als Suchlink): Bewertungen werden nicht von der App geladen, sondern von Claude im Abo des Nutzers recherchiert. Die App selbst ruft weiterhin keine Bewertungsportale auf.
+- Ob Claude im Netz sucht, hängt von der Einstellung „Websuche“ in der Claude-App ab.
+
 ## v0.3.2 – 03.11.2026 – Korrekturen Kurzinfo und Beschriftung
 
 - **Kurzinfo:** Sätze, die nur sagen, wo etwas liegt („… befindet sich in Pendleton, Salford.“), bleiben vollständig; vorher blieb „… befindet sich.“ übrig (Entscheidung Nutzer: dann lieber mit Ort).

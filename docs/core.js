@@ -1,5 +1,5 @@
 /*
- * Reiseführer – core logic (v0.3.2)
+ * Reiseführer – core logic (v0.3.3)
  * Shared by the app (index.html), the diagnostics page (diag.html) and Node tests.
  * No DOM access here. Network access only through the injected fetch function.
  */
@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var CORE_VERSION = '0.3.2';
+  var CORE_VERSION = '0.3.3';
 
   // ---------------------------------------------------------------- helpers
 
@@ -931,6 +931,22 @@
     return { text: text, length: text.length, truncated: cut.truncated };
   }
 
+  /** Prompt "Lohnt sich das?": Claude searches visitor reviews (Google Maps, Tripadvisor, …) and sums them up. */
+  function buildReviewPrompt(p, cfg) {
+    var b = cfg.besucher;
+    var vars = {
+      name: p.name + (p.name2 ? ' (deutsch: ' + p.name2 + ')' : '') + (p.ort && p.name.indexOf(p.ort) < 0 ? ', ' + p.ort : ''),
+      lat: p.lat.toFixed(5), lon: p.lon.toFixed(5),
+      typ: p.typ_label || 'Sehenswürdigkeit',
+      wikipedia_url: p.wikipedia ? 'https://' + p.wikipedia.split(':')[0] + '.wikipedia.org/wiki/' +
+        encodeURIComponent(p.wikipedia.slice(p.wikipedia.indexOf(':') + 1).replace(/ /g, '_')) : '–'
+    };
+    var text = b.vorlage.map(function (line) {
+      return line.replace(/\{(\w+)\}/g, function (m, k) { return vars[k] != null ? vars[k] : ''; });
+    }).join('\n').replace(/\n{3,}/g, '\n\n');
+    return { text: text, length: text.length, truncated: false };
+  }
+
   function claudeNewUrl(prompt) { return 'claude://claude.ai/new?q=' + encodeURIComponent(prompt); }
 
   // --------------------------------------------------------------- links
@@ -976,7 +992,7 @@
     dropLocation: dropLocation, shortInfo: shortInfo, splitSentences: splitSentences,
     articleFor: articleFor, loadIntros: loadIntros, translate: translate,
     cleanArticle: cleanArticle, cutAtSentence: cutAtSentence, loadArticle: loadArticle,
-    buildPrompt: buildPrompt, claudeNewUrl: claudeNewUrl,
+    buildPrompt: buildPrompt, buildReviewPrompt: buildReviewPrompt, claudeNewUrl: claudeNewUrl,
     _resetTranslators: function () { chromeTranslators = {}; myMemoryBlocked = false; },
     nameWithPlace: nameWithPlace, gmapsSearchUrl: gmapsSearchUrl, gmapsPinUrl: gmapsPinUrl,
     geoSearchUrl: geoSearchUrl, geoPinUrl: geoPinUrl, wikipediaUrl: wikipediaUrl,

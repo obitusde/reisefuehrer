@@ -87,7 +87,7 @@ try {
   if (process.env.DEBUG) { page.on('request', (r) => { if (/extracts|mymemory/.test(r.url())) console.log('REQ', decodeURIComponent(r.url()).slice(0, 160)); }); page.on('requestfailed', (r) => console.log('FAILED', r.url().slice(0, 120), r.failure() && r.failure().errorText)); page.on('console', (m) => console.log('CONSOLE', m.text())); }
   await page.goto(BASE + 'index.html');
   await page.waitForSelector('.empty');
-  ok((await page.textContent('#version')) === 'v0.3.2', 'footer version');
+  ok((await page.textContent('#version')) === 'v0.3.3', 'footer version');
   if (OUT) await page.screenshot({ path: OUT + '/01-start.png' });
 
   await page.click('#btnLocate');
@@ -232,6 +232,12 @@ try {
   ok(claudeHref && claudeHref.startsWith('claude://claude.ai/new?q=Du%20bist%20mein%20Reisef'), 'Claude link with prompt');
   ok((await page.textContent('[data-a=heard]')).includes('Schon gehört'), 'marked as heard');
   if (OUT) await page.screenshot({ path: OUT + '/10-erzaehlen.png' });
+  ok(!(await page.$('[data-a=share]')) && !(await page.$('a[href*="tripadvisor"]')), 'no share button, no Tripadvisor link in place window');
+  await page.click('[data-a=review]');
+  await page.waitForFunction(() => /Prompt kopiert/.test(document.getElementById('tellStatus').textContent));
+  const rprompt = await page.evaluate(() => navigator.clipboard.readText());
+  ok(rprompt.startsWith('Ich überlege, ob ich diese Sehenswürdigkeit besuchen soll.') && rprompt.includes('Tripadvisor'), 'review prompt copied');
+  ok((await page.getAttribute('#tellStatus a.btn', 'href')).startsWith('claude://claude.ai/new?q=Ich%20%C3%BCberlege'), 'review Claude link');
   await page.click('[data-a=recopy]');
   await page.$eval('#sheetBody', (b) => { b.scrollTop = 400; });
   await page.$eval('.item:nth-child(2) .it-main', (el) => el.click());
@@ -259,10 +265,10 @@ try {
   ok(Math.abs((await page.$('#mapWrap').then((e) => e.boundingBox())).height - after) < 10, 'split persisted');
 
   // update banner (fake newer version, then ?testupdate=1)
-  fakeVersion = '0.3.3';
+  fakeVersion = '0.3.4';
   await page.reload();
   await page.waitForSelector('#banner:not([hidden])');
-  ok((await page.textContent('#bannerText')).includes('v0.3.3'), 'banner shows remote version');
+  ok((await page.textContent('#bannerText')).includes('v0.3.4'), 'banner shows remote version');
   if (OUT) await page.screenshot({ path: OUT + '/05-banner.png' });
   fakeVersion = null;
   await page.click('#bannerBtn');
@@ -316,9 +322,9 @@ try {
   const swOk = await p3.evaluate(() => navigator.serviceWorker.ready.then((r) => !!r.active)).catch(() => false);
   ok(swOk, 'service worker active');
   const cacheKeys = await p3.evaluate(async () => { await new Promise((r) => setTimeout(r, 800)); return caches.keys(); });
-  ok(cacheKeys.includes('rf-app-0.3.2'), 'app cache with version: ' + cacheKeys.join(','));
-  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.3.2')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
-  ok(cached.some((u) => u.includes('app.js?v=0.3.2')), 'shell precached');
+  ok(cacheKeys.includes('rf-app-0.3.3'), 'app cache with version: ' + cacheKeys.join(','));
+  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.3.3')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
+  ok(cached.some((u) => u.includes('app.js?v=0.3.3')), 'shell precached');
   ok(errs3.length === 0, 'sw: no JS errors ' + errs3.join(' | '));
   await ctx3.close();
 

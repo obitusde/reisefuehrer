@@ -201,6 +201,9 @@ ok(core.buildPrompt(th, { article: big, level: 'ausfuehrlich' }, Object.assign({
 const pNone = core.buildPrompt(th, { article: null, level: 'kurz' }, cfg);
 ok(pNone.text.includes('keinen Wikipedia-Text'), 'prompt without article says so');
 ok(core.claudeNewUrl('a b?').startsWith('claude://claude.ai/new?q=a%20b%3F'), 'claude url');
+const rv = core.buildReviewPrompt(th, cfg);
+ok(rv.text.startsWith('Ich überlege, ob ich diese Sehenswürdigkeit besuchen soll.') && rv.text.includes('Ort: Manchester Town Hall (deutsch: Rathaus Manchester)') &&
+  rv.text.includes('Google Maps, Tripadvisor') && rv.text.includes('Praktische Tipps') && rv.text.includes('Wikipedia: https://en.wikipedia.org/wiki/Manchester_Town_Hall'), 'review prompt');
 
 // ---- languages
 eq(core.languagesFor({ cc: 'ch', region: 'CH-VD' }, cfg).join(), 'de,en,fr', 'Vaud -> fr');
