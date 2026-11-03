@@ -348,7 +348,11 @@
     cityData[code] = pr;
     return pr;
   }
-  function scheduleCities() { clearTimeout(cityTimer); cityTimer = setTimeout(renderCities, 120); }
+  function scheduleCities() {
+    clearTimeout(cityTimer);
+    if (cityLayer && !cityMode()) { cityLayer.clearLayers(); return; }
+    cityTimer = setTimeout(renderCities, 120);
+  }
 
   function renderCities() {
     if (!cityLayer) return;
@@ -365,7 +369,7 @@
         var st = C.cityStars(x, cfg);
         if (st >= (big ? 2 : 1) && C.inBbox(x, pad) && !seen[x.q]) { seen[x.q] = 1; list.push({ k: 'c', x: x, s: st }); }
       });
-      if (!big) (d.orte || []).forEach(function (x) { if (C.inBbox(x, pad) && !seen[x.q]) { seen[x.q] = 1; list.push({ k: 'o', x: x, s: 3 }); } });
+      if (!big) (d.orte || []).forEach(function (x) { if (C.inBbox(x, pad) && !seen[x.q]) { seen[x.q] = 1; list.push({ k: 'o', x: x, s: C.ortStars(x.score, cfg) }); } });
     });
     list.sort(function (a, b2) { return (b2.s - a.s) || ((a.k === 'c') ? -1 : 0) - ((b2.k === 'c') ? -1 : 0) || (b2.x.score - a.x.score); });
     list = list.slice(0, c.max_marker || 160);
@@ -373,7 +377,7 @@
     function free(bx) { return !boxes.some(function (o) { return bx.x1 < o.x2 && bx.x2 > o.x1 && bx.y1 < o.y2 && bx.y2 > o.y1; }); }
     list.forEach(function (it) {
       var x = it.x, pt = map.latLngToContainerPoint([x.lat, x.lon]);
-      var hw = it.k === 'c' ? (7 + 5 * it.s) : 13, hh = it.k === 'c' ? 9 : 13;
+      var hw = it.k === 'c' ? (7 + 5 * it.s) : DOT_R_IC[it.s], hh = it.k === 'c' ? 9 : DOT_R_IC[it.s];
       var dot = { x1: pt.x - hw, y1: pt.y - hh, x2: pt.x + hw, y2: pt.y + hh };
       if (!free(dot) && it.s < 3) return;  // crowded: drop smaller ones entirely
       var px = it.k === 'c' && it.s >= 2 ? 13 : 12, w = textWidth(x.name, px) + 4;
@@ -385,7 +389,7 @@
       var lbl = side ? '<span class="ct-lbl ' + (it.k === 'o' ? 'o' : 'c' + it.s) + '" style="' + (side === 'right' ? 'left:' : 'right:') + 'calc(50% + ' + (hw + 2) + 'px)">' + esc(x.name) + '</span>' : '';
       var html = it.k === 'c'
         ? '<span class="ct ct' + it.s + '">' + C.starsText(it.s) + '</span>' + lbl
-        : '<span class="mk mk3 ic">' + (iconSvg(C.iconFor(x.typ, cfg)) || iconSvg('denkmal')) + '</span>' + lbl;
+        : '<span class="mk mk' + it.s + ' ic">' + (iconSvg(C.iconFor(x.typ, cfg)) || iconSvg('denkmal')) + '</span>' + lbl;
       var m = L.marker([x.lat, x.lon], {
         icon: L.divIcon({ className: 'mk-wrap', html: html, iconSize: [36, 36], iconAnchor: [18, 18] }),
         keyboard: false, title: x.name, zIndexOffset: it.s * 400 + (it.k === 'c' ? 100 : 0)
@@ -415,7 +419,7 @@
           return '<li><button type="button" data-a="citytop" data-i="' + i + '">' + esc(t[0]) + '</button></li>';
         }).join('') + '</ul>';
     } else {
-      html = '<p class="stars s3">★★★ <span class="small">Ausflugsziel außerhalb von Städten · ' + esc(C.typeInfo(x.typ, cfg).label) + (x.unesco ? ' · UNESCO-Welterbe' : '') + '</span></p>';
+      html = '<p class="stars s' + it.s + '">' + C.starsText(it.s) + ' <span class="small">Ausflugsziel außerhalb von Städten · ' + esc(C.typeInfo(x.typ, cfg).label) + (x.unesco ? ' · UNESCO-Welterbe' : '') + '</span></p>';
     }
     html += '<div class="actions">' +
         '<button class="btn primary" type="button" data-a="cityzoom">🔍 Hineinzoomen und suchen</button>' +
@@ -485,7 +489,7 @@
           if (res.stats.fehler >= res.stats.kacheln) throw new Error('Wikidata nicht erreichbar');
           res.quelle = 'handy';
           return IDB.set('staedte:' + code, res).then(function () {
-            cityData[code] = res; job.ok.push(l.name + ' ' + res.staedte.filter(function (x) { return C.cityStars(x, cfg) > 0; }).length);
+            cityData[code] = res; job.ok.push(l.name + ' (' + res.staedte.filter(function (x) { return C.cityStars(x, cfg) > 0; }).length + ' Städte)');
           });
         }).catch(function (e) { job.bad.push(l.name + ' (' + (e && e.message || 'Fehler') + ')'); });
       });
@@ -496,7 +500,7 @@
       renderCityJob();
       scheduleCities();
       refreshSettings();
-      toast(job.cancelled ? 'Berechnung abgebrochen.' : 'Stadt-Sterne neu berechnet' + (job.ok.length ? ': ' + job.ok.join(', ') + ' Städte' : '') +
+      toast(job.cancelled ? 'Berechnung abgebrochen.' : 'Stadt-Sterne neu berechnet' + (job.ok.length ? ': ' + job.ok.join(', ') : '') +
         (job.bad.length ? '. Fehlgeschlagen: ' + job.bad.join(', ') : '') + '.', 6000);
     });
   }

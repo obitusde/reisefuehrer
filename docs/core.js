@@ -1585,7 +1585,9 @@
     // only things one can visit: a known type, or a class from the extra list (cemetery, triumphal arch, …)
     if (typ === 'sonstiges' && !anyHeadEnds(x.cls, c.sehenswert_woerter || [])) return null;
     var s = computeScore({ sprachversionen: x.sl, laenge: 0, denkmal: x.h, unesco: x.u, typ: typ, quellen: [] }, cfg).score;
-    return s > 0 ? { score: s, typ: typ } : null;
+    // nature (mountains, lakes, glaciers …) never counts for a city: big mountain municipalities would collect dozens of peaks
+    var natur = typ === 'natur' || anyHeadEnds(x.cls, c.natur_woerter || []);
+    return s > 0 ? { score: s, typ: typ, natur: natur } : null;
   }
 
   function gridIndex(list, cell) {
@@ -1605,12 +1607,17 @@
    * Stars of a city (object from computeCities, or a bare score): from the sum, or from its best sight
    * if that is higher (Versailles has one world-famous palace, not ten good sights).
    */
+  /** Stars of an excursion outside cities (from its points). */
+  function ortStars(score, cfg) {
+    var th = cfg.staedte.ausflug_sterne || {};
+    return score >= (th['3'] || 9) ? 3 : score >= (th['2'] || 7.5) ? 2 : 1;
+  }
   function cityStars(c, cfg) {
     var th = cfg.staedte.schwellen, eth = cfg.staedte.einzel_schwellen || {};
     var score = typeof c === 'number' ? c : c.score;
     var s = score >= th['3'] ? 3 : score >= th['2'] ? 2 : score >= th['1'] ? 1 : 0;
     var best = typeof c === 'object' && c.top && c.top[0] ? c.top[0][3] : 0;
-    var e = best >= (eth['3'] || 99) ? 3 : best >= (eth['2'] || 99) ? 2 : 0;
+    var e = best >= (eth['3'] || 99) ? 3 : best >= (eth['2'] || 99) ? 2 : best >= (eth['1'] || 99) ? 1 : 0;
     return Math.max(s, e);
   }
 
@@ -1626,7 +1633,7 @@
       if (isCityItem(x, cfg)) cands.push(x);
       else {
         var s = sightScore(x, cfg);
-        if (s) sights.push({ x: x, score: s.score, typ: s.typ });
+        if (s) sights.push({ x: x, score: s.score, typ: s.typ, natur: s.natur });
       }
     });
     // One marker per city: candidates inside the radius of a bigger one are merged into it
@@ -1648,6 +1655,7 @@
     var outside = [];
     sights.forEach(function (s) {
       var best = null, bestQ = Infinity;
+      if (s.natur) { outside.push(s); return; }
       near(s.x.lat, s.x.lon).forEach(function (k) {
         var d = haversine(k.lat, k.lon, s.x.lat, s.x.lon);
         if (d < k.r && d / k.r < bestQ) { bestQ = d / k.r; best = k; }
@@ -1732,6 +1740,6 @@
     tripadvisorUrl: tripadvisorUrl, merkZeile: merkZeile,
     iconFor: iconFor, cityTiles: cityTiles, splitTile: splitTile, citySparql: citySparql, parseCityRows: parseCityRows,
     loadCityTiles: loadCityTiles, isCityItem: isCityItem, cityRadius: cityRadius, sightScore: sightScore,
-    computeCities: computeCities, cityStars: cityStars, loadCountryCities: loadCountryCities, bboxOf: bboxOf, cityWikiUrl: cityWikiUrl
+    computeCities: computeCities, cityStars: cityStars, ortStars: ortStars, loadCountryCities: loadCountryCities, bboxOf: bboxOf, cityWikiUrl: cityWikiUrl
   };
 });

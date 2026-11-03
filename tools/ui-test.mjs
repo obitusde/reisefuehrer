@@ -16,6 +16,25 @@ const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/cs
   '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mN49+7dfwAJbAPYqH3VQgAAAABJRU5ErkJggg==', 'base64');
 
+// v0.7.0 synthetic city data (not real scores)
+const CITIES_GB = { land: 'GB', stand: Date.parse('2026-11-03'), fehler: [], orte: [
+  { name: 'Peak District', q: 'Q1', lat: 53.35, lon: -1.8, score: 9.5, typ: 'natur' }], staedte: [
+  { name: 'Manchester', q: 'Q18125', lat: 53.4794, lon: -2.2453, score: 70, pop: 550000, n: 40, top: [['Manchester Town Hall', 53.4794, -2.2446, 9.1], ['Manchester Cathedral', 53.4851, -2.2446, 8.5], ['John Rylands Library', 53.4804, -2.2484, 8.4]] },
+  { name: 'Liverpool', q: 'Q24826', lat: 53.4084, lon: -2.9916, score: 45, pop: 490000, n: 30, top: [['Royal Liver Building', 53.4058, -2.9958, 8]] },
+  { name: 'Chester', q: 'Q170263', lat: 53.19, lon: -2.89, score: 20, pop: 80000, n: 8, top: [['Chester Cathedral', 53.1923, -2.8906, 8]] },
+  { name: 'Stockport', q: 'Q2', lat: 53.4083, lon: -2.1494, score: 6, pop: 100000, n: 2, top: [['Stockport Viaduct', 53.4096, -2.1625, 5]] }] };
+const B = (q, name, lon, lat, o) => ({ item: { value: 'http://www.wikidata.org/entity/' + q }, coord: { value: 'Point(' + lon + ' ' + lat + ')' },
+  sl: { value: String(o.sl) }, de: { value: name }, en: { value: name }, p31: { value: o.p31 || '' }, cls: { value: o.cls }, land: { value: 'Q32' },
+  ...(o.pop ? { pop: { value: String(o.pop) } } : {}), ...(o.km2 ? { area: { value: String(o.km2 * 1e6) } } : {}),
+  ...(o.u ? { unesco: { value: 'x' } } : {}), ...(o.h ? { her: { value: o.h } } : {}), ...(o.cap ? { cap: { value: 'http://www.wikidata.org/entity/Q32' } } : {}) });
+const SPARQL_LU = [
+  B('Q1842', 'Luxemburg', 6.1319, 49.6116, { sl: 200, pop: 134000, km2: 51, cls: 'city|capital', p31: 'Q515', cap: 1 }),
+  B('Q10', 'Altstadt Luxemburg', 6.133, 49.611, { sl: 60, cls: 'World Heritage Site', p31: 'Q9259', u: 1 }),
+  B('Q11', 'Kathedrale Unserer Lieben Frau', 6.1307, 49.6097, { sl: 40, cls: 'cathedral', p31: 'Q2977' }),
+  B('Q12', 'Großherzoglicher Palast', 6.1335, 49.6113, { sl: 45, cls: 'palace', p31: 'Q16560' }),
+  B('Q13', 'Burg Vianden', 6.2015, 49.9353, { sl: 45, cls: 'castle', p31: 'Q23413', h: 'Q1' }),
+  B('Q14', 'Kanton Luxemburg', 6.13, 49.62, { sl: 50, cls: 'canton of Luxembourg' })];
+
 let fakeVersion = null;
 let OFFLINE = false, OSM_DELAY = 0;
 const server = http.createServer((req, res) => {
@@ -69,6 +88,18 @@ async function mockApis(ctx) {
   });
   await ctx.route(/api\.mymemory\.translated\.net/, (route) => OFFLINE ? route.abort('internetdisconnected') : route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
     body: JSON.stringify({ responseData: { translatedText: 'Übersetzt: ' + new URL(route.request().url()).searchParams.get('q') }, responseStatus: 200 }) }));
+  // v0.7.0: city stars – shipped files (synthetic GB) and the Wikidata query for "Neu berechnen" (synthetic LU)
+  await ctx.route(/\/staedte\/[A-Z]{2}\.json/, (route) => {
+    const code = route.request().url().match(/([A-Z]{2})\.json/)[1];
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(code === 'GB' ? CITIES_GB : { land: code, stand: Date.parse('2026-11-01'), staedte: [], orte: [], fehler: [] }) });
+  });
+  await ctx.route(/query\.wikidata\.org\/sparql/, (route) => {
+    if (OFFLINE) return route.abort('internetdisconnected');
+    const q = new URL(route.request().url()).searchParams.get('query');
+    const m = /Point\(([-\d.]+) ([-\d.]+)\)/.exec(q);
+    const hit = m && +m[1] <= 6.13 && +m[1] + 1 > 6.13 && +m[2] <= 49.61 && +m[2] + 1 > 49.61;
+    route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ results: { bindings: hit ? SPARQL_LU : [] } }) });
+  });
   await ctx.route(/tile\.openstreetmap\.org/, (route) => route.fulfill({ status: 200, contentType: 'image/png', headers: { 'access-control-allow-origin': '*' }, body: PNG }));
 }
 
@@ -114,6 +145,10 @@ try {
     return r.some((a, i) => r.some((b, j) => j > i && a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top)); });
   ok(!lblOverlap, 'labels do not overlap');
   ok(!(await page.$$eval('.mk-lbl', (els) => els.map((e) => e.textContent))).some((t) => /^Manchester /.test(t)), 'labels without city name');
+  // v0.7.0: symbols in the dots (museum, church, …), other places plain
+  const icons = await page.$$eval('.mk.ic svg', (els) => els.length);
+  const plain = await page.$$eval('.mk:not(.ic)', (els) => els.length);
+  ok(icons >= 3 && plain >= 1, 'v0.7 symbols in dots: ' + icons + ' with, ' + plain + ' without');
   await page.waitForFunction(() => [...document.querySelectorAll('.it-desc')].some((e) => /Testort|Übersetzt:/.test(e.textContent)), null, { timeout: 8000 });
   await page.$eval('#scroller', (l) => { l.scrollTop = l.scrollHeight; });
   await page.waitForFunction(() => [...document.querySelectorAll('.it-desc')].some((e) => /^Übersetzt:/.test(e.textContent)), null, { timeout: 8000 }).catch(() => {});
@@ -326,6 +361,46 @@ try {
   ok(true, 'POI search opens a place sheet: ' + await page.textContent('#sheetTitle'));
   await page.evaluate(() => history.back());
   await page.waitForSelector('#sheet', { state: 'hidden' });
+
+  // ---- v0.7.0: city stars when zoomed out
+  const view0 = await page.evaluate(() => { const c = window.__rfMap.getCenter(); return [c.lat, c.lng, window.__rfMap.getZoom()]; });
+  await page.evaluate(() => window.__rfMap.setView([53.35, -2.45], 9, { animate: false }));
+  await page.waitForSelector('.ct', { timeout: 8000 });
+  const cts = await page.$$eval('.ct', (els) => els.map((e) => e.textContent));
+  ok(cts.includes('★★★') && cts.includes('★★') && cts.includes('★') && cts.length === 3, 'v0.7 cities with stars at zoom 9 (Stockport without star hidden): ' + cts.join(' '));
+  ok((await page.$$('.mk-lbl')).length === 0, 'v0.7 single places hidden when zoomed out');
+  ok((await page.$$eval('.ct-lbl', (els) => els.map((e) => e.textContent))).includes('Peak District'), 'v0.7 excursion outside cities shown');
+  if (OUT) await page.screenshot({ path: OUT + '/10-stadt-sterne.png' });
+  await page.evaluate(() => window.__rfMap.setView([53.35, -2.45], 7, { animate: false }));
+  await page.waitForFunction(() => document.querySelectorAll('.ct').length === 2, null, { timeout: 5000 }).catch(() => {});
+  const cts7 = await page.$$eval('.ct', (els) => els.map((e) => e.textContent));
+  ok(cts7.length === 2 && !cts7.includes('★') && !(await page.$$eval('.ct-lbl', (els) => els.map((e) => e.textContent))).includes('Peak District'), 'v0.7 zoom 7: only ★★/★★★ cities: ' + cts7.join(' '));
+  await page.evaluate(() => window.__rfMap.setView([53.35, -2.45], 9, { animate: false }));
+  await page.waitForSelector('.ct3');
+  await page.click('.ct3');
+  await page.waitForSelector('#sheet:not([hidden])');
+  ok((await page.textContent('#sheetTitle')) === 'Manchester' && (await page.textContent('#sheetBody')).includes('Manchester Town Hall'), 'v0.7 city sheet with best sights');
+  ok((await page.getAttribute('#sheetBody a.btn', 'href')).includes('Special:GoToLinkedPage/dewiki/Q18125'), 'v0.7 city Wikipedia link');
+  if (OUT) await page.screenshot({ path: OUT + '/11-stadt.png' });
+  await page.click('[data-a="cityzoom"]');
+  await page.waitForFunction(() => window.__rfMap.getZoom() === 14 && document.querySelectorAll('.mk').length > 0, null, { timeout: 10000 });
+  ok((await page.$$('.ct')).length === 0, 'v0.7 zoom in: city markers gone, places back');
+  await page.waitForSelector('.item', { timeout: 10000 });
+  // ⚙ → Stadt-Sterne: compute Luxembourg in the browser (mocked Wikidata)
+  await page.click('#btnSettings');
+  await page.waitForFunction(() => document.querySelector('[data-land="GB"]') && /Städte/.test(document.querySelector('[data-land="GB"]').textContent), null, { timeout: 8000 });
+  ok((await page.textContent('[data-land="GB"]')).includes('3 Städte'), 'v0.7 settings show shipped GB data: ' + (await page.textContent('[data-land="GB"]')));
+  await page.click('[data-land="LU"] [data-a="cityrun"]');
+  await page.waitForSelector('#cprep:not([hidden])');
+  await page.waitForFunction(() => /Stadt-Sterne neu berechnet/.test(document.getElementById('toast').textContent), null, { timeout: 20000 });
+  const luRow = await page.textContent('[data-land="LU"]');
+  ok(/1 Städte \(★★★ 0, ★★ 1\)/.test(luRow) && luRow.includes('1 Ausflugsziele') && luRow.includes('(im Handy)'), 'v0.7 Luxembourg computed in the phone: ' + luRow);
+  const luStored = await page.evaluate(() => new Promise((res) => { const r = indexedDB.open('reisefuehrer', 1); r.onsuccess = () => { const q = r.result.transaction('kv').objectStore('kv').get('staedte:LU'); q.onsuccess = () => res(q.result); }; }));
+  ok(luStored && luStored.staedte[0].name === 'Luxemburg' && luStored.orte[0].name === 'Burg Vianden' && !luStored.staedte.some((c) => /Kanton/.test(c.name)), 'v0.7 LU stored: ' + JSON.stringify(luStored && { s: luStored.staedte.map((c) => c.name + ' ' + c.score), o: luStored.orte.map((o) => o.name + ' ' + o.score) }));
+  if (OUT) await page.screenshot({ path: OUT + '/12-einstellungen-staedte.png' });
+  await page.evaluate(() => history.back());
+  await page.waitForSelector('#sheet', { state: 'hidden' });
+  await page.evaluate((v) => window.__rfMap.setView([v[0], v[1]], v[2], { animate: false }), view0);
 
   // persistence after reload
   await page.reload();
