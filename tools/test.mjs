@@ -151,6 +151,13 @@ eq(core.shortInfo("Le musée Alexis-Forel est un musée situé à Morges, en Sui
 eq(core.shortInfo("The People's History Museum in Manchester is the UK's national museum of democracy, founded as a labour history collection in the twentieth century. It opened in 1975."),
   "The People's History Museum in Manchester is the UK's national museum of democracy, founded as a labour history collection in the twentieth century.", 'long first sentence alone, location in the middle kept');
 eq(core.stripLocation('contemporary art gallery based in Manchester, England'), 'Contemporary art gallery', 'description: "based" removed');
+eq(core.dropLocation("Die St. Thomas' Church befindet sich in Pendleton, Salford."), "Die St. Thomas' Church befindet sich in Pendleton, Salford.", 'location sentence kept (would be broken)');
+eq(core.dropLocation('Es befindet sich in Manchester.'), 'Es befindet sich in Manchester.', 'short location sentence kept');
+eq(core.dropLocation('St Ann\'s Church is located in St Ann\'s Square, Manchester, England.'), 'St Ann\'s Church is located in St Ann\'s Square, Manchester, England.', 'English location sentence kept');
+eq(core.dropLocation('Die Royal Exchange ist ein denkmalgeschütztes Gebäude in Manchester.'), 'Die Royal Exchange ist ein denkmalgeschütztes Gebäude.', 'normal sentence still shortened');
+eq(core.shortLabel('Old Trafford', 'Trafford'), 'Old Trafford', 'label: city part of the name stays');
+eq(core.shortLabel('Trafford Centre', 'Trafford'), 'Trafford Centre', 'label: short rest keeps full name');
+eq(core.shortLabel('Manchester Cathedral', 'Manchester'), 'Cathedral', 'label: long rest without city');
 eq(core.classify([], [], ['large former manor house in Salford'], [], cfg), 'herrenhaus', 'manor house is Herrenhaus, not Schloss');
 core._resetTranslators();
 const tr = await core.translate("It's a test.", 'en', 'de', mockFetch(fx));

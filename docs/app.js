@@ -1,8 +1,8 @@
-/* Reiseführer – app (v0.3.1). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.3.2). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.3.1';
+  var VERSION = '0.3.2';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
@@ -542,11 +542,13 @@
   function openSheet(title, html) {
     $('sheetTitle').textContent = title;
     $('sheetBody').innerHTML = html;
-    $('sheetBody').scrollTop = 0;
     if ($('sheet').hidden) {
       $('sheet').hidden = false;
       try { history.pushState({ rfSheet: 1 }, ''); } catch (e) { /* ignore */ }
     }
+    // always start at the top (picture and text), also when switching from one place to the next
+    $('sheetBody').scrollTop = 0;
+    requestAnimationFrame(function () { $('sheetBody').scrollTop = 0; });
   }
   function hideSheet() {
     $('sheet').hidden = true;

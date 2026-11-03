@@ -1,5 +1,5 @@
 /*
- * Reiseführer – core logic (v0.3.1)
+ * Reiseführer – core logic (v0.3.2)
  * Shared by the app (index.html), the diagnostics page (diag.html) and Node tests.
  * No DOM access here. Network access only through the injected fetch function.
  */
@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var CORE_VERSION = '0.3.1';
+  var CORE_VERSION = '0.3.2';
 
   // ---------------------------------------------------------------- helpers
 
@@ -617,7 +617,8 @@
       var t = s.replace(new RegExp('(^|[\\s,–-]+)' + escRe(ort) + '(?=$|[\\s,–-])', 'gi'), ' ')
         .replace(/\s+/g, ' ').replace(/^[\s,–-]+|[\s,–-]+$/g, '')
         .replace(/\s+(von|vom|de|du|des|d'|of|di|del|della|la|le)$/i, '').trim();
-      if (t.length >= 3) s = t;
+      // only drop the city if a complete name is left: "Old Trafford" stays, "Manchester Cathedral" -> "Cathedral"
+      if (t.split(' ').length >= 2 || t.length >= 8) s = t;
     }
     if (s.length <= max) return s;
     var cut = s.slice(0, max);
@@ -661,11 +662,16 @@
     '(?:\\s*,\\s*(?:in\\s+|en\\s+)?[A-ZÄÖÜÉÈÀ][\\p{L}\'’.\\-]*(?:\\s+[A-ZÄÖÜÉÈÀ][\\p{L}\'’.\\-]*)*)*(?:\\s*\\([^)]*\\))?(?=[.!?]$)', 'u');
 
   /** Removes the location at the end of a sentence ("… ein Kunstmuseum in Manchester." -> "… ein Kunstmuseum."). */
+  // A sentence that only says where something is would be broken without the place ("Es befindet sich.")
+  var DANGLING = /\b(befindet sich|befinden sich|liegt|liegen|steht|stehen|gelegen|ansässig|is located|are located|is situated|is sited|lies|stands|is based|se trouve|se situe|est situé|est située|est implanté|si trova|è situato|è situata|se encuentra|está situado|está situada|is|are|was|were|ist|sind|war|waren|est|sont|était|è|sono|es|está)\s*[.!?]?$/i;
+
   function dropLocation(sentence) {
     var s = String(sentence || '').trim();
     for (var i = 0; i < 3; i++) {
       var t = s.replace(LOC_TAIL, '').replace(/[\s,;]+([.!?])$/, '$1');
       if (t === s) break;
+      // keep the sentence as it is rather than leaving a broken one (user decision v0.3.2)
+      if (DANGLING.test(t) || t.split(/\s+/).length < 4) break;
       s = t;
     }
     return s;

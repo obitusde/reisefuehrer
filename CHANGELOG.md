@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.3.2 – 03.11.2026 – Korrekturen Kurzinfo und Beschriftung
+
+- **Kurzinfo:** Sätze, die nur sagen, wo etwas liegt („… befindet sich in Pendleton, Salford.“), bleiben vollständig; vorher blieb „… befindet sich.“ übrig (Entscheidung Nutzer: dann lieber mit Ort).
+- **Beschriftung:** Der Ortsname fällt nur weg, wenn danach ein vollständiger Name übrig bleibt (mindestens zwei Wörter oder ein langes Wort). „Old Trafford“ und „Trafford Centre“ bleiben ganz (vorher „Old“).
+- **Ortsfenster** beginnt beim Öffnen immer oben (Foto und Text), auch beim Wechsel von einem Ort zum nächsten.
+
 ## v0.3.1 – 03.11.2026 – Kurzinfo verbessert
 
 - **Kurzinfo ohne Ortsangabe** (Wunsch Nutzer): Die Ortsangabe am Satzende fällt weg („… ein öffentliches Kunstmuseum in Manchester.“ → „… ein öffentliches Kunstmuseum.“, auch „based in …“, „situé à …“). Ist der Satz dann kurz, kommt der zweite Satz dazu; der sagt meist, welche Kunst oder was es zu sehen gibt.
