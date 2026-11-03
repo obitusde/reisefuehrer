@@ -1,0 +1,27 @@
+{
+ "laender": {
+  "CH": {
+   "stand": 1793723156943,
+   "staedte": 125,
+   "orte": 2,
+   "fehler": 0,
+   "kb": 22
+  },
+  "BE": {
+   "stand": 1793723256011,
+   "staedte": 34,
+   "orte": 0,
+   "fehler": 0,
+   "kb": 6
+  },
+  "LU": {
+   "stand": 1793723256061,
+   "staedte": 7,
+   "orte": 0,
+   "fehler": 0,
+   "kb": 1
+  }
+ },
+ "version": "0.7.0",
+ "stand": 1793723256061
+}
