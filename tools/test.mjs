@@ -137,9 +137,21 @@ eq(core.firstSentence('Das Rathaus ist ein Bau von ca. 1877 im Stil der Neugotik
 const ip = [{ id: 'a', artikel: { de: 'Rathaus Manchester', en: 'Manchester Town Hall' } }, { id: 'b', artikel: { en: "Chetham's Library" } },
   { id: 'c', artikel: { fr: 'Musée Alexis Forel' }, wikipedia: 'fr:Musée Alexis Forel' }];
 const intros = await core.loadIntros(ip, mockFetch(fx));
-eq(intros.a.lang + '|' + intros.a.text, 'de|Rathaus Manchester ist ein Testort.', 'intro German preferred');
+eq(intros.a.lang + '|' + intros.a.text, 'de|Rathaus Manchester ist ein Testort. Zweiter Satz.', 'intro German preferred, short -> 2 sentences');
 eq(intros.b.lang, 'en', 'intro English');
-eq(intros.c.lang + '|' + intros.c.text, 'fr|Musée Alexis Forel is a test place.', 'intro local language');
+eq(intros.c.lang + '|' + intros.c.text, 'fr|Musée Alexis Forel is a test place. Second sentence.', 'intro local language');
+
+// "what is it" without the location
+eq(core.shortInfo('Die Manchester Art Gallery ist ein öffentliches Kunstmuseum in Manchester. Sie besitzt über 25.000 Werke, darunter präraffaelitische Gemälde.'),
+  'Die Manchester Art Gallery ist ein öffentliches Kunstmuseum. Sie besitzt über 25.000 Werke, darunter präraffaelitische Gemälde.', 'location dropped, second sentence added');
+eq(core.shortInfo('Esea Contemporary is a contemporary art gallery based in Manchester, England. It focuses on artists of East Asian heritage.'),
+  'Esea Contemporary is a contemporary art gallery. It focuses on artists of East Asian heritage.', '"based in …" dropped');
+eq(core.shortInfo("Le musée Alexis-Forel est un musée situé à Morges, en Suisse. Il présente des arts décoratifs."),
+  "Le musée Alexis-Forel est un musée. Il présente des arts décoratifs.", 'French location dropped');
+eq(core.shortInfo("The People's History Museum in Manchester is the UK's national museum of democracy, founded as a labour history collection in the twentieth century. It opened in 1975."),
+  "The People's History Museum in Manchester is the UK's national museum of democracy, founded as a labour history collection in the twentieth century.", 'long first sentence alone, location in the middle kept');
+eq(core.stripLocation('contemporary art gallery based in Manchester, England'), 'Contemporary art gallery', 'description: "based" removed');
+eq(core.classify([], [], ['large former manor house in Salford'], [], cfg), 'herrenhaus', 'manor house is Herrenhaus, not Schloss');
 core._resetTranslators();
 const tr = await core.translate("It's a test.", 'en', 'de', mockFetch(fx));
 eq(tr.via + '|' + tr.text, "mymemory|[DE] It's a test.", 'translation via MyMemory, entities decoded');

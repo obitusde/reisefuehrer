@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.3.1 – 03.11.2026 – Kurzinfo verbessert
+
+- **Kurzinfo ohne Ortsangabe** (Wunsch Nutzer): Die Ortsangabe am Satzende fällt weg („… ein öffentliches Kunstmuseum in Manchester.“ → „… ein öffentliches Kunstmuseum.“, auch „based in …“, „situé à …“). Ist der Satz dann kurz, kommt der zweite Satz dazu; der sagt meist, welche Kunst oder was es zu sehen gibt.
+- **Kurzinfo erscheint auch nachträglich im offenen Ortsfenster** (vorher z. B. bei Cube Gallery leer, wenn das Fenster schneller offen war als die Übersetzung).
+- Fehler behoben: Beschreibung „Contemporary art gallery based“ (Rest von „based in Manchester“).
+- Hinweis „maschinell übersetzt aus dem …“ entfernt (Wunsch Nutzer).
+- Neuer Typ **Herrenhaus** (manor house, country house, Landsitz), Gewicht +2,5; vorher als „Schloss“ eingeordnet.
+- Gespeicherte Kurztexte aus v0.2.3/v0.3.0 werden einmal neu geladen (neuer Speicher `rf.kurz2`).
+
 ## v0.3.0 – 03.11.2026 – „Erzähl mir davon“
 
 - **Ortsfenster als Detailansicht:** Bild aus Wikipedia, deutsche Kurzinfo, Wikipedia-Einleitung zum Aufklappen, Link zu Wikipedia, Quellen und Lizenz.

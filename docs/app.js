@@ -1,14 +1,14 @@
-/* Reiseführer – app (v0.3.0). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.3.1). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.3.0';
+  var VERSION = '0.3.1';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
   var K = {
     settings: 'rf.settings', last: 'rf.last', merk: 'rf.merk', wd: 'rf.wdcache',
-    ort: 'rf.ortcache2', view: 'rf.view', split: 'rf.split', recent: 'rf.recent', kurz: 'rf.kurz', heard: 'rf.gehoert'
+    ort: 'rf.ortcache2', view: 'rf.view', split: 'rf.split', recent: 'rf.recent', kurz: 'rf.kurz2', heard: 'rf.gehoert'
   };
   var LS = {
     get: function (k, d) {
@@ -479,6 +479,11 @@
     var p = findPlace(id);
     var el = document.querySelector('.item[data-id="' + cssEsc(id) + '"] .it-desc');
     if (p && el) el.textContent = kurzText(p);
+    // the place window may already be open: show the text there too
+    if (p && $('plDesc') && $('sheetBody').getAttribute('data-place') === id) {
+      $('plDesc').textContent = kurzText(p);
+      $('plDesc').hidden = !kurzText(p);
+    }
   }
   function runKurz() {
     if (kurzBusy) { scheduleKurz(); return; }
@@ -496,7 +501,7 @@
           var it = intros[id];
           if (it.lang === 'de') { kurzStore[id] = { t: it.text, l: 'de', d: Date.now() }; showKurz(id); return; }
           return C.translate(it.text, it.lang, 'de', f, order).then(function (tr) {
-            kurzStore[id] = { t: tr.text, l: it.lang, via: tr.via, d: Date.now() };
+            kurzStore[id] = { t: C.splitSentences(tr.text).map(C.dropLocation).join(' '), l: it.lang, via: tr.via, d: Date.now() };
           }, function () {
             kurzStore[id] = { t: it.text, l: it.lang, orig: true, d: Date.now() };
           }).then(function () { showKurz(id); });
@@ -704,12 +709,7 @@
   var LANG_NAMES = { en: 'Englischen', fr: 'Französischen', it: 'Italienischen', es: 'Spanischen', nl: 'Niederländischen',
     pt: 'Portugiesischen', pl: 'Polnischen', cs: 'Tschechischen', sv: 'Schwedischen', da: 'Dänischen', no: 'Norwegischen',
     fi: 'Finnischen', el: 'Griechischen', ja: 'Japanischen', zh: 'Chinesischen', ru: 'Russischen' };
-  function kurzNote(p) {
-    var k = kurzStore[p.id];
-    if (!k || k.l === 'de') return '';
-    var from = LANG_NAMES[k.l] || k.l;
-    return ' <span class="small">(' + (k.orig ? 'Original, Übersetzung gerade nicht verfügbar' : 'maschinell übersetzt aus dem ' + esc(from)) + ')</span>';
-  }
+  function kurzNote() { return ''; } // no translation note (user decision v0.3.1)
 
   function toggleMerk(id) {
     var p = findPlace(id);

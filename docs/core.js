@@ -1,5 +1,5 @@
 /*
- * Reiseführer – core logic (v0.3.0)
+ * Reiseführer – core logic (v0.3.1)
  * Shared by the app (index.html), the diagnostics page (diag.html) and Node tests.
  * No DOM access here. Network access only through the injected fetch function.
  */
@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var CORE_VERSION = '0.3.0';
+  var CORE_VERSION = '0.3.1';
 
   // ---------------------------------------------------------------- helpers
 
@@ -629,7 +629,8 @@
   /** Wikidata description without the location part: "Museum in Morges (Schweiz)" -> "Museum". */
   function stripLocation(desc) {
     var s = String(desc || '').split(/[,;]/)[0];
-    s = s.replace(/\s+(in|im|in der|in den|bei|nahe|near|at|in the|à|au|aux|en|a|nel|nella)\s+[A-ZÄÖÜÉÈ].*$/, '').trim();
+    s = s.replace(/\s+(?:(?:based|located|situated|situé|située|situato|situata|gelegen)\s+)?(in|im|in der|in den|bei|nahe|near|at|in the|à|au|aux|en|a|nel|nella)\s+[A-ZÄÖÜÉÈ].*$/, '')
+      .replace(/\s+(based|located|situated|situé|située|gelegen)$/i, '').trim();
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
 
@@ -645,6 +646,54 @@
     while ((m = re.exec(s))) {
       if (!ABBR.test(s.slice(0, m.index))) { s = s.slice(0, m.index + 1); break; }
     }
+    if (s.length > max) {
+      var cut = s.slice(0, max), sp = cut.lastIndexOf(' ');
+      s = (sp > max * 0.6 ? cut.slice(0, sp) : cut).replace(/[\s,;:–-]+$/, '') + ' …';
+    }
+    return s;
+  }
+
+  // Location phrase at the end of a sentence: " in Manchester, England", " based in …", " situé à Morges", ", en Suisse"
+  var LOC_TAIL = new RegExp('\\s*,?\\s+(?:(?:based|located|situated|sited|situé|située|situato|situata|ubicado|gelegen)\\s+)?' +
+    '(?:in|im|at|near|bei|à|en|nahe|nel|nella)\\s+(?:the\\s+|der\\s+|dem\\s+|den\\s+|la\\s+|le\\s+|l\')?' +
+    '(?:(?:city|town|centre|center|Stadt|Innenstadt|Zentrum|Stadtzentrum|village|Dorf|Gemeinde|ville|commune)\\s+(?:of|von|de)\\s+)?' +
+    '[A-ZÄÖÜÉÈÀ][\\p{L}\'’.\\-]*(?:\\s+[A-ZÄÖÜÉÈÀ][\\p{L}\'’.\\-]*)*' +
+    '(?:\\s*,\\s*(?:in\\s+|en\\s+)?[A-ZÄÖÜÉÈÀ][\\p{L}\'’.\\-]*(?:\\s+[A-ZÄÖÜÉÈÀ][\\p{L}\'’.\\-]*)*)*(?:\\s*\\([^)]*\\))?(?=[.!?]$)', 'u');
+
+  /** Removes the location at the end of a sentence ("… ein Kunstmuseum in Manchester." -> "… ein Kunstmuseum."). */
+  function dropLocation(sentence) {
+    var s = String(sentence || '').trim();
+    for (var i = 0; i < 3; i++) {
+      var t = s.replace(LOC_TAIL, '').replace(/[\s,;]+([.!?])$/, '$1');
+      if (t === s) break;
+      s = t;
+    }
+    return s;
+  }
+
+  function splitSentences(text) {
+    var s = String(text || '').replace(/\s+/g, ' ').trim();
+    for (var k = 0; k < 3; k++) s = s.replace(/\s*\([^()]*\)/g, '').replace(/\s*\[[^\[\]]*\]/g, '');
+    s = s.replace(/\s+([,.;:])/g, '$1');
+    var out = [], re = /[.!?](?=\s+["„«(]?[A-ZÄÖÜÉÈÀ0-9])/g, m, start = 0;
+    while ((m = re.exec(s))) {
+      if (ABBR.test(s.slice(0, m.index))) continue;
+      out.push(s.slice(start, m.index + 1).trim());
+      start = m.index + 1;
+    }
+    if (start < s.length) out.push(s.slice(start).trim());
+    return out.filter(Boolean);
+  }
+
+  /**
+   * "What is it?" text: first sentence without the location; if that is short, the second sentence too
+   * (it usually says what kind of art, collection etc.). At most ~max characters.
+   */
+  function shortInfo(text, max) {
+    max = max || 260;
+    var ss = splitSentences(text).map(dropLocation);
+    var s = ss[0] || '';
+    if (s.length < 90 && ss[1]) s += ' ' + ss[1];
     if (s.length > max) {
       var cut = s.slice(0, max), sp = cut.lastIndexOf(' ');
       s = (sp > max * 0.6 ? cut.slice(0, sp) : cut).replace(/[\s,;:–-]+$/, '') + ' …';
@@ -682,7 +731,7 @@
     return runLimited(jobs, 2, function (job) {
       var url = 'https://' + job.lang + '.wikipedia.org/w/api.php?' + qs({
         action: 'query', format: 'json', formatversion: 2, origin: '*', redirects: 1,
-        prop: 'extracts', exintro: 1, explaintext: 1, exsentences: 2, exlimit: 20,
+        prop: 'extracts', exintro: 1, explaintext: 1, exsentences: 3, exlimit: 20,
         titles: job.items.map(function (x) { return x.title; }).join('|')
       });
       return getJsonRetry(url, f, retryDelays).then(function (d) {
@@ -694,7 +743,7 @@
           var t = it.title, guard = 0;
           while (map[t] && guard++ < 3) t = map[t];
           var ex = byTitle[t];
-          if (ex) out[it.id] = { lang: job.lang, text: firstSentence(ex) };
+          if (ex) out[it.id] = { lang: job.lang, text: shortInfo(ex) };
         });
       }, function () { /* leave missing */ });
     }).then(function () { return out; });
@@ -918,6 +967,7 @@
     reverseGeocode: reverseGeocode, languagesFor: languagesFor, localLanguage: localLanguage,
     searchPlaces: searchPlaces, isLatin: isLatin, pickNames: pickNames,
     shortLabel: shortLabel, stripLocation: stripLocation, firstSentence: firstSentence,
+    dropLocation: dropLocation, shortInfo: shortInfo, splitSentences: splitSentences,
     articleFor: articleFor, loadIntros: loadIntros, translate: translate,
     cleanArticle: cleanArticle, cutAtSentence: cutAtSentence, loadArticle: loadArticle,
     buildPrompt: buildPrompt, claudeNewUrl: claudeNewUrl,
