@@ -15,6 +15,8 @@ const require = createRequire(import.meta.url);
 const core = require(path.join(ROOT, 'docs/core.js'));
 const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'docs/config.json'), 'utf8'));
 const OUT = path.join(ROOT, 'docs/staedte');
+// test only: other minimum of language versions (workflow input min_sl)
+if (/^\d+$/.test(process.env.MIN_SL || '')) cfg.staedte.min_sprachversionen = +process.env.MIN_SL;
 const UA = 'ReisefuehrerBot/' + core.VERSION + ' (https://github.com/obitusde/reisefuehrer; Stadt-Sterne, einmalige Abfrage je Kachel)';
 
 const f = (url, o = {}) => fetch(url, { ...o, headers: { ...(o.headers || {}), 'User-Agent': UA, Accept: 'application/sparql-results+json' } });

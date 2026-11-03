@@ -16,6 +16,10 @@ on:
         description: 'Nur Test: Namen im Protokoll erklären, z. B. "Manchester|Windsor"'
         required: false
         default: ''
+      min_sl:
+        description: 'Nur Test: andere Mindestzahl Sprachversionen (leer = config.json)'
+        required: false
+        default: ''
       probe:
         description: 'Nur Test: Kacheln "süd,west,nord,ost;…" ansehen (erste ausführlich), nichts speichern'
         required: false
@@ -44,6 +48,7 @@ jobs:
         if: ${{ inputs.probe != '' }}
         env:
           PROBE: ${{ inputs.probe }}
+          MIN_SL: ${{ inputs.min_sl }}
         run: |
           if ! [[ "$PROBE" =~ ^[-0-9.,\;]+$ ]]; then echo "Ungültig"; exit 1; fi
           node tools/build-cities.mjs --probe "$PROBE"
