@@ -1,8 +1,8 @@
-/* Reiseführer – app (v0.6.0). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.6.1). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.6.0';
+  var VERSION = '0.6.1';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
@@ -172,7 +172,7 @@
     $('fStars').value = String(settings.minStars);
     $('fKat').innerHTML = '<option value="">Alle Typen</option>' + cfg.kategorien.map(function (k) {
       return '<option value="' + esc(k.id) + '">' + esc(k.label) + '</option>';
-    }).join('');
+    }).join('') + '<option value="__osm">Nur aus OSM</option>';
     $('fKat').value = settings.kat;
 
     initMap();
@@ -302,37 +302,43 @@
   }
 
   // ------------------------------------------------------------ splitter
+  // Drag: any size. Tap: switches between "Liste groß" (small map) and "Karte groß" (v0.6.1).
   function initSplitter() {
     var wrap = $('mapWrap'), sp = $('splitter'), app = $('app');
     var saved = LS.get(K.split, null);
-    if (typeof saved === 'number' && saved > 15 && saved < 85) wrap.style.flexBasis = saved + '%';
-    var dragging = false, top0 = 0, h0 = 0;
+    if (typeof saved === 'number' && saved >= 12 && saved <= 85) wrap.style.flexBasis = saved + '%';
+    var dragging = false, top0 = 0, h0 = 0, y0 = 0, moved = false;
+    function setPct(pct) {
+      wrap.style.flexBasis = pct + '%';
+      LS.set(K.split, pct);
+      map.invalidateSize();
+    }
     sp.addEventListener('pointerdown', function (e) {
-      dragging = true; sp.classList.add('drag');
+      dragging = true; moved = false; y0 = e.clientY; sp.classList.add('drag');
       top0 = wrap.getBoundingClientRect().top; h0 = app.getBoundingClientRect().height;
       try { sp.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
       e.preventDefault();
     });
     sp.addEventListener('pointermove', function (e) {
       if (!dragging) return;
-      var h = Math.max(120, Math.min(h0 - 200, e.clientY - top0));
+      if (Math.abs(e.clientY - y0) > 6) moved = true;
+      if (!moved) return;
+      var h = Math.max(110, Math.min(h0 - 150, e.clientY - top0));
       wrap.style.flexBasis = h + 'px';
       map.invalidateSize({ pan: false });
     });
-    function end() {
+    function end(e) {
       if (!dragging) return;
       dragging = false; sp.classList.remove('drag');
       var pct = wrap.getBoundingClientRect().height / app.getBoundingClientRect().height * 100;
-      pct = Math.round(Math.max(18, Math.min(82, pct)));
-      wrap.style.flexBasis = pct + '%';
-      LS.set(K.split, pct);
-      map.invalidateSize();
+      if (!moved && e && e.type === 'pointerup') {
+        setPct(pct >= 45 ? 22 : 70);  // tap: list big <-> map big
+        return;
+      }
+      setPct(Math.round(Math.max(12, Math.min(85, pct))));
     }
     sp.addEventListener('pointerup', end);
     sp.addEventListener('pointercancel', end);
-    sp.addEventListener('dblclick', function () {
-      wrap.style.flexBasis = '55%'; LS.set(K.split, 55); map.invalidateSize();
-    });
   }
 
   // ------------------------------------------------------------- search
@@ -365,8 +371,9 @@
     if (!LS.set(K.wd, wdStore)) { wdStore = {}; LS.set(K.wd, {}); }
   }
 
-  function setBusy(b) {
+  function setBusy(b, quiet) {
     busy = b;
+    if (quiet) return;
     $('btnHere').disabled = b; $('btnLocate').disabled = b;
     $('btnHere').textContent = b ? 'Suche …' : 'Hier suchen';
   }
@@ -375,7 +382,7 @@
 
   // Status line while searching: what is loading, seconds so far, and the buttons
   function renderBusy() {
-    if (!run) return;
+    if (!run || run.quiet) return;
     var s = Date.now() - run.t0;
     var html = '<span>' + esc(run.text || 'Suche …') + '</span> <b class="secs">' + Math.floor(s / 1000) + ' s</b>';
     if (s >= 3000) {
@@ -408,7 +415,7 @@
 
   /**
    * Searches the map section b ({south, west, north, east}).
-   * o: {onDone, force (do not use a prepared area)}
+   * o: {onDone, force (do not use a prepared area), quiet (keep the open place window, no hints), lateMs}
    */
   function doSearch(b, o) {
     o = o || {};
@@ -424,9 +431,9 @@
     if (!area && navigator.onLine === false) area = findArea(b, true);
     if (area) { useArea(area, b, o); return; }
 
-    setBusy(true);
+    setBusy(true, o.quiet);
     drawSearchArea(b);
-    var r = run = { t0: Date.now(), text: 'Bestimme Ort und Sprache …', phase: 'start', control: {}, cancelled: false };
+    var r = run = { quiet: !!o.quiet, t0: Date.now(), text: 'Bestimme Ort und Sprache …', phase: 'start', control: {}, cancelled: false };
     r.timer = setInterval(renderBusy, 1000);
     renderBusy();
     var ort = '';
@@ -436,6 +443,7 @@
       return C.loadPlaces({
         lat: circle.lat, lon: circle.lon, radius: circle.radius, bbox: b,
         cfg: cfg, wdCache: wdCache, osmCache: IDB, osm: settings.osm !== false,
+        osmCacheOnly: !!prep, // while an area is prepared it has OpenStreetMap to itself
         langs: C.languagesFor(info, cfg),
         localLang: C.localLanguage(info, cfg),
         fetch: function (u, op) { return fetch(u, op); },
@@ -452,14 +460,20 @@
         places: res.places, warnings: res.warnings, src: res.stats.src, herkunft: res.stats.herkunft,
         stats: { ms: res.stats.ms, requests: res.stats.requests, perLang: res.stats.perLang, wdCached: res.stats.wdCached, wdTotal: res.stats.wdTotal, osm: res.stats.osm, tiles: res.stats.osmTiles }
       };
+      if (o.lateMs) last.src.osm.lateMs = o.lateMs;
       if (!LS.set(K.last, last)) LS.del(K.last);
       saveWd();
-      selectedId = null;
-      if (!$('sheet').hidden) closeSheet();
+      var keepSel = o.quiet && selectedId && res.places.some(function (x) { return x.id === selectedId; });
+      if (!keepSel) {
+        selectedId = null;
+        if (!o.quiet && !$('sheet').hidden) closeSheet();
+      }
+      var sc = $('scroller'), top = sc.scrollTop;
       endRun();
       renderAll();
+      if (o.quiet) sc.scrollTop = top;
       var warn = res.warnings.filter(function (w) { return !/^OpenStreetMap: keine Antwort/.test(w); }); // shown in the status line
-      if (warn.length) toast('Hinweis: ' + warn.join('; '), 5000);
+      if (warn.length && !o.quiet) toast('Hinweis: ' + warn.join('; '), 5000);
       if (o.onDone) o.onDone();
     }).catch(function (e) {
       if (r.cancelled) return;
@@ -469,13 +483,23 @@
     }).then(function () { if (run === r) endRun(); });
   }
 
-  // OpenStreetMap answered after the search had gone on without it
+  // OpenStreetMap answered after the search had gone on without it: add its places automatically (v0.6.1).
+  // The tiles are in the cache now, so the repeated search is quick; the open place window stays.
   function osmLate(r, info) {
     if (r.cancelled || !last || !last.src || last.src !== (r.result && r.result.stats.src)) return;
     last.src.osm.late = { ok: info.ok, ms: info.ms };
     LS.set(K.last, last);
     if (!busy) renderList();
-    if (info.ok) toast('OpenStreetMap ist jetzt geladen (' + secText(info.ms) + '). Tippe „Hier suchen“, um die OSM-Orte zu ergänzen.', 6000);
+    if (!info.ok || !last.bbox) return;
+    var before = last.places.length, b = last.bbox;
+    (function again(tries) {
+      if (busy) { if (tries < 30) setTimeout(function () { again(tries + 1); }, 2000); return; }
+      if (last.bbox !== b) return; // another search in between
+      doSearch(b, { force: true, quiet: true, lateMs: info.ms, onDone: function () {
+        var n = last.places.length - before;
+        toast('OpenStreetMap ergänzt' + (n > 0 ? ': ' + n + ' Orte dazu' : ' (keine neuen Orte)') + '.', 4000);
+      } });
+    })(0);
   }
 
   // Places from a prepared area: instant, also offline
@@ -533,7 +557,8 @@
   function visiblePlaces() {
     if (!last || !last.places) return [];
     return last.places.filter(function (p) {
-      return p.sterne >= settings.minStars && (!settings.kat || p.kategorie === settings.kat) &&
+      var kat = !settings.kat || (settings.kat === '__osm' ? C.sourceTag(p) === 'OSM' : p.kategorie === settings.kat);
+      return p.sterne >= settings.minStars && kat &&
         !(settings.hideHeard && heard[p.id]);
     });
   }
@@ -571,6 +596,7 @@
     all.forEach(function (p) { cnt[p.sterne]++; });
     var txt = '★★★ ' + cnt[3] + ' · ★★ ' + cnt[2] + ' · ★ ' + cnt[1]; // place name is on the map (chip)
     if (settings.minStars > 0 && cnt[0]) txt += ' · ' + cnt[0] + ' ohne Stern';
+    if (settings.kat === '__osm') txt += ' · Filter: nur aus OSM';
     if (!run) { // while searching the status line shows the progress
       var st = $('status');
       st.innerHTML = '<button type="button" class="st-info" data-a="details"><span>' + esc(txt) + '</span>' +
@@ -603,25 +629,25 @@
 
   function dateText(t) { try { return new Date(t).toLocaleDateString('de-DE', { day: 'numeric', month: 'numeric', year: '2-digit' }); } catch (e) { return ''; } }
 
-  // Where the results come from, e.g. "Wikipedia ✓ 3 s · OSM ✓ 12 s, 6 neue"
+  // Where the results come from (one short line): "📥 Offline: Gebiet „Morges“" or "🌐 Online · W ✓ 3 s · OSM ✓ 12 s"
   function srcLine(l) {
     var s = l && l.src;
     if (!s) return 'Herkunft unbekannt (alte Suche)';
-    if (s.area) return '📥 Vorbereitet: „' + s.area.name + '“, Stand ' + dateText(s.area.updated) + (s.area.partial ? ', nur teilweise' : '');
+    if (s.area) return '📥 Offline: Gebiet „' + s.area.name + '“' + (s.area.partial ? ', nur teilweise' : '') + ' · Stand ' + dateText(s.area.updated);
     var wFail = (l.warnings || []).some(function (w) { return /^Wikipedia /.test(w); });
-    var parts = ['Wikipedia ' + (s.wiki.ms != null ? (wFail ? '⚠ ' : '✓ ') + secText(s.wiki.ms) : '✗')];
-    var o = s.osm || {}, neu = o.neu != null ? ', ' + o.neu + ' neue' : '';
+    var o = s.osm || {};
     var osm = {
-      ok: 'OSM ✓ ' + secText(o.ms) + neu,
-      cache: 'OSM ✓ gespeichert' + neu,
-      timeout: 'OSM ✗ keine Antwort nach ' + secText(o.ms),
-      skip: 'OSM übersprungen nach ' + secText(o.ms),
+      ok: 'OSM ✓ ' + secText(o.ms),
+      cache: 'OSM ✓ gespeichert',
+      prep: 'OSM wartet (Gebiet wird vorbereitet)',
+      timeout: 'OSM ✗ keine Antwort (' + secText(o.ms) + ')',
+      skip: 'OSM übersprungen',
       error: 'OSM ✗ Fehler',
       off: 'OSM aus'
     }[o.state] || 'OSM ?';
-    if (o.late) osm = o.late.ok ? 'OSM jetzt da (' + secText(o.late.ms) + ') – „Hier suchen“ ergänzt' : 'OSM ✗ auch später keine Antwort';
-    parts.push(osm);
-    return parts.join(' · ');
+    if (o.lateMs) osm = 'OSM ✓ ' + secText(o.lateMs) + ' (nachgeladen)';
+    else if (o.late) osm = o.late.ok ? 'OSM ✓ ' + secText(o.late.ms) + ', wird eingefügt …' : 'OSM ✗ auch später keine Antwort';
+    return '🌐 Online · W ' + (s.wiki.ms != null ? (wFail ? '⚠ ' : '✓ ') + secText(s.wiki.ms) : '✗') + ' · ' + osm;
   }
 
   // Details of the last search (tap on the status line)
@@ -685,7 +711,7 @@
           rowObserver.unobserve(en.target);
         });
         scheduleKurz();
-      }, { root: $('list'), rootMargin: '150px 0px' });
+      }, { root: $('scroller'), rootMargin: '150px 0px' });
     }
     Array.prototype.forEach.call(document.querySelectorAll('#list .item'), function (li) {
       if (kurzNeeded(li.getAttribute('data-id'))) rowObserver.observe(li);
@@ -850,7 +876,7 @@
       '</div>' +
       '<div class="actions">' +
         '<button class="btn" type="button" data-a="copy">Name kopieren</button>' +
-        (p.wikipedia ? '<a class="btn" href="' + esc(C.wikipediaUrl(p)) + '" target="_blank" rel="noopener">Wikipedia</a>' : '') +
+        (p.wikipedia ? '<a class="btn" href="' + esc(C.wikipediaUrl(p)) + '" target="_blank" rel="noopener">Wikipedia (' + esc(String(p.wikipedia).split(':')[0]) + ')</a>' : '') +
         '<a class="btn primary" href="' + esc(ml.name) + '"' + ml.target + '>' + ml.label + '</a>' +
         '<a class="btn" href="' + esc(ml.pin) + '"' + ml.target + '>Pin</a>' +
         '<button class="btn wide' + (on ? ' on' : '') + '" type="button" data-a="merk">' + (on ? '★ Gemerkt' : '☆ Merken') + '</button>' +
@@ -860,10 +886,7 @@
         '<tr><td><b>Punkte</b></td><td><b>' + (p.score == null ? '–' : p.score.toFixed(1)) + '</b></td></tr>' +
       '</table><p class="small">Faustregel aus Wikipedia/Wikidata. Gewichte und Schwellen stehen in config.json.</p></details>' +
       '<details class="why" id="plIntro" hidden><summary>Wikipedia-Einleitung</summary><p class="intro" id="plIntroText"></p></details>' +
-      '<p class="src">Quellen: ' + p.quellen.map(function (q) { return srcNames[q] || q; }).join(' · ') + '. Lizenzen: ' +
-        [p.quellen.indexOf('W') >= 0 || p.wikipedia ? 'Wikipedia (CC BY-SA 4.0), Wikidata (CC0)' : '',
-         p.quellen.indexOf('O') >= 0 ? '© OpenStreetMap-Mitwirkende (ODbL)' : '',
-         p.ort ? 'Ortsname: Nominatim' : ''].filter(Boolean).join(', ') + '.</p>';
+      '';
     openSheet(p.name, html);
     $('sheetBody').setAttribute('data-place', p.id);
     if (kurzNeeded(p.id)) { kurzQueue[p.id] = 1; scheduleKurz(); }
@@ -960,7 +983,7 @@
   function markHeard(id, on) {
     if (on) heard[id] = Date.now(); else delete heard[id];
     LS.set(K.heard, heard);
-    var list = $('list'), top = list.scrollTop;
+    var list = $('scroller'), top = list.scrollTop;
     renderList();            // row shows "✓ gehört" and is greyed
     list.scrollTop = top;
     var b = document.querySelector('[data-a="heard"]');
@@ -1023,6 +1046,7 @@
       '<div class="actions"><button class="btn primary wide" type="button" data-a="prep"' + (km2 > maxKm2 || prep ? ' disabled' : '') + '>' +
         (prep ? 'Wird gerade vorbereitet …' : 'Kartenausschnitt vorbereiten') + '</button></div>' +
       areasHtml() +
+      fullscreenHtml() +
       '<h3>Karten-App für „In Google Maps“ und „Pin“</h3>' +
       [['google', 'Google Maps (Web-Link, empfohlen)'], ['geo', 'Android-Karten-App (geo:-Link, Auswahl möglich)'], ['osmand', 'OsmAnd (öffnet OsmAnd+; „Pin“ per geo:-Link)']].map(function (o) {
         return '<label class="opt"><input type="radio" name="kapp" value="' + o[0] + '"' + (settings.kartenApp === o[0] ? ' checked' : '') + '> ' + o[1] + '</label>';
@@ -1058,6 +1082,22 @@
     }
   }
 
+  // ------------------------------------------- full screen (v0.6.1)
+  var installEvt = null;
+  window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); installEvt = e; });
+  function isInstalled() {
+    return window.matchMedia && (matchMedia('(display-mode: fullscreen)').matches || matchMedia('(display-mode: standalone)').matches);
+  }
+  function fullscreenHtml() {
+    if (isInstalled()) return '';
+    return '<h3>Vollbild</h3>' +
+      '<p class="small">Ohne Adresszeile und Android-Leiste: App installieren (Chrome-Menü ⋮ → „App installieren“ bzw. „Zum Startbildschirm hinzufügen“) und vom Startbildschirm öffnen.</p>' +
+      '<div class="actions">' +
+        (installEvt ? '<button class="btn primary" type="button" data-a="install">📲 App installieren</button>' : '') +
+        (document.documentElement.requestFullscreen ? '<button class="btn' + (installEvt ? '' : ' wide') + '" type="button" data-a="fullscreen">⛶ Vollbild jetzt</button>' : '') +
+      '</div>';
+  }
+
   // ------------------------------------------- prepared areas (v0.6)
   // Index in IndexedDB "areas"; places in "area:<id>"; whole Wikipedia articles in "art:<placeId>".
 
@@ -1076,11 +1116,21 @@
     if (!areas.length) return '<p class="small">Noch kein Gebiet vorbereitet. Gebiete erscheinen auf der Karte grün gestrichelt.</p>';
     var old = (cfg.gebiet.veraltet_tage || 30) * 864e5;
     return '<ul class="areas">' + areas.map(function (a) {
-      var c = a.counts || {}, sz = C.bboxSize(a.bbox);
+      var c = a.counts || {}, sz = C.bboxSize(a.bbox), fe = a.fehler || {};
       var state = prep && prep.id === a.id ? 'wird vorbereitet …' : a.status === 'fertig' ? (Date.now() - (a.updated || 0) > old ? 'veraltet – bitte aktualisieren' : 'fertig') : 'unvollständig';
+      var o = a.osm || {};
+      var osm = settings.osm === false ? 'OSM aus' : { ok: 'OSM ✓ ' + secText(o.ms), cache: 'OSM ✓', timeout: 'OSM ✗ keine Antwort', skip: 'OSM ✗', error: 'OSM ✗ Fehler', prep: 'OSM ✗' }[o.state] || 'OSM ?';
+      var soll = function (n, m) { return m != null && m !== n ? n + '/' + m : String(n || 0); };
+      var probs = [];
+      if (fe.texte && fe.texte.length) probs.push(fe.texte.length + ' Kurzinfos fehlen (' + fe.texte.slice(0, 3).join(', ') + (fe.texte.length > 3 ? ', …' : '') + ')');
+      if (fe.artikel && fe.artikel.length) probs.push(fe.artikel.length + ' Texte fehlen (' + fe.artikel.slice(0, 3).join(', ') + (fe.artikel.length > 3 ? ', …' : '') + ')');
+      if (fe.abbruch) probs.push('Abbruch: ' + fe.abbruch);
+      if (c.unuebersetzt) probs.push(c.unuebersetzt + ' Kurzinfos noch nicht übersetzt');
       return '<li data-area="' + esc(a.id) + '"><b>' + esc(a.name) + '</b>' +
         '<span class="small">' + kmText(sz.w) + ' × ' + kmText(sz.h) + ' · Stand ' + dateText(a.updated || a.created) + ' · ' + state + '<br>' +
-        (c.orte || 0) + ' Orte · ' + (c.texte || 0) + ' Kurzinfos · ' + (c.artikel || 0) + ' Texte</span>' +
+        (c.orte || 0) + ' Orte' + (c.nurOsm != null ? ' (' + c.nurOsm + ' nur aus OSM)' : '') + ' · ' + osm + '<br>' +
+        soll(c.texte, c.texteSoll) + ' Kurzinfos · ' + soll(c.artikel, c.artikelSoll) + ' Texte' +
+        (probs.length ? '<br><span class="warnc">' + esc(probs.join('; ')) + '</span>' : '') + '</span>' +
         '<div class="actions three">' +
           '<button class="btn" type="button" data-a="areashow">Zeigen</button>' +
           '<button class="btn" type="button" data-a="arearun"' + (prep ? ' disabled' : '') + '>' + (a.status === 'fertig' ? 'Aktualisieren' : 'Fortsetzen') + '</button>' +
@@ -1119,6 +1169,7 @@
   function prepareArea(b, id) {
     if (prep) { toast('Es wird schon ein Gebiet vorbereitet.'); return; }
     var a = id ? areaById(id) : null;
+    // "Aktualisieren" (complete area): everything again; "Fortsetzen": only what is missing
     var refresh = !!(a && a.status === 'fertig');
     b = a ? a.bbox : b;
     var g = cfg.gebiet, f = function (u, o) { return fetch(u, o); };
@@ -1127,7 +1178,9 @@
     renderPrep();
     if (navigator.wakeLock && navigator.wakeLock.request) navigator.wakeLock.request('screen').then(function (l) { p.lock = l; }).catch(function () {});
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {});
-    var c = C.bboxCenter(b), places = null, errors = 0;
+    var c = C.bboxCenter(b), places = null, old = null;
+    var fail = { texte: [], artikel: [] };
+    var osmWanted = settings.osm !== false && !(cfg.osm && cfg.osm.aktiv === false);
     prepStep('bestimme Ort …');
     getPlaceInfo(c.lat, c.lon).then(function (info) {
       if (!a) {
@@ -1137,21 +1190,27 @@
       a.status = 'laden';
       p.name = a.name;
       saveAreas(); drawAreas(); refreshSettings();
-      // 1. places
-      var have = a.hasPlaces && !refresh ? IDB.get('area:' + a.id) : Promise.resolve(null);
-      return have.then(function (stored) {
-        if (stored && stored.length) return stored;
+      // 1. places (again if refreshing, or if OpenStreetMap was missing last time)
+      var osmOk = !osmWanted || (a.osm && (a.osm.state === 'ok' || a.osm.state === 'cache'));
+      return (a.hasPlaces ? IDB.get('area:' + a.id) : Promise.resolve(null)).then(function (stored) {
+        old = stored;
+        if (stored && stored.length && !refresh && osmOk) return stored;
         var cells = C.cellsFor(b, g.zelle_m || 3000);
         prepStep('1/3 Orte (' + cells.length + ' Bereiche) …');
         return C.loadPlaces({
-          lat: c.lat, lon: c.lon, circles: cells, bbox: b, cfg: cfg, wdCache: wdCache, osmCache: IDB, osm: settings.osm !== false,
+          lat: c.lat, lon: c.lon, circles: cells, bbox: b, cfg: cfg, wdCache: wdCache, osmCache: IDB, osm: osmWanted,
           langs: C.languagesFor(info, cfg), localLang: C.localLanguage(info, cfg), fetch: f,
           osmWaitS: (cfg.osm && cfg.osm.vorbereiten_wartezeit_s) || 600,
           onProgress: function (t) { prepStep('1/3 ' + t.replace(/ …$/, '') + ' …'); }
         }).then(function (res) {
           saveWd();
           res.places.forEach(function (x) { x.ort = a.name; });
-          if (res.warnings.length) a.warnings = res.warnings;
+          a.warnings = res.warnings;
+          a.osm = { state: res.stats.src.osm.state, ms: res.stats.src.osm.ms, els: res.stats.src.osm.els };
+          // keep short infos from the last run
+          var byId = {};
+          (old || []).forEach(function (x) { if (x.kurz) byId[x.id] = x; });
+          res.places.forEach(function (x) { var o2 = byId[x.id]; if (o2 && !x.kurz) { x.kurz = o2.kurz; x.kurzOrig = o2.kurzOrig; } });
           return res.places;
         });
       });
@@ -1160,6 +1219,7 @@
       a.hasPlaces = true;
       a.counts = a.counts || {};
       a.counts.orte = places.length;
+      a.counts.nurOsm = C.sourceCounts(places).o;
       return IDB.set('area:' + a.id, places).then(saveAreas);
     }).then(function () {
       if (stop()) return;
@@ -1168,7 +1228,8 @@
         var k = kurzStore[x.id];
         if (k && k.t && !k.orig && !x.kurz) x.kurz = k.t;
       });
-      var need = places.filter(function (x) { return x.sterne >= (g.texte_ab_sternen || 1) && !x.osmOnly && x.artikel && Object.keys(x.artikel).length && (!x.kurz || x.kurzOrig); });
+      var want = places.filter(function (x) { return x.sterne >= (g.texte_ab_sternen || 1) && !x.osmOnly && x.artikel && Object.keys(x.artikel).length; });
+      var need = want.filter(function (x) { return !x.kurz || x.kurzOrig; });
       var batches = [];
       for (var i = 0; i < need.length; i += 20) batches.push(need.slice(i, i + 20));
       var done = 0;
@@ -1176,17 +1237,20 @@
         return pr.then(function () {
           if (stop()) return;
           prepStep('2/3 Kurzinfos ' + done + '/' + need.length + ' …', done, need.length);
-          return kurzFor(batch, stop).catch(function () { errors++; }).then(function () {
+          return kurzFor(batch, stop).catch(function () { /* counted below */ }).then(function () {
             batch.forEach(function (x) {
               var k = kurzStore[x.id];
               if (k && k.t) { x.kurz = k.t; x.kurzOrig = !!k.orig; }
+              if (!x.kurz) fail.texte.push(x.name);
             });
             done += batch.length;
             saveKurz();
           });
         });
       }, Promise.resolve()).then(function () {
-        a.counts.texte = places.filter(function (x) { return x.kurz; }).length;
+        a.counts.texte = want.filter(function (x) { return x.kurz; }).length;
+        a.counts.texteSoll = want.length;
+        a.counts.unuebersetzt = want.filter(function (x) { return x.kurz && x.kurzOrig; }).length;
         return IDB.set('area:' + a.id, places).then(saveAreas);
       });
     }).then(function () {
@@ -1194,29 +1258,34 @@
       // 3. whole articles (for "Erzähl mir davon" without internet)
       var need = places.filter(function (x) { return x.sterne >= (g.artikel_ab_sternen || 1) && x.wikipedia; });
       var done = 0, have = 0;
+      a.counts.artikelSoll = need.length;
       prepStep('3/3 Texte 0/' + need.length + ' …', 0, need.length);
       return runSeq(need, 2, function (x) {
         if (stop()) return null;
-        return IDB.get('art:' + x.id).then(function (old) {
-          if (old && old.text && !refresh) { have++; return; }
+        return IDB.get('art:' + x.id).then(function (o2) {
+          if (o2 && o2.text && !refresh) { have++; return; }
           return C.loadArticle(x, 'full', f).then(function (art) {
             have++;
             return IDB.set('art:' + x.id, art);
-          }, function () { errors++; });
+          }, function (e) { fail.artikel.push(x.name + ' (' + (e && e.message || 'Fehler') + ')'); });
         }).then(function () {
           done++;
           prepStep('3/3 Texte ' + done + '/' + need.length + ' …', done, need.length);
         });
       }).then(function () { a.counts.artikel = have; });
     }).then(function () {
-      a.status = stop() ? 'teilweise' : 'fertig';
+      a.fehler = fail;
+      var osmBad = osmWanted && !(a.osm && (a.osm.state === 'ok' || a.osm.state === 'cache'));
+      a.status = stop() || osmBad || fail.texte.length || fail.artikel.length ? 'teilweise' : 'fertig';
       if (!stop()) a.updated = Date.now();
       return saveAreas();
     }).then(function () {
+      var nf = fail.texte.length + fail.artikel.length;
       toast(p.cancelled ? 'Vorbereitung abgebrochen – „Fortsetzen“ in ⚙ macht weiter.'
-        : 'Gebiet „' + a.name + '“ ist vorbereitet: ' + a.counts.orte + ' Orte, ' + (a.counts.texte || 0) + ' Kurzinfos, ' + (a.counts.artikel || 0) + ' Texte' + (errors ? ' (' + errors + ' Fehler, später „Aktualisieren“)' : '') + '.', 6000);
+        : 'Gebiet „' + a.name + '“ ist vorbereitet: ' + a.counts.orte + ' Orte, ' + (a.counts.texte || 0) + ' Kurzinfos, ' + (a.counts.artikel || 0) + ' Texte' +
+          (nf ? '. ' + nf + ' fehlgeschlagen – „Fortsetzen“ in ⚙ lädt sie nach' : '') + '.', 6000);
     }).catch(function (e) {
-      if (a) { a.status = 'teilweise'; saveAreas(); }
+      if (a) { a.status = 'teilweise'; a.fehler = { texte: [], artikel: [], abbruch: e.message }; saveAreas(); }
       toast('Vorbereitung fehlgeschlagen: ' + e.message + (navigator.onLine === false ? ' (kein Internet)' : ''), 6000);
     }).then(function () {
       if (p.lock) { try { p.lock.release(); } catch (e) { /* ignore */ } }
@@ -1442,6 +1511,12 @@
           if (searchCircle) { map.removeLayer(searchCircle); searchCircle = null; }
           renderAll(); toast('Zwischenspeicher geleert');
         }
+      } else if (a === 'install' && installEvt) {
+        installEvt.prompt();
+        installEvt.userChoice.then(function () { installEvt = null; refreshSettings(); }, function () {});
+      } else if (a === 'fullscreen') {
+        closeSheet();
+        try { document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(function () { toast('Vollbild nicht möglich'); }); } catch (err) { toast('Vollbild nicht möglich'); }
       } else if (a === 'research') {
         var rb = last && last.bbox;
         closeSheet();

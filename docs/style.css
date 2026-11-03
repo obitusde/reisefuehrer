@@ -1,4 +1,4 @@
-/* Reiseführer – styles (v0.6.0). Mobile first, tuned for ~412 px wide phones (Pixel 8). */
+/* Reiseführer – styles (v0.6.1). Mobile first, tuned for ~412 px wide phones (Pixel 8). */
 
 :root {
   --bg: #f5f4f0; --card: #ffffff; --text: #1c1b19; --muted: #66645e; --line: #e2e0da;
@@ -114,10 +114,12 @@ button { cursor: pointer; }
 
 /* ---------- splitter */
 .splitter {
-  flex: 0 0 auto; height: 18px; display: flex; align-items: center; justify-content: center;
+  position: relative; flex: 0 0 auto; height: 26px; display: flex; align-items: center; justify-content: center;
   touch-action: none; cursor: row-resize; background: var(--bg); border-top: 1px solid var(--line);
 }
-.splitter span { width: 44px; height: 5px; border-radius: 3px; background: var(--line); }
+/* larger touch area than it looks (v0.6.1): 10 px above and below */
+.splitter::before { content: ""; position: absolute; left: 0; right: 0; top: -10px; bottom: -10px; }
+.splitter span { width: 72px; height: 6px; border-radius: 3px; background: var(--muted); opacity: .6; }
 .splitter.drag span { background: var(--accent); }
 
 /* ---------- filters + status */
@@ -127,14 +129,14 @@ button { cursor: pointer; }
   border: 1px solid var(--line); background: var(--card); color: var(--text); font-size: 15px;
 }
 #fStars { flex-grow: 1; } #fKat { flex-grow: 1.4; }
-.status { flex: 0 0 auto; padding: 2px 12px 6px; font-size: 13px; color: var(--muted); min-height: 24px; line-height: 18px; }
+.status { padding: 0 12px 4px; font-size: 13px; color: var(--muted); min-height: 24px; line-height: 18px; }
 .status.err { color: var(--err); }
 .status .secs { font-variant-numeric: tabular-nums; color: var(--text); }
 .st-info {
   display: block; width: 100%; min-height: 44px; padding: 4px 0; border: 0; background: transparent; color: inherit; text-align: left;
   font-size: 13px; line-height: 18px;
 }
-.st-info > span { display: block; }
+.st-info > span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .src-line { color: var(--accent); font-size: 12px; }
 .st-btns { display: flex; gap: 8px; margin-top: 4px; }
 .st-btn {
@@ -164,6 +166,7 @@ table.kv { width: 100%; border-collapse: collapse; font-size: 14px; }
 table.kv td { padding: 5px 6px 5px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
 table.kv td:first-child { color: var(--muted); white-space: nowrap; }
 .btn:disabled { opacity: .5; }
+.warnc { color: var(--s2); }
 .status.busy::before {
   content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: -1px;
   border: 2px solid var(--accent); border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite;
@@ -171,10 +174,12 @@ table.kv td:first-child { color: var(--muted); white-space: nowrap; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ---------- list */
-.list {
-  flex: 1 1 auto; overflow-y: auto; margin: 0; padding: 0 0 8px; list-style: none;
-  border-top: 1px solid var(--line); -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+/* v0.6.1: version line, status and list scroll together (nothing fixed below the filters) */
+.scroller {
+  flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+  padding-bottom: var(--safe-bottom);
 }
+.list { margin: 0; padding: 0 0 8px; list-style: none; border-top: 1px solid var(--line); }
 .item { display: flex; align-items: stretch; border-bottom: 1px solid var(--line); background: var(--card); }
 .item.sel { background: var(--sel-bg); }
 .item.zero .it-name { color: var(--muted); }
@@ -198,9 +203,8 @@ table.kv td:first-child { color: var(--muted); white-space: nowrap; }
 .empty b { color: var(--text); }
 
 .foot {
-  flex: 0 0 auto; display: flex; justify-content: space-between; gap: 8px;
-  padding: 4px 12px calc(4px + var(--safe-bottom)); font-size: 11px; color: var(--muted);
-  border-top: 1px solid var(--line); background: var(--bg);
+  display: flex; justify-content: space-between; gap: 8px;
+  padding: 0 12px; font-size: 11px; line-height: 16px; color: var(--muted);
 }
 
 /* ---------- bottom sheet */

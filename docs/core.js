@@ -1,5 +1,5 @@
 /*
- * Reiseführer – core logic (v0.6.0)
+ * Reiseführer – core logic (v0.6.1)
  * Shared by the app (index.html), the diagnostics page (diag.html) and Node tests.
  * No DOM access here. Network access only through the injected fetch function.
  */
@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var CORE_VERSION = '0.6.0';
+  var CORE_VERSION = '0.6.1';
 
   // ---------------------------------------------------------------- helpers
 
@@ -626,12 +626,12 @@
     var skipP = new Promise(function (res) { skipFn = res; });
     if (opts.control) opts.control.skipOsm = function () { skipFn('skip'); };
     var waitS = opts.osmWaitS || (cfg.osm && cfg.osm.max_wartezeit_s) || 120;
-    var osmFull = useOsm ? loadOsmArea(circles, cfg, f, opts.osmCache, null) : null;
+    var osmFull = useOsm ? loadOsmArea(circles, cfg, f, opts.osmCache, null, !!opts.osmCacheOnly) : null;
     var waitTimer = null;
     var waitP = useOsm ? new Promise(function (res) { waitTimer = setTimeout(function () { res('timeout'); }, waitS * 1000); }) : null;
     var osmP = !useOsm ? Promise.resolve(null) : Promise.race([
       osmFull.then(function (r) {
-        if (!osmDecided) { src.osm.state = r.requests ? 'ok' : 'cache'; src.osm.ms = Date.now() - t0; src.osm.tiles = r.tiles; src.osm.cachedTiles = r.cachedTiles; src.osm.server = r.servers.join(', '); src.osm.els = r.els.length; }
+        if (!osmDecided) { src.osm.state = r.missingTiles ? 'prep' : r.requests ? 'ok' : 'cache'; src.osm.ms = Date.now() - t0; src.osm.tiles = r.tiles; src.osm.cachedTiles = r.cachedTiles; src.osm.server = r.servers.join(', '); src.osm.els = r.els.length; }
         return r;
       }, function (e) {
         if (!osmDecided) { src.osm.state = 'error'; src.osm.ms = Date.now() - t0; src.osm.error = e.message; warnings.push('OpenStreetMap: ' + e.message); }
@@ -1178,12 +1178,13 @@
    * One tile from Overpass (cache {get(key) -> Promise, set(key, value) -> Promise}, 30 days).
    * Tries the configured servers one after the other.
    */
-  function loadOsmTile(key, cfg, f, cache) {
+  function loadOsmTile(key, cfg, f, cache, cacheOnly) {
     var ttl = (cfg.osm.cache_tage || 30) * 24 * 3600 * 1000;
     var ck = 'osm:' + (cfg.osm.version || 1) + ':' + key;
     var cached = cache ? Promise.race([Promise.resolve(cache.get(ck)), sleep(2000).then(function () { return null; })]) : Promise.resolve(null);
     return cached.catch(function () { return null; }).then(function (hit) {
       if (hit && Date.now() - hit.t < ttl) return { els: hit.els, cached: true };
+      if (cacheOnly) return { els: [], cached: true, missing: true }; // v0.6.1: do not compete with a running preparation
       var q = overpassQuery(key, cfg), servers = cfg.osm.server || ['https://overpass-api.de/api/interpreter'];
       var i = 0, lastErr = null, used = '';
       function next() {
@@ -1209,15 +1210,15 @@
   }
 
   /** All OSM elements inside any of the circles; every tile is loaded once. */
-  function loadOsmArea(circles, cfg, f, cache, onProgress) {
+  function loadOsmArea(circles, cfg, f, cache, onProgress, cacheOnly) {
     var keys = [], have = {};
     circles.forEach(function (c) {
       tileKeys(c.lat, c.lon, c.radius, cfg.osm.kachel_grad).forEach(function (k) { if (!have[k]) { have[k] = 1; keys.push(k); } });
     });
-    var seen = {}, out = [], done = 0, requests = 0, failed = 0, cachedTiles = 0, servers = {};
+    var seen = {}, out = [], done = 0, requests = 0, failed = 0, cachedTiles = 0, missing = 0, servers = {};
     return runLimited(keys, cfg.osm.parallel || 2, function (key) {
-      return loadOsmTile(key, cfg, f, cache).then(function (r) {
-        if (r.cached) cachedTiles++; else requests++;
+      return loadOsmTile(key, cfg, f, cache, cacheOnly).then(function (r) {
+        if (r.missing) missing++; else if (r.cached) cachedTiles++; else requests++;
         if (r.server) servers[r.server] = 1;
         r.els.forEach(function (e) {
           if (seen[e.id] || !insideAny(circles, e.lat, e.lon)) return;
@@ -1229,7 +1230,7 @@
       });
     }).then(function () {
       if (failed === keys.length) throw new Error('OpenStreetMap nicht erreichbar');
-      return { els: out, tiles: keys.length, requests: requests, cachedTiles: cachedTiles, failedTiles: failed, servers: Object.keys(servers) };
+      return { els: out, tiles: keys.length, requests: requests, cachedTiles: cachedTiles, missingTiles: missing, failedTiles: failed, servers: Object.keys(servers) };
     });
   }
 
@@ -1409,9 +1410,11 @@
       ';S.browser_fallback_url=' + encodeURIComponent(web) + ';end';
   }
 
+  /** Link to the longest (most detailed) article, in whatever language (v0.6.1, user decision). */
   function wikipediaUrl(p) {
-    var lang = p.artikel && p.artikel.de ? 'de' : (p.wikipedia || 'en:').split(':')[0];
-    var title = (p.artikel && p.artikel[lang]) || (p.wikipedia || '').replace(/^[a-z-]+:/, '');
+    var w = String(p.wikipedia || ''), ix = w.indexOf(':');
+    var lang = ix > 0 ? w.slice(0, ix) : (p.artikel && p.artikel.de ? 'de' : 'en');
+    var title = ix > 0 ? w.slice(ix + 1) : ((p.artikel && p.artikel[lang]) || '');
     return 'https://' + lang + '.m.wikipedia.org/wiki/' + encodeURIComponent(title.replace(/ /g, '_'));
   }
   function tripadvisorUrl(p) {

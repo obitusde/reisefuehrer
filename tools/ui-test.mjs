@@ -95,7 +95,7 @@ try {
   if (process.env.DEBUG) { page.on('request', (r) => { if (/extracts|mymemory/.test(r.url())) console.log('REQ', decodeURIComponent(r.url()).slice(0, 160)); }); page.on('requestfailed', (r) => console.log('FAILED', r.url().slice(0, 120), r.failure() && r.failure().errorText)); page.on('console', (m) => console.log('CONSOLE', m.text())); }
   await page.goto(BASE + 'index.html');
   await page.waitForSelector('.empty');
-  ok((await page.textContent('#version')) === 'v0.6.0', 'footer version');
+  ok((await page.textContent('#version')) === 'v0.6.1', 'footer version');
   if (OUT) await page.screenshot({ path: OUT + '/01-start.png' });
 
   await page.click('#btnLocate');
@@ -115,10 +115,10 @@ try {
   ok(!lblOverlap, 'labels do not overlap');
   ok(!(await page.$$eval('.mk-lbl', (els) => els.map((e) => e.textContent))).some((t) => /^Manchester /.test(t)), 'labels without city name');
   await page.waitForFunction(() => [...document.querySelectorAll('.it-desc')].some((e) => /Testort|Übersetzt:/.test(e.textContent)), null, { timeout: 8000 });
-  await page.$eval('#list', (l) => { l.scrollTop = l.scrollHeight; });
+  await page.$eval('#scroller', (l) => { l.scrollTop = l.scrollHeight; });
   await page.waitForFunction(() => [...document.querySelectorAll('.it-desc')].some((e) => /^Übersetzt:/.test(e.textContent)), null, { timeout: 8000 }).catch(() => {});
   const descs = await page.$$eval('.it-desc', (els) => els.map((e) => e.textContent));
-  await page.$eval('#list', (l) => { l.scrollTop = 0; });
+  await page.$eval('#scroller', (l) => { l.scrollTop = 0; });
   ok(descs.some((d) => d.startsWith('Übersetzt: ')), 'English intro translated in list: ' + descs.join(' | '));
   ok(descs.some((d) => /ist ein Testort\. Zweiter Satz\.$/.test(d)), 'German intro shown as is (2 short sentences)');
   ok(!descs.some((d) => /maschinell/.test(d)), 'no translation note');
@@ -129,7 +129,14 @@ try {
   ok(names4.includes('Pankhurst Centre'), 'v0.4: OSM-only museum in list');
   // v0.5: where results come from
   const srcLine = await page.textContent('#status .src-line');
-  ok(/Wikipedia ✓ .* · OSM ✓ .*neue/.test(srcLine), 'v0.5 status shows sources: ' + srcLine);
+  ok(/^🌐 Online · W ✓ .* · OSM ✓/.test(srcLine), 'v0.6.1 status shows online and sources: ' + srcLine);
+  const stH = await page.$eval('#status', (e) => e.getBoundingClientRect().height);
+  ok(stH <= 48, 'v0.6.1 status at most two lines: ' + stH);
+  ok(await page.$eval('#scroller', (sc) => sc.contains(document.getElementById('status')) && sc.contains(document.querySelector('.foot'))), 'v0.6.1 version line and status scroll with the list');
+  await page.selectOption('#fKat', '__osm');
+  const onlyOsm = await page.$$eval('.it-src', (els) => els.map((e) => e.textContent));
+  ok(onlyOsm.length > 0 && onlyOsm.every((t) => t === 'OSM'), 'v0.6.1 filter "Nur aus OSM": ' + onlyOsm.length);
+  await page.selectOption('#fKat', '');
   const tags = await page.$$eval('.it-src', (els) => els.map((e) => e.textContent));
   ok(tags.includes('W+OSM') && tags.includes('OSM') && tags.includes('W'), 'v0.5 source tags in list: ' + [...new Set(tags)].join(','));
   ok(!(await page.$('#fRadius')), 'v0.5 no radius filter');
@@ -148,11 +155,11 @@ try {
     const r = (s) => document.querySelector(s).getBoundingClientRect();
     const small = [...document.querySelectorAll('button, select, .btn')].filter((b) => b.offsetParent && b.getBoundingClientRect().height < 44 && !b.closest('.leaflet-control'))
       .map((b) => (b.id || b.className) + ':' + Math.round(b.getBoundingClientRect().height));
-    return { scrollW: document.documentElement.scrollWidth, w: innerWidth, h: innerHeight, map: r('#mapWrap').height, list: r('#list').height,
-      footBottom: r('.foot').bottom, small };
+    return { scrollW: document.documentElement.scrollWidth, w: innerWidth, h: innerHeight, map: r('#mapWrap').height, list: r('#scroller').height,
+      footBottom: r('#scroller').bottom, small };
   });
   ok(lay.scrollW <= lay.w, 'no horizontal scroll');
-  ok(Math.abs(lay.footBottom - lay.h) < 2, 'footer at bottom, page fits viewport');
+  ok(Math.abs(lay.footBottom - lay.h) < 2, 'list area reaches the bottom, page fits viewport');
   ok(lay.map > lay.h * 0.45 && lay.map < lay.h * 0.6, 'map ~55%: ' + lay.map);
   ok(lay.list > 150, 'list visible height ' + lay.list);
   ok(lay.small.length === 0, 'tap targets >= 44px: ' + lay.small.join(', '));
@@ -199,7 +206,7 @@ try {
   await page.selectOption('#fKat', '');
   await page.$eval('#list', (l) => { const li = [...l.querySelectorAll('.item')].find((x) => x.textContent.includes('Alan Turing Memorial')); li.querySelector('.it-main').click(); });
   await page.waitForFunction(() => document.getElementById('sheetTitle').textContent === 'Alan Turing Memorial');
-  ok((await page.textContent('#sheetBody')).includes('Quellen: OpenStreetMap') && (await page.textContent('#sheetBody')).includes('ODbL'), 'OSM source and license shown');
+  ok(!(await page.$('#sheetBody p.src')) && !(await page.textContent('#sheetBody')).includes('Lizenzen:'), 'v0.6.1: no sources/licence line in the place window');
   ok((await page.textContent('#plDesc')).includes('Glyn Hughes'), 'OSM facts as short info');
   await page.click('[data-a=tell]');
   await page.waitForFunction(() => /Prompt kopiert/.test(document.getElementById('tellStatus').textContent));
@@ -239,6 +246,17 @@ try {
   await page.mouse.move(b.x + b.width / 2, b.y - 150, { steps: 5 }); await page.mouse.up();
   const after = (await page.$('#mapWrap').then((e) => e.boundingBox())).height;
   ok(after < before - 100, 'splitter shrinks map ' + before + ' -> ' + after);
+  const sb = await (await page.$('#splitter')).boundingBox();
+  await page.mouse.click(sb.x + sb.width / 2, sb.y + sb.height / 2);
+  await page.waitForTimeout(100);
+  const tapped = (await page.$('#mapWrap').then((e) => e.boundingBox())).height;
+  ok(tapped > after + 100, 'v0.6.1 tap on splitter: map big ' + after + ' -> ' + tapped);
+  await page.mouse.click(sb.x + sb.width / 2, (await (await page.$('#splitter')).boundingBox()).y + 10);
+  await page.waitForTimeout(100);
+  const tapped2 = (await page.$('#mapWrap').then((e) => e.boundingBox())).height;
+  ok(tapped2 < tapped - 150, 'v0.6.1 tap again: list big ' + tapped + ' -> ' + tapped2);
+  await page.mouse.move(sb.x + sb.width / 2, (await (await page.$('#splitter')).boundingBox()).y + 10); await page.mouse.down();
+  await page.mouse.move(sb.x + sb.width / 2, after + 30, { steps: 6 }); await page.mouse.up();
 
   // place search: jump to a place and search there
   await page.evaluate(() => { localStorage.removeItem('rf.last'); });
@@ -313,13 +331,14 @@ try {
   await page.reload();
   await page.waitForSelector('.item');
   ok((await page.textContent('#merkCount')) === '1', 'merk persisted');
-  ok(Math.abs((await page.$('#mapWrap').then((e) => e.boundingBox())).height - after) < 10, 'split persisted');
+  const splitNow = await page.evaluate(() => localStorage.getItem('rf.split'));
+  ok(splitNow && +splitNow > 12, 'split persisted: ' + splitNow);
 
   // update banner (fake newer version, then ?testupdate=1)
-  fakeVersion = '0.6.1';
+  fakeVersion = '0.6.2';
   await page.reload();
   await page.waitForSelector('#banner:not([hidden])');
-  ok((await page.textContent('#bannerText')).includes('v0.6.1'), 'banner shows remote version');
+  ok((await page.textContent('#bannerText')).includes('v0.6.2'), 'banner shows remote version');
   if (OUT) await page.screenshot({ path: OUT + '/05-banner.png' });
   fakeVersion = null;
   await page.click('#bannerBtn');
@@ -347,13 +366,18 @@ try {
     await p5.click('#status [data-a=cancel]');
     await p5.waitForFunction(() => !document.getElementById('btnHere').disabled);
     ok((await p5.textContent('#toast')).includes('abgebrochen') && !(await p5.$('.item')), 'v0.5 cancel stops the search');
+    OSM_DELAY = 7000;
     await p5.click('#btnHere');
     await p5.waitForSelector('#status [data-a=skiposm]', { timeout: 8000 });
     if (OUT) await p5.screenshot({ path: OUT + '/12-warte-osm.png' });
     await p5.click('#status [data-a=skiposm]');
     await p5.waitForSelector('.item', { timeout: 8000 });
     const sl5 = await p5.textContent('#status .src-line');
-    ok(/OSM übersprungen nach \d+ s/.test(sl5) && !(await p5.$$eval('.it-src', (els) => els.some((e) => e.textContent !== 'W'))), 'v0.5 skip OSM: Wikipedia results at once: ' + sl5);
+    ok(/OSM übersprungen/.test(sl5) && !(await p5.$$eval('.it-src', (els) => els.some((e) => e.textContent !== 'W'))), 'v0.5 skip OSM: Wikipedia results at once: ' + sl5);
+    // v0.6.1: OSM comes later -> added automatically
+    await p5.waitForFunction(() => /OpenStreetMap ergänzt/.test(document.getElementById('toast').textContent), null, { timeout: 15000 });
+    const sl5b = await p5.textContent('#status .src-line');
+    ok(/nachgeladen/.test(sl5b) && (await p5.$$eval('.it-src', (els) => els.some((e) => e.textContent !== 'W'))), 'v0.6.1 late OSM merged automatically: ' + sl5b + ' / ' + await p5.textContent('#toast'));
     OSM_DELAY = 0;
     await p5.evaluate(() => window.__rfMap && window.__rfMap.setZoom(10, { animate: false }));
     await p5.click('#btnHere');
@@ -380,7 +404,7 @@ try {
     const done6 = await p6.textContent('#toast');
     ok(/\d+ Orte, \d+ Kurzinfos, \d+ Texte/.test(done6), 'v0.6 area prepared: ' + done6);
     const areaTxt = await p6.textContent('.areas li');
-    ok(areaTxt.includes('Manchester') && areaTxt.includes('fertig'), 'v0.6 area listed: ' + areaTxt.replace(/\s+/g, ' ').slice(0, 120));
+    ok(areaTxt.includes('Manchester') && areaTxt.includes('fertig') && /nur aus OSM/.test(areaTxt) && areaTxt.includes('OSM ✓'), 'v0.6 area listed: ' + areaTxt.replace(/\s+/g, ' ').slice(0, 160));
     if (OUT) await p6.screenshot({ path: OUT + '/14-gebiete.png' });
     await p6.click('#sheetClose');
     // offline now
@@ -388,7 +412,7 @@ try {
     await p6.click('#btnHere');
     await p6.waitForSelector('.item', { timeout: 5000 });
     const sl6 = await p6.textContent('#status .src-line');
-    ok(sl6.includes('Vorbereitet') && sl6.includes('Manchester'), 'v0.6 offline search uses the area: ' + sl6);
+    ok(sl6.includes('📥 Offline: Gebiet „Manchester“'), 'v0.6 offline search uses the area: ' + sl6);
     const d6 = await p6.$$eval('.it-desc', (els) => els.map((e) => e.textContent).filter(Boolean));
     ok(d6.length >= 5 && d6.some((d) => /Übersetzt:|Testort/.test(d)), 'v0.6 short infos offline: ' + d6.length);
     await p6.$eval('#list', (l) => { const li = [...l.querySelectorAll('.item')].find((x) => x.textContent.includes('Town Hall')); li.querySelector('.it-main').click(); });
@@ -413,7 +437,7 @@ try {
     const r = (s) => document.querySelector(s).getBoundingClientRect();
     const sel = [...document.querySelectorAll('.filters select')].map((x) => x.scrollWidth <= x.clientWidth + 1);
     const pillsOk = (() => { const a = r('#btnLocate'), b = r('#btnHere'); return a.right < b.left; })();
-    return { scrollW: document.documentElement.scrollWidth, w: innerWidth, h: innerHeight, list: r('#list').height, foot: r('.foot').bottom, pillsOk, sel };
+    return { scrollW: document.documentElement.scrollWidth, w: innerWidth, h: innerHeight, list: r('#scroller').height, foot: r('#scroller').bottom, pillsOk, sel };
   });
   ok(layS.scrollW <= layS.w, 'small: no horizontal scroll');
   ok(Math.abs(layS.foot - layS.h) < 2, 'small: fits viewport');
@@ -445,9 +469,9 @@ try {
   const swOk = await p3.evaluate(() => navigator.serviceWorker.ready.then((r) => !!r.active)).catch(() => false);
   ok(swOk, 'service worker active');
   const cacheKeys = await p3.evaluate(async () => { await new Promise((r) => setTimeout(r, 800)); return caches.keys(); });
-  ok(cacheKeys.includes('rf-app-0.6.0'), 'app cache with version: ' + cacheKeys.join(','));
-  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.6.0')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
-  ok(cached.some((u) => u.includes('app.js?v=0.6.0')), 'shell precached');
+  ok(cacheKeys.includes('rf-app-0.6.1'), 'app cache with version: ' + cacheKeys.join(','));
+  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.6.1')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
+  ok(cached.some((u) => u.includes('app.js?v=0.6.1')), 'shell precached');
   ok(errs3.length === 0, 'sw: no JS errors ' + errs3.join(' | '));
   await ctx3.close();
 

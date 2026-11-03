@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.6.1 – 03.11.2026 – Mehr Platz für die Liste, Herkunft auf einen Blick
+
+Rückmeldungen vom Test in Morges (OSM kam erst nach 170 s; Liste zu klein; offline/online nicht erkennbar).
+
+- **Mehr Platz für die Liste**: Versionszeile („Reiseführer v0.6.1 · Sterne = Faustregel“) und Statuszeile stehen jetzt oben in der Liste und scrollen mit weg; unten ist nichts mehr fest.
+- **Statuszeile höchstens zwei Zeilen**: Sterne-Zahlen, darunter „📥 Offline: Gebiet „Morges“ · Stand …“ (Daten vom Handy) oder „🌐 Online · W ✓ 2 s · OSM ✓ 12 s“ (aus dem Internet). Antippen zeigt weiter die Details.
+- **Karte/Liste verstellen**: Schieber größer und leichter zu greifen. Antippen wechselt zwischen „Liste groß“ (Karte 22 %) und „Karte groß“ (70 %), Ziehen stellt frei ein (Karte 12–85 %).
+- **Vollbild**: Die installierte App startet im Vollbild (ohne Adresszeile und Android-Leiste). In ⚙ „📲 App installieren“ (wenn Chrome es anbietet) und „⛶ Vollbild jetzt“ für den Browser.
+- **OSM kommt später → wird automatisch eingefügt**: Statt „Tippe Hier suchen“ sucht die App still nochmal (OSM ist dann gespeichert, geht schnell), das offene Ortsfenster bleibt. Meldung „OpenStreetMap ergänzt: 6 Orte dazu“, Statuszeile „OSM ✓ 170 s (nachgeladen)“.
+- **Neuer Filter „Nur aus OSM“** im Typen-Filter: zeigt, was OpenStreetMap dazugebracht hat.
+- **Gebiete zeigen mehr**: „77 Orte (14 nur aus OSM) · OSM ✓ 45 s“, Kurzinfos und Texte als „vorhanden/gewünscht“ (z. B. „5/7 Kurzinfos“), fehlgeschlagene Kurzinfos und Texte mit Namen und Grund, noch nicht übersetzte Kurzinfos. Fehlt etwas oder kam OSM nicht, ist das Gebiet „unvollständig“ und „Fortsetzen“ lädt genau das nach (bei fehlendem OSM auch die Orte neu, Kurzinfos bleiben erhalten).
+- **Vorbereiten und Suchen nicht gleichzeitig bei OSM**: Während ein Gebiet vorbereitet wird, nimmt „Hier suchen“ nur schon gespeicherte OSM-Daten („OSM wartet (Gebiet wird vorbereitet)“). Vermutlich kamen die 170 s daher, dass beides gleichzeitig bei Overpass anfragte.
+- **Ortsfenster**: Zeile „Quellen … Lizenzen …“ entfernt (Lizenzen stehen weiter in ⚙). Der Wikipedia-Knopf öffnet den längsten Artikel, egal in welcher Sprache, und zeigt die Sprache an, z. B. „Wikipedia (fr)“ (Wunsch Nutzer).
+
+### Annahmen/Abweichungen
+
+- Vollbild gilt für die installierte App. Ist sie schon installiert, übernimmt Chrome die Änderung erst nach einiger Zeit; sonst einmal vom Startbildschirm entfernen und neu installieren.
+- Warum in Morges nur 5 Kurzinfos und 3 Texte kamen, ist noch offen. Viele Orte dort kommen nur aus OSM und haben keinen Wikipedia-Text. Ab jetzt zeigt das Gebiet in ⚙, was fehlt und warum.
+
 ## v0.6.0 – 03.11.2026 – Gebiet vorbereiten (offline)
 
 Vorgezogen aus v0.7/v0.10 (Wunsch Nutzer): eine Suche vorbereiten, die länger dauern darf, damit sie unterwegs sofort da ist – auch ohne Internet.

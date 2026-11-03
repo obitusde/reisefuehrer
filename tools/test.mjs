@@ -261,6 +261,7 @@ eq(core.gmapsPinUrl(pl), 'https://www.google.com/maps/search/?api=1&query=53.485
 eq(core.geoPinUrl(pl), "geo:53.485700,-2.243200?q=53.485700,-2.243200(Chetham's%20Library)", 'geo pin');
 eq(core.nameWithPlace({ name: 'Manchester Cathedral', ort: 'Manchester' }), 'Manchester Cathedral', 'no duplicate city');
 eq(core.wikipediaUrl(pl), "https://en.m.wikipedia.org/wiki/Chetham's_Library", 'wikipedia url');
+eq(core.wikipediaUrl({ wikipedia: 'fr:Château de Morges', artikel: { de: 'Schloss Morges', fr: 'Château de Morges' } }), 'https://fr.m.wikipedia.org/wiki/Ch%C3%A2teau_de_Morges', 'v0.6.1: link to the longest article, not the German one');
 eq(core.merkZeile(pl), "Chetham's Library – ★★★ – Manchester – https://www.google.com/maps/search/?api=1&query=Chetham's%20Library%2C%20Manchester", 'merkzeile');
 eq(core.compareVersions('0.10.0', '0.9.9'), 1, 'semver compare');
 eq(core.compareVersions('0.2.0', '0.2.0'), 0, 'semver equal');
@@ -307,6 +308,10 @@ ok(!r7.places.some(p => p.quellen.includes('O')) && r7.stats.src.osm.state === '
 // v0.5: only places inside the map section; source stats
 const rb = await core.loadPlaces({ lat: fx.center.lat, lon: fx.center.lon, radius: 1000, bbox: { south: 53.475, west: -2.25, north: 53.4835, east: -2.238 }, cfg, fetch: mockFetch(fx), wdCache, osmCache, localLang: 'en' });
 ok(rb.places.length > 3 && rb.places.length < res.places.length && rb.places.every((p) => p.lat >= 53.475 && p.lat <= 53.4835 && p.lon >= -2.25 && p.lon <= -2.238), 'bbox filter: ' + rb.places.length + ' of ' + res.places.length);
+// v0.6.1: while an area is prepared, a search only takes OSM tiles from the cache
+const fCo = mockFetch(fx);
+const rCo = await core.loadPlaces({ lat: 53.1, lon: -2.1, radius: 500, cfg, fetch: fCo, wdCache, osmCache, localLang: 'en', osmCacheOnly: true });
+ok(!fCo.calls.some((u) => u.includes('overpass')) && rCo.stats.src.osm.state === 'prep', 'cache-only OSM: no Overpass request (' + rCo.stats.src.osm.state + ')');
 ok(rb.stats.src.wiki.ms != null && rb.stats.src.osm.state === 'cache' && rb.stats.herkunft.w + rb.stats.herkunft.o + rb.stats.herkunft.wo === rb.places.length, 'source stats ' + JSON.stringify(rb.stats.src.osm) + ' ' + JSON.stringify(rb.stats.herkunft));
 // v0.6: an area in cells: same places as one search, OSM tiles loaded once
 const fA = mockFetch(fx);

@@ -11,7 +11,7 @@
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="stylesheet" href="lib/leaflet/leaflet.css">
-<link rel="stylesheet" href="style.css?v=0.6.0">
+<link rel="stylesheet" href="style.css?v=0.6.1">
 </head>
 <body>
 <div id="app">
@@ -35,7 +35,7 @@
     </div>
   </div>
 
-  <div id="splitter" class="splitter" role="separator" aria-label="Karte größer oder kleiner ziehen"><span></span></div>
+  <div id="splitter" class="splitter" role="separator" aria-label="Antippen: Liste groß oder Karte groß. Ziehen: Größe frei einstellen"><span></span></div>
 
   <div class="filters">
     <select id="fStars" aria-label="Mindeststerne">
@@ -47,14 +47,15 @@
     <select id="fKat" aria-label="Kategorie"></select>
   </div>
   <div id="prep" class="prep" hidden></div>
-  <div id="status" class="status" aria-live="polite"></div>
 
-  <ul id="list" class="list"></ul>
-
-  <footer class="foot">
-    <span>Reiseführer <b id="version">v0.6.0</b></span>
-    <span>Sterne = Faustregel</span>
-  </footer>
+  <div id="scroller" class="scroller">
+    <div class="foot">
+      <span>Reiseführer <b id="version">v0.6.1</b></span>
+      <span>Sterne = Faustregel</span>
+    </div>
+    <div id="status" class="status" aria-live="polite"></div>
+    <ul id="list" class="list"></ul>
+  </div>
 </div>
 
 <div id="sheet" class="sheet" hidden role="dialog" aria-modal="false" aria-labelledby="sheetTitle">
@@ -68,7 +69,7 @@
 <div id="toast" class="toast" hidden></div>
 
 <script src="lib/leaflet/leaflet.js"></script>
-<script src="core.js?v=0.6.0"></script>
-<script src="app.js?v=0.6.0"></script>
+<script src="core.js?v=0.6.1"></script>
+<script src="app.js?v=0.6.1"></script>
 </body>
 </html>
