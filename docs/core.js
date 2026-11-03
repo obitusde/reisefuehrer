@@ -1559,10 +1559,16 @@
   }
   // A settlement: class like "commune of France", "town"; without population only a clear "city/town/village"
   // (so that e.g. "Paris Commune", an insurgency, is no city).
+  // Administrative units that also carry a city word ("metropolitan city of Italy", "Communauté urbaine", "county borough")
+  // are no city, unless one class is plainly "city"/"town" (Cardiff is a city and a principal area).
   function isCityItem(x, cfg) {
     var c = cfg.staedte;
     if (!anyHeadEnds(x.cls, c.stadt_woerter || [])) return false;
-    if (anyHeadEnds(x.cls, c.keine_stadt_woerter || [])) return false;
+    var sicher = (c.stadt_sicher_woerter || ['city', 'town', 'village']).map(function (w) { return norm(w); });
+    var plain = (x.cls || []).some(function (l) { return sicher.indexOf(headPhrase(l)) >= 0; });
+    var full = (x.cls || []).map(function (l) { return norm(l); });
+    var keine = (c.keine_stadt_klassen || []).some(function (w) { var n = norm(w); return full.some(function (l) { return l.indexOf(n) >= 0; }); });
+    if (keine && !plain) return false;
     return x.pop > 0 || anyHeadEnds(x.cls, c.stadt_sicher_woerter || ['city', 'town', 'village']);
   }
 
@@ -1575,15 +1581,25 @@
   }
 
   /** Points of one sight (score from PROJEKT.md 6 without article length), or null if it does not count. */
+  function isUnesco(x, cfg) {
+    var uq = cfg.score.unesco_qids || [];
+    return !!x.u || (x.h || []).some(function (q) { return uq.indexOf(q) >= 0; });
+  }
   function sightScore(x, cfg) {
     var c = cfg.staedte;
-    if (anyHeadEnds(x.cls, c.ausschluss_woerter || [])) return null;
     var typ = classify(x.p31, x.cls, [x.desc], [x.name_en || x.name], cfg);
-    if ((c.ausschluss_typen || []).indexOf(typ) >= 0) return null;
-    var t = typeInfo(typ, cfg);
-    if (t.max_sterne === 0) return null;
-    // only things one can visit: a known type, or a class from the extra list (cemetery, triumphal arch, …)
-    if (typ === 'sonstiges' && !anyHeadEnds(x.cls, c.sehenswert_woerter || [])) return null;
+    if (isUnesco(x, cfg)) {
+      // World Heritage (e.g. "old town of Bamberg", class "historic district") always counts
+      x.u = true;
+      var tu = typeInfo(typ, cfg);
+      if (typ === 'sonstiges' || tu.max_sterne === 0 || (c.ausschluss_typen || []).indexOf(typ) >= 0) typ = 'welterbe';
+    } else {
+      if (anyHeadEnds(x.cls, c.ausschluss_woerter || [])) return null;
+      if ((c.ausschluss_typen || []).indexOf(typ) >= 0) return null;
+      if (typeInfo(typ, cfg).max_sterne === 0) return null;
+      // only things one can visit: a known type, or a class from the extra list (cemetery, triumphal arch, …)
+      if (typ === 'sonstiges' && !anyHeadEnds(x.cls, c.sehenswert_woerter || [])) return null;
+    }
     var s = computeScore({ sprachversionen: x.sl, laenge: 0, denkmal: x.h, unesco: x.u, typ: typ, quellen: [] }, cfg).score;
     // nature (mountains, lakes, glaciers …) never counts for a city: big mountain municipalities would collect dozens of peaks
     var natur = typ === 'natur' || anyHeadEnds(x.cls, c.natur_woerter || []);
@@ -1627,13 +1643,14 @@
    * Stars are computed again in the app from `score` (thresholds in config), so they can be tuned without recomputing.
    */
   function computeCities(items, cfg, land) {
-    var c = cfg.staedte, cell = 0.2;
+    var c = cfg.staedte, cell = 0.2, merge = c.zusammen_faktor || 0.5;
     var cands = [], sights = [];
     items.forEach(function (x) {
-      if (isCityItem(x, cfg)) cands.push(x);
+      if (isCityItem(x, cfg)) { if (isUnesco(x, cfg)) x.u = true; cands.push(x); }
       else {
         var s = sightScore(x, cfg);
         if (s) sights.push({ x: x, score: s.score, typ: s.typ, natur: s.natur });
+        else x.fate = 'zählt nicht';
       }
     });
     // One marker per city: candidates inside the radius of a bigger one are merged into it
@@ -1643,9 +1660,10 @@
       x.r = cityRadius(x.pop, cfg, x.km2);
       var a = Math.floor(x.lat / cell), b = Math.floor(x.lon / cell), inside = false;
       for (var i = a - 1; i <= a + 1 && !inside; i++) for (var j = b - 1; j <= b + 1 && !inside; j++) {
-        (keptGrid[i + ',' + j] || []).forEach(function (k) { if (!inside && haversine(k.lat, k.lon, x.lat, x.lon) < k.r) inside = true; });
+        (keptGrid[i + ',' + j] || []).forEach(function (k) { if (!inside && haversine(k.lat, k.lon, x.lat, x.lon) < k.r * merge) inside = k; });
       }
-      if (inside) return;
+      if (inside) { x.fate = 'zusammengelegt mit ' + inside.name; return; }
+      x.fate = 'Stadt, Radius ' + Math.round(x.r) + ' m';
       x.sights = [];
       kept.push(x);
       var key = a + ',' + b;
@@ -1655,11 +1673,12 @@
     var outside = [];
     sights.forEach(function (s) {
       var best = null, bestQ = Infinity;
-      if (s.natur) { outside.push(s); return; }
+      if (s.natur) { s.x.fate = 'Natur ' + s.score; outside.push(s); return; }
       near(s.x.lat, s.x.lon).forEach(function (k) {
         var d = haversine(k.lat, k.lon, s.x.lat, s.x.lon);
         if (d < k.r && d / k.r < bestQ) { bestQ = d / k.r; best = k; }
       });
+      s.x.fate = (best ? 'zu ' + best.name : 'außerhalb') + ' ' + s.score + ' (' + s.typ + ')';
       if (best) best.sights.push(s); else outside.push(s);
     });
     var inLand = function (x) {

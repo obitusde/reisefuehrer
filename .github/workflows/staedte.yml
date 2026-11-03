@@ -8,6 +8,14 @@ on:
         description: 'Länder (z. B. "DE CH"), leer = alle'
         required: false
         default: ''
+      frisch:
+        description: 'Wikidata neu abfragen (sonst gespeicherte Kacheln bis 25 Tage nehmen und nur neu rechnen)'
+        type: boolean
+        default: false
+      namen:
+        description: 'Nur Test: Namen im Protokoll erklären, z. B. "Manchester|Windsor"'
+        required: false
+        default: ''
       probe:
         description: 'Nur Test: Kacheln "süd,west,nord,ost;…" ansehen (erste ausführlich), nichts speichern'
         required: false
@@ -26,6 +34,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - name: Zwischenspeicher holen
+        uses: actions/cache/restore@v4
+        with:
+          path: tools/.cache
+          key: staedte-${{ github.run_id }}
+          restore-keys: staedte-
       - name: Probe
         if: ${{ inputs.probe != '' }}
         env:
@@ -37,7 +51,15 @@ jobs:
         if: ${{ inputs.probe == '' }}
         env:
           LAENDER: ${{ inputs.laender }}
+          FRISCH: ${{ inputs.frisch }}
+          NAMEN: ${{ inputs.namen }}
         run: node tools/build-cities.mjs
+      - name: Zwischenspeicher sichern
+        if: ${{ inputs.probe == '' }}
+        uses: actions/cache/save@v4
+        with:
+          path: tools/.cache
+          key: staedte-${{ github.run_id }}
       - name: Speichern
         if: ${{ inputs.probe == '' }}
         run: |
