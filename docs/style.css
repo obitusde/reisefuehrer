@@ -1,4 +1,4 @@
-/* Reiseführer – styles (v0.2.2). Mobile first, tuned for ~412 px wide phones (Pixel 8). */
+/* Reiseführer – styles (v0.2.3). Mobile first, tuned for ~412 px wide phones (Pixel 8). */
 
 :root {
   --bg: #f5f4f0; --card: #ffffff; --text: #1c1b19; --muted: #66645e; --line: #e2e0da;
@@ -96,11 +96,17 @@ button { cursor: pointer; }
 .mk0 { width: 9px; height: 9px; background: var(--s0); border-width: 1.5px; }
 .mk.sel { outline: 4px solid rgba(14, 107, 125, .55); outline-offset: 1px; }
 .mk-lbl {
-  position: absolute; left: calc(50% + 14px); top: 50%; transform: translateY(-50%);
-  max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  position: absolute; left: calc(50% + 13px); top: 50%; transform: translateY(-50%);
+  white-space: nowrap; pointer-events: auto;
   font: 600 12px/1.2 system-ui, Roboto, sans-serif; color: #1c1b19;
   text-shadow: 0 0 2px #fff, 0 0 3px #fff, 0 0 4px #fff;
 }
+.mk-lbl.l2 { left: calc(50% + 10px); font-size: 11px; }
+.mk-lbl.l1 { left: calc(50% + 8px); font-size: 11px; font-weight: 500; color: #3a3935; }
+.mk-lbl.l0 { left: calc(50% + 7px); font-size: 10px; font-weight: 500; color: #55534e; }
+.mk-lbl.left { left: auto; }
+.mk-lbl.l3.left { right: calc(50% + 13px); } .mk-lbl.l2.left { right: calc(50% + 10px); }
+.mk-lbl.l1.left { right: calc(50% + 8px); } .mk-lbl.l0.left { right: calc(50% + 7px); }
 .me-dot {
   width: 16px; height: 16px; border-radius: 50%; background: #1a73e8; border: 3px solid #fff;
   box-shadow: 0 0 0 2px rgba(26, 115, 232, .35), 0 1px 3px rgba(0, 0, 0, .4);
@@ -147,7 +153,8 @@ button { cursor: pointer; }
 }
 .it-name2 { display: block; font-size: 14px; line-height: 19px; color: var(--text); opacity: .8; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
 .it-meta, .it-desc { display: block; font-size: 13px; color: var(--muted); line-height: 18px; }
-.it-desc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.it-desc { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.it-desc:empty { display: none; }
 .it-merk {
   flex: 0 0 48px; border: 0; background: transparent; font-size: 22px; color: var(--muted);
 }

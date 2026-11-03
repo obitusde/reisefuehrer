@@ -1,14 +1,14 @@
-/* Reiseführer – app (v0.2.2). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.2.3). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.2.2';
+  var VERSION = '0.2.3';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
   var K = {
     settings: 'rf.settings', last: 'rf.last', merk: 'rf.merk', wd: 'rf.wdcache',
-    ort: 'rf.ortcache2', view: 'rf.view', split: 'rf.split', recent: 'rf.recent'
+    ort: 'rf.ortcache2', view: 'rf.view', split: 'rf.split', recent: 'rf.recent', kurz: 'rf.kurz'
   };
   var LS = {
     get: function (k, d) {
@@ -189,22 +189,51 @@
     }
   }
 
-  function markerIcon(p, sel) {
+  var DOT_R = { 3: 11, 2: 8, 1: 6, 0: 5 };
+  var LBL_PX = { 3: 12, 2: 11, 1: 11, 0: 10 };
+  var measureCtx = null;
+  function textWidth(t, px) {
+    try {
+      if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d');
+      measureCtx.font = '600 ' + px + 'px system-ui, Roboto, sans-serif';
+      return measureCtx.measureText(t).width;
+    } catch (e) { return t.length * px * 0.55; }
+  }
+
+  function markerIcon(p, sel, label, side) {
     var html = '<span class="mk mk' + p.sterne + (sel ? ' sel' : '') + '"></span>';
-    if (p.sterne === 3) html += '<span class="mk-lbl">' + esc(p.name) + '</span>';
+    if (label) html += '<span class="mk-lbl l' + p.sterne + (side === 'left' ? ' left' : '') + '">' + esc(label) + '</span>';
     return L.divIcon({ className: 'mk-wrap', html: html, iconSize: [36, 36], iconAnchor: [18, 18] });
   }
 
+  // Every visible point gets a short label, unless it would overlap a more important one.
   function renderMarkers() {
     if (!map) return;
     markerLayer.clearLayers();
     var z = map.getZoom(), minZoomSmall = (cfg.marker && cfg.marker.stern1_ab_zoom) || 16;
-    visiblePlaces().forEach(function (p) {
+    var maxChars = (cfg.marker && cfg.marker.beschriftung_max_zeichen) || 18;
+    var shown = visiblePlaces().filter(function (p) {
+      return p.geprueft && (p.sterne >= 2 || z >= minZoomSmall || p.id === selectedId); // never pin unverified places
+    }).sort(function (a, b) {
+      return ((b.id === selectedId) - (a.id === selectedId)) || (b.sterne - a.sterne) || (b.score - a.score);
+    });
+    var boxes = [];
+    function free(bx) {
+      return !boxes.some(function (o) { return bx.x1 < o.x2 && bx.x2 > o.x1 && bx.y1 < o.y2 && bx.y2 > o.y1; });
+    }
+    shown.forEach(function (p) {
       var sel = p.id === selectedId;
-      if (p.sterne <= 1 && z < minZoomSmall && !sel) return;
-      if (!p.geprueft) return; // never pin unverified places
+      var pt = map.latLngToContainerPoint([p.lat, p.lon]);
+      var r = DOT_R[p.sterne] || 5, px = LBL_PX[p.sterne] || 11;
+      var label = C.shortLabel(p.name, last && last.ort, maxChars);
+      var w = textWidth(label, px) + 3;
+      var right = { x1: pt.x + r + 2, y1: pt.y - px * 0.75, x2: pt.x + r + 2 + w, y2: pt.y + px * 0.75 };
+      var left = { x1: pt.x - r - 2 - w, y1: right.y1, x2: pt.x - r - 2, y2: right.y2 };
+      var side = free(right) ? 'right' : free(left) ? 'left' : '';  // right of the dot, else left, else none
+      if (side) boxes.push(side === 'right' ? right : left);
+      boxes.push({ x1: pt.x - r, y1: pt.y - r, x2: pt.x + r, y2: pt.y + r });
       var m = L.marker([p.lat, p.lon], {
-        icon: markerIcon(p, sel), keyboard: false, title: p.name,
+        icon: markerIcon(p, sel, side ? label : '', side), keyboard: false, title: p.name,
         zIndexOffset: sel ? 2500 : p.sterne * 400
       });
       m.on('click', function (e) {
@@ -285,7 +314,7 @@
     $('btnHere').textContent = b ? 'Suche …' : 'Hier suchen';
   }
 
-  function doSearch(lat, lon, fit) {
+  function doSearch(lat, lon, fit, onDone) {
     if (busy) return;
     setBusy(true);
     var radius = settings.radius;
@@ -312,6 +341,7 @@
         if (!$('sheet').hidden) closeSheet();
         renderAll();
         if (res.warnings.length) toast('Hinweis: ' + res.warnings.join('; '), 5000);
+        if (onDone) onDone();
       });
     }).catch(function (e) {
       setStatus('Fehler: ' + e.message + (navigator.onLine === false ? ' – keine Internetverbindung' : ''), 'err');
@@ -393,11 +423,84 @@
           '<span class="it-text"><span class="it-name">' + esc(p.name) + '</span>' +
           (p.name2 ? '<span class="it-name2">' + esc(p.name2) + '</span>' : '') +
           '<span class="it-meta">' + esc(meta) + '</span>' +
-          (p.beschreibung ? '<span class="it-desc">' + esc(p.beschreibung) + '</span>' : '') +
+          '<span class="it-desc">' + esc(kurzText(p)) + '</span>' +
           '</span></div>' +
         '<button class="it-merk' + (on ? ' on' : '') + '" type="button" aria-label="Merken">' + (on ? '★' : '☆') + '</button>' +
         '</li>';
     }).join('');
+    observeRows();
+  }
+
+  // ------------------------------------------------ short German info ("was ist das?")
+  var kurzStore = LS.get(K.kurz, {}) || {};   // id -> {t: text, l: source language, via, d: time}
+  var kurzQueue = {}, kurzTimer = null, kurzBusy = false, rowObserver = null;
+  var KURZ_RETRY = 24 * 3600 * 1000;          // untranslated texts are retried after a day
+
+  function kurzText(p) {
+    var k = kurzStore[p.id];
+    if (k && k.t) return k.t;
+    var d = C.stripLocation(p.beschreibung);
+    return d && d.toLowerCase() !== String(p.typ_label || '').toLowerCase() ? d : '';
+  }
+  function kurzNeeded(id) {
+    var k = kurzStore[id];
+    return !k || (k.orig && Date.now() - (k.d || 0) > KURZ_RETRY);
+  }
+  function observeRows() {
+    if (!('IntersectionObserver' in window)) return;
+    if (!rowObserver) {
+      rowObserver = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) {
+          if (!en.isIntersecting) return;
+          var id = en.target.getAttribute('data-id');
+          if (kurzNeeded(id)) kurzQueue[id] = 1;
+          rowObserver.unobserve(en.target);
+        });
+        scheduleKurz();
+      }, { root: $('list'), rootMargin: '150px 0px' });
+    }
+    Array.prototype.forEach.call(document.querySelectorAll('#list .item'), function (li) {
+      if (kurzNeeded(li.getAttribute('data-id'))) rowObserver.observe(li);
+    });
+  }
+  function scheduleKurz() { clearTimeout(kurzTimer); kurzTimer = setTimeout(runKurz, 200); }
+  function saveKurz() {
+    var keys = Object.keys(kurzStore);
+    if (keys.length > 2500) keys.slice(0, keys.length - 2500).forEach(function (k) { delete kurzStore[k]; });
+    LS.set(K.kurz, kurzStore);
+  }
+  function showKurz(id) {
+    var p = findPlace(id);
+    var el = document.querySelector('.item[data-id="' + cssEsc(id) + '"] .it-desc');
+    if (p && el) el.textContent = kurzText(p);
+  }
+  function runKurz() {
+    if (kurzBusy) { scheduleKurz(); return; }
+    var ids = Object.keys(kurzQueue).slice(0, 20);
+    if (!ids.length) return;
+    ids.forEach(function (id) { delete kurzQueue[id]; });
+    var places = ids.map(findPlace).filter(Boolean);
+    var f = function (u, o) { return fetch(u, o); };
+    var order = (cfg.uebersetzung && cfg.uebersetzung.reihenfolge) || ['chrome', 'mymemory'];
+    kurzBusy = true;
+    C.loadIntros(places, f).then(function (intros) {
+      // translate one after the other (gentle on the free service)
+      return Object.keys(intros).reduce(function (pr, id) {
+        return pr.then(function () {
+          var it = intros[id];
+          if (it.lang === 'de') { kurzStore[id] = { t: it.text, l: 'de', d: Date.now() }; showKurz(id); return; }
+          return C.translate(it.text, it.lang, 'de', f, order).then(function (tr) {
+            kurzStore[id] = { t: tr.text, l: it.lang, via: tr.via, d: Date.now() };
+          }, function () {
+            kurzStore[id] = { t: it.text, l: it.lang, orig: true, d: Date.now() };
+          }).then(function () { showKurz(id); });
+        });
+      }, Promise.resolve());
+    }).catch(function () { /* offline: keep descriptions */ }).then(function () {
+      saveKurz();
+      kurzBusy = false;
+      if (Object.keys(kurzQueue).length) scheduleKurz();
+    });
   }
 
   function findPlace(id) {
@@ -472,7 +575,7 @@
       '<div class="pl-stars s' + p.sterne + '">' + (p.sterne ? C.starsText(p.sterne) : '–') +
         '<span>' + esc(st[String(p.sterne)] || '') + '</span></div>' +
       '<p class="pl-meta">' + esc(meta) + '</p>' +
-      (p.beschreibung ? '<p class="pl-desc">' + esc(p.beschreibung) + '</p>' : '') +
+      (kurzText(p) ? '<p class="pl-desc">' + esc(kurzText(p)) + kurzNote(p) + '</p>' : '') +
       '<div class="actions">' +
         '<button class="btn" type="button" data-a="copy">Name kopieren</button>' +
         '<button class="btn" type="button" data-a="share">Teilen</button>' +
@@ -489,6 +592,16 @@
       '<p class="src">Quelle: Wikipedia (CC BY-SA 4.0), Wikidata (CC0)' + (p.ort ? ', Ortsname: Nominatim/© OpenStreetMap-Mitwirkende' : '') + '.</p>';
     openSheet(p.name, html);
     $('sheetBody').setAttribute('data-place', p.id);
+  }
+
+  var LANG_NAMES = { en: 'Englischen', fr: 'Französischen', it: 'Italienischen', es: 'Spanischen', nl: 'Niederländischen',
+    pt: 'Portugiesischen', pl: 'Polnischen', cs: 'Tschechischen', sv: 'Schwedischen', da: 'Dänischen', no: 'Norwegischen',
+    fi: 'Finnischen', el: 'Griechischen', ja: 'Japanischen', zh: 'Chinesischen', ru: 'Russischen' };
+  function kurzNote(p) {
+    var k = kurzStore[p.id];
+    if (!k || k.l === 'de') return '';
+    var from = LANG_NAMES[k.l] || k.l;
+    return ' <span class="small">(' + (k.orig ? 'Original, Übersetzung gerade nicht verfügbar' : 'maschinell übersetzt aus dem ' + esc(from)) + ')</span>';
   }
 
   function toggleMerk(id) {
@@ -539,7 +652,7 @@
       '<label class="opt"><input type="radio" name="kapp" value="geo"' + (settings.kartenApp === 'geo' ? ' checked' : '') + '> Android-Karten-App (geo:-Link, Auswahl möglich)</label>' +
       '<h3>Daten</h3>' +
       '<div class="actions"><button class="btn wide" type="button" data-a="clearcache">Zwischenspeicher leeren</button></div>' +
-      '<p class="small">Löscht gespeicherte Orte und Wikidata-Daten. Merkliste und Einstellungen bleiben.</p>' +
+      '<p class="small">Löscht gespeicherte Orte, Wikidata-Daten und Kurztexte. Merkliste und Einstellungen bleiben.</p>' +
       '<h3>Hilfe</h3>' +
       '<div class="actions"><a class="btn" href="diag.html">Diagnose</a>' +
       '<a class="btn" href="https://github.com/obitusde/reisefuehrer/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Änderungen</a></div>' +
@@ -554,45 +667,84 @@
 
   // ------------------------------------------------------- place search
   var searchHits = [];
-  function hitsHtml(list, title) {
-    if (!list.length) return '';
-    return '<h3>' + esc(title) + '</h3><ul class="hits">' + list.map(function (h, i) {
-      return '<li><button type="button" data-a="hit" data-i="' + i + '"><b>' + esc(h.name) + '</b>' +
-        (h.detail ? '<span>' + esc(h.detail) + '</span>' : '') + '</button></li>';
-    }).join('') + '</ul>';
+  function hitRow(h, i) {
+    var sub = [h.typ, h.detail].filter(Boolean).join(' · ');
+    return '<li><button type="button" data-a="hit" data-i="' + i + '"><b>' + esc(h.name) + '</b>' +
+      (sub ? '<span>' + esc(sub) + '</span>' : '') + '</button></li>';
+  }
+  function hitsHtml(groups) {
+    var i = 0;
+    searchHits = [];
+    return groups.filter(function (g) { return g.list.length; }).map(function (g) {
+      return '<h3>' + esc(g.title) + '</h3><ul class="hits">' + g.list.map(function (h) {
+        searchHits.push(h);
+        return hitRow(h, i++);
+      }).join('') + '</ul>';
+    }).join('');
+  }
+  function normQ(s) {
+    return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  }
+  // Sights already loaded whose name contains the query
+  function localHits(q) {
+    var nq = normQ(q);
+    if (nq.length < 3 || !last || !last.places) return [];
+    // the city name itself does not count ("Manchester" should find the city, not every "Manchester …")
+    var ort = normQ(last.ort);
+    var strip = function (t) { return ort ? (' ' + normQ(t) + ' ').split(' ' + ort + ' ').join(' ').trim() : normQ(t); };
+    return last.places.filter(function (p) {
+      return [p.name, p.name2, p.artikel && p.artikel.en, p.artikel && p.artikel.de].some(function (t) { return t && strip(t).indexOf(nq) >= 0; });
+    }).slice(0, 5).map(function (p) {
+      return { name: p.name, typ: (p.sterne ? C.starsText(p.sterne) + ' ' : '') + p.typ_label, detail: p.name2 || '', placeId: p.id };
+    });
   }
   function openSearch() {
     var recent = LS.get(K.recent, []) || [];
-    searchHits = recent;
-    openSheet('Ort suchen',
+    openSheet('Ort oder Sehenswürdigkeit suchen',
       '<form class="search-form" id="searchForm" autocomplete="off">' +
-        '<input id="searchInput" type="search" enterkeyhint="search" placeholder="z. B. Lyon, Morges, Altstadt Bern" aria-label="Ort">' +
+        '<input id="searchInput" type="search" enterkeyhint="search" placeholder="z. B. Lyon, Imperial War Museum" aria-label="Suchbegriff">' +
         '<button class="btn primary" type="submit">Suchen</button></form>' +
-      '<div id="searchHits">' + hitsHtml(recent, 'Zuletzt gesucht') + '</div>' +
-      '<p class="small">Die Karte springt zum Ort und sucht dort Sehenswertes im eingestellten Umkreis. Ortssuche: Nominatim/© OpenStreetMap-Mitwirkende.</p>');
+      '<div id="searchHits">' + hitsHtml([{ title: 'Zuletzt gesucht', list: recent }]) + '</div>' +
+      '<p class="small">Treffer in der Nähe der Karte kommen zuerst. Die Karte springt hin und sucht dort Sehenswertes im eingestellten Umkreis. Ortssuche: Nominatim/© OpenStreetMap-Mitwirkende.</p>');
     $('sheetBody').removeAttribute('data-place');
     $('searchForm').addEventListener('submit', function (e) {
       e.preventDefault();
       var q = $('searchInput').value.trim();
       if (!q) return;
       $('searchInput').blur();
-      $('searchHits').innerHTML = '<p class="small">Suche „' + esc(q) + '“ …</p>';
-      C.searchPlaces(q, function (u, o) { return fetch(u, o); }).then(function (list) {
-        searchHits = list;
-        $('searchHits').innerHTML = list.length ? hitsHtml(list, 'Treffer') : '<p class="small">Nichts gefunden. Anders schreiben, z. B. mit Land: „Morges, Schweiz“.</p>';
+      var loc = localHits(q);
+      $('searchHits').innerHTML = hitsHtml([{ title: 'In der Liste', list: loc }]) + '<p class="small">Suche „' + esc(q) + '“ …</p>';
+      var b = map.getBounds();
+      var view = { west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth() };
+      C.searchPlaces(q, function (u, o) { return fetch(u, o); }, view).then(function (list) {
+        $('searchHits').innerHTML = hitsHtml([{ title: 'In der Liste', list: loc }, { title: 'Treffer', list: list }]) +
+          (list.length || loc.length ? '' : '<p class="small">Nichts gefunden. Anders schreiben, z. B. mit Ort: „Imperial War Museum North, Manchester“.</p>');
       }, function (err) {
-        $('searchHits').innerHTML = '<p class="small">Suche fehlgeschlagen: ' + esc(err.message) + '</p>';
+        $('searchHits').innerHTML = hitsHtml([{ title: 'In der Liste', list: loc }]) + '<p class="small">Suche fehlgeschlagen: ' + esc(err.message) + '</p>';
       });
     });
     setTimeout(function () { try { $('searchInput').focus(); } catch (e) { /* ignore */ } }, 50);
   }
-  function goToHit(h) {
+  function rememberHit(h) {
     var recent = (LS.get(K.recent, []) || []).filter(function (r) { return r.name !== h.name || r.detail !== h.detail; });
-    recent.unshift({ name: h.name, detail: h.detail, lat: h.lat, lon: h.lon });
+    recent.unshift({ name: h.name, detail: h.detail, typ: h.typ, poi: h.poi, lat: h.lat, lon: h.lon });
     LS.set(K.recent, recent.slice(0, 5));
+  }
+  function goToHit(h) {
+    if (h.placeId) { select(h.placeId, 'list'); return; } // already loaded: just open it
+    rememberHit(h);
     closeSheet();
     map.setView([h.lat, h.lon], 15, { animate: false });
-    doSearch(h.lat, h.lon, true);
+    doSearch(h.lat, h.lon, true, h.poi ? function () {
+      // a sight was searched: open the nearest loaded place (within 250 m)
+      var best = null, bd = 250;
+      (last && last.places || []).forEach(function (p) {
+        var d = C.haversine(h.lat, h.lon, p.lat, p.lon);
+        if (d < bd) { bd = d; best = p; }
+      });
+      if (best) select(best.id, 'list');
+      else toast('„' + h.name + '“ hat keinen Wikipedia-Eintrag hier – Karte steht dort.', 4000);
+    } : null);
   }
 
   // ---------------------------------------------------------- UI events
@@ -673,8 +825,8 @@
         if (h) goToHit(h);
       } else if (a === 'clearcache') {
         if (confirm('Gespeicherte Orte und Wikidata-Daten löschen?')) {
-          LS.del(K.last); LS.del(K.wd); LS.del(K.ort);
-          wdStore = {}; last = null;
+          LS.del(K.last); LS.del(K.wd); LS.del(K.ort); LS.del(K.kurz);
+          wdStore = {}; last = null; kurzStore = {};
           if (searchCircle) { map.removeLayer(searchCircle); searchCircle = null; }
           renderAll(); toast('Zwischenspeicher geleert');
         }

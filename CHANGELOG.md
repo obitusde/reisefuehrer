@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.2.3 – 03.11.2026 – Beschriftungen, „Was ist das?“, bessere Suche
+
+- **Kurze Beschriftung an allen Punkten** (Wunsch Nutzer): höchstens 18 Zeichen, ohne Stadtnamen („Manchester Central Library“ → „Central Library“, „Hôtel de ville de Morges“ → „Hôtel de ville“). Überlappende Beschriftungen weniger wichtiger Orte werden ausgeblendet; beim Hineinzoomen erscheinen mehr.
+- **Museen immer orange** (mindestens ★★, Wunsch Nutzer).
+- **„Was ist das?“ in der Liste:** erster Satz des Wikipedia-Artikels, auf Deutsch. Gibt es keinen deutschen Artikel, wird der englische (sonst der landessprachliche) Satz **maschinell übersetzt**. Geladen wird nur für sichtbare Zeilen; Texte werden gespeichert. Bis dahin steht die Wikidata-Beschreibung ohne Ortsangabe da („Museum“ statt „Museum in Manchester“).
+- **Übersetzung:** zuerst der Übersetzer im Browser (Chrome Translator, auf dem Gerät), sonst der kostenlose Dienst MyMemory (ohne Schlüssel, mit Tageslimit). Ist beides nicht verfügbar, steht der Originalsatz mit Hinweis da und wird nach einem Tag erneut versucht.
+- **Suche nach Sehenswürdigkeiten:** Die Lupe findet auch z. B. „Imperial War Museum“: zuerst unter den geladenen Orten („In der Liste“), dann bei Nominatim. Tippen auf eine Sehenswürdigkeit springt hin und öffnet ihr Fenster.
+- **Bessere Trefferliste:** Treffer nahe dem Kartenausschnitt zuerst, doppelte (gleicher Name, < 25 km) zusammengefasst, Art des Treffers angezeigt („Stadt“, „Museum“ …), Postleitzahlen ausgeblendet.
+
+### Annahmen/Abweichungen
+
+- MyMemory ist ein externer Dienst (Translated srl). Es wird nur der erste Satz des Wikipedia-Artikels gesendet, kein Standort. Anonymes Tageslimit laut Anbieter ca. 5000 Zeichen (≈ 30–40 Sätze); danach gilt der Originaltext bis zum nächsten Tag. Ob der Chrome-Übersetzer auf dem Handy verfügbar ist, prüft `diag.html`.
+- Der erste Satz enthält manchmal doch den Ort („… in Manchester …“); er wird nicht gekürzt, damit der Sinn erhalten bleibt (nur Klammern und Fußnoten fallen weg).
+
 ## v0.2.2 – 03.11.2026 – Ortssuche, lokale Namen, Museen und Aussichtspunkte immer
 
 - **Ort suchen** (🔍 oben rechts): Ortsname eingeben, aus bis zu 5 Treffern wählen. Die Karte springt hin und sucht sofort Sehenswertes im eingestellten Umkreis. Die letzten 5 Suchen werden gemerkt. Suche über Nominatim, nur auf „Suchen“ (keine Vorschläge beim Tippen, so verlangen es die Nutzungsregeln).

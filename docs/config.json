@@ -29,7 +29,12 @@
   "dauer_min": { "3": 90, "2": 60, "1": 30, "0": 0 },
   "dauer_text": { "3": "ab 1,5 Std.", "2": "ca. 1 Std.", "1": "ca. 30 Min.", "0": "" },
 
-  "marker": { "stern1_ab_zoom": 16 },
+  "marker": { "stern1_ab_zoom": 16, "beschriftung_max_zeichen": 18 },
+
+  "uebersetzung": {
+    "_hinweis": "Kurzinfo in der Liste: erster Satz des Wikipedia-Artikels, ins Deutsche übersetzt. chrome = Übersetzer im Browser (auf dem Gerät), mymemory = kostenloser Webdienst ohne Schlüssel (Tageslimit).",
+    "reihenfolge": ["chrome", "mymemory"]
+  },
 
   "kategorien": [
     { "id": "gebaeude", "label": "Gebäude/Kirchen" },
@@ -64,7 +69,7 @@
       "qids": ["Q16560"], "woerter": ["palace", "palast", "palais"] },
     { "id": "rathaus", "label": "Rathaus", "gewicht": 2.5, "kategorie": "gebaeude",
       "qids": ["Q25550691", "Q543654"], "woerter": ["town hall", "city hall", "guildhall", "hôtel de ville", "hotel de ville", "mairie", "rathaus", "municipio", "ayuntamiento"] },
-    { "id": "museum", "label": "Museum", "gewicht": 3, "min_sterne": 1, "kategorie": "museum",
+    { "id": "museum", "label": "Museum", "gewicht": 3, "min_sterne": 2, "kategorie": "museum",
       "qids": ["Q33506", "Q207694", "Q1007870"], "woerter": ["museum", "*museum", "art gallery", "gallery", "galerie", "kunsthalle", "musée", "museo", "museu", "muzeum"] },
     { "id": "bibliothek", "label": "Bibliothek", "gewicht": 2.5, "kategorie": "gebaeude",
       "qids": ["Q7075"], "woerter": ["library", "bibliothek", "*bibliothek", "bibliothèque", "biblioteca"] },

@@ -35,8 +35,16 @@ function ok(c, m) { if (c) passes++; else { fails++; console.log('FAIL', m); } }
 async function mockApis(ctx) {
   await ctx.route(/wikipedia\.org\/w\/api\.php/, (route) => {
     const u = new URL(route.request().url());
-    const arr = fx.wikipedia[u.hostname.split('.')[0]] || [{ query: { pages: [] } }];
-    const body = u.searchParams.get('incontinue') ? arr[1] : arr[0];
+    const lang = u.hostname.split('.')[0];
+    let body;
+    if ((u.searchParams.get('prop') || '').includes('extracts')) {
+      const titles = u.searchParams.get('titles').split('|');
+      body = { query: { pages: titles.map((t, i) => ({ pageid: i + 1, ns: 0, title: t,
+        extract: lang === 'de' ? t + ' ist ein Testort. Zweiter Satz.' : t + ' is a test place. Second sentence.' })) } };
+    } else {
+      const arr = fx.wikipedia[lang] || [{ query: { pages: [] } }];
+      body = u.searchParams.get('incontinue') ? arr[1] : arr[0];
+    }
     route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
   });
   await ctx.route(/www\.wikidata\.org/, (route) => {
@@ -45,7 +53,11 @@ async function mockApis(ctx) {
     route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ entities }) });
   });
   await ctx.route(/nominatim\.openstreetmap\.org/, (route) => route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
-    body: JSON.stringify(new URL(route.request().url()).pathname.startsWith('/search') ? fx.nominatimSearch : fx.nominatim) }));
+    body: JSON.stringify((() => { const u = new URL(route.request().url());
+      if (!u.pathname.startsWith('/search')) return fx.nominatim;
+      return /imperial/i.test(u.searchParams.get('q')) ? fx.nominatimSearch.imperial : fx.nominatimSearch.default; })()) }));
+  await ctx.route(/api\.mymemory\.translated\.net/, (route) => route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
+    body: JSON.stringify({ responseData: { translatedText: 'Übersetzt: ' + new URL(route.request().url()).searchParams.get('q') }, responseStatus: 200 }) }));
   await ctx.route(/tile\.openstreetmap\.org/, (route) => route.fulfill({ status: 200, contentType: 'image/png', headers: { 'access-control-allow-origin': '*' }, body: PNG }));
 }
 
@@ -69,9 +81,10 @@ try {
   // ---------------- main flow, browser-sized Pixel 8 viewport
   const ctx = await newCtx(browser);
   const page = await ctx.newPage(); const errs = []; watch(page, errs);
+  if (process.env.DEBUG) { page.on('request', (r) => { if (/extracts|mymemory/.test(r.url())) console.log('REQ', decodeURIComponent(r.url()).slice(0, 160)); }); page.on('requestfailed', (r) => console.log('FAILED', r.url().slice(0, 120), r.failure() && r.failure().errorText)); page.on('console', (m) => console.log('CONSOLE', m.text())); }
   await page.goto(BASE + 'index.html');
   await page.waitForSelector('.empty');
-  ok((await page.textContent('#version')) === 'v0.2.2', 'footer version');
+  ok((await page.textContent('#version')) === 'v0.2.3', 'footer version');
   if (OUT) await page.screenshot({ path: OUT + '/01-start.png' });
 
   await page.click('#btnLocate');
@@ -83,6 +96,20 @@ try {
   ok(th.includes('|'), 'list shows local and German name: ' + th);
   ok(!items.some((i) => i.n === 'River Tib'), 'River Tib hidden at ★+ filter');
   ok((await page.$$('.mk3')).length >= 4, '3-star markers on map');
+  const lblCount = await page.$$eval('.mk-lbl', (els) => els.length);
+  const dotCount = await page.$$eval('.mk', (els) => els.length);
+  ok(lblCount >= 4 && lblCount <= dotCount, 'short labels on markers: ' + lblCount + '/' + dotCount);
+  const lblOverlap = await page.$$eval('.mk-lbl', (els) => { const r = els.map((e) => e.getBoundingClientRect());
+    return r.some((a, i) => r.some((b, j) => j > i && a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top)); });
+  ok(!lblOverlap, 'labels do not overlap');
+  ok(!(await page.$$eval('.mk-lbl', (els) => els.map((e) => e.textContent))).some((t) => /^Manchester /.test(t)), 'labels without city name');
+  await page.waitForFunction(() => [...document.querySelectorAll('.it-desc')].some((e) => /Testort|Übersetzt:/.test(e.textContent)), null, { timeout: 8000 });
+  await page.$eval('#list', (l) => { l.scrollTop = l.scrollHeight; });
+  await page.waitForFunction(() => [...document.querySelectorAll('.it-desc')].some((e) => /^Übersetzt:/.test(e.textContent)), null, { timeout: 8000 }).catch(() => {});
+  const descs = await page.$$eval('.it-desc', (els) => els.map((e) => e.textContent));
+  await page.$eval('#list', (l) => { l.scrollTop = 0; });
+  ok(descs.some((d) => d.startsWith('Übersetzt: ')), 'English intro translated in list: ' + descs.join(' | '));
+  ok(descs.some((d) => /ist ein Testort\.$/.test(d)), 'German intro shown as is');
   ok((await page.textContent('#ortLabel')) === 'Manchester', 'ort label');
   ok((await page.textContent('#status')).includes('★★★'), 'status counts');
 
@@ -165,9 +192,10 @@ try {
   await page.waitForSelector('#searchInput');
   await page.fill('#searchInput', 'Manchester');
   await page.press('#searchInput', 'Enter');
-  await page.waitForSelector('.hits button');
+  await page.waitForFunction(() => document.querySelector('#searchHits .hits') && !document.getElementById('searchHits').textContent.includes('Suche „'));
   const hitTexts = await page.$$eval('.hits b', (els) => els.map((e) => e.textContent));
-  ok(hitTexts.length === 2, 'search shows hits');
+  ok(hitTexts.length === 2, 'search shows hits without duplicate: ' + hitTexts.join(','));
+  ok((await page.textContent('#searchHits')).includes('Stadt · Greater Manchester'), 'hit shows type');
   if (OUT) await page.screenshot({ path: OUT + '/09-suche.png' });
   await page.click('.hits button >> nth=0');
   await page.waitForSelector('#sheet', { state: 'hidden' });
@@ -176,7 +204,25 @@ try {
   ok(cen && Math.abs(cen.lat - 53.4795) < 0.001 && cen.places.length > 5, 'search jumped and loaded places');
   await page.click('#btnSearch');
   ok((await page.textContent('#searchHits')).includes('Zuletzt gesucht'), 'recent searches remembered');
-  await page.click('#sheetClose');
+  // search a sight that is in the loaded list
+  await page.fill('#searchInput', 'Chetham');
+  await page.press('#searchInput', 'Enter');
+  await page.waitForFunction(() => document.getElementById('searchHits').textContent.includes('In der Liste'));
+  ok(true, 'local list hit');
+  await page.click('#searchHits .hits button >> nth=0');
+  await page.waitForFunction(() => document.getElementById('sheetTitle').textContent.includes('Chetham'));
+  ok(true, 'local hit opens place');
+  // search a sight via Nominatim: jumps there and opens the nearest place
+  await page.click('#btnSearch');
+  await page.fill('#searchInput', 'Imperial War Museum');
+  await page.press('#searchInput', 'Enter');
+  await page.waitForFunction(() => document.getElementById('searchHits').textContent.includes('Imperial War Museum North'));
+  ok((await page.textContent('#searchHits')).includes('Museum ·'), 'sight hit typed as museum');
+  await page.click('#searchHits .hits button >> nth=0');
+  await page.waitForFunction(() => !document.getElementById('sheet').hidden && !document.getElementById('sheetTitle').textContent.includes('suchen'), null, { timeout: 10000 });
+  ok(true, 'POI search opens a place sheet: ' + await page.textContent('#sheetTitle'));
+  await page.evaluate(() => history.back());
+  await page.waitForSelector('#sheet', { state: 'hidden' });
 
   // persistence after reload
   await page.reload();
@@ -185,10 +231,10 @@ try {
   ok(Math.abs((await page.$('#mapWrap').then((e) => e.boundingBox())).height - after) < 10, 'split persisted');
 
   // update banner (fake newer version, then ?testupdate=1)
-  fakeVersion = '0.2.3';
+  fakeVersion = '0.2.4';
   await page.reload();
   await page.waitForSelector('#banner:not([hidden])');
-  ok((await page.textContent('#bannerText')).includes('v0.2.3'), 'banner shows remote version');
+  ok((await page.textContent('#bannerText')).includes('v0.2.4'), 'banner shows remote version');
   if (OUT) await page.screenshot({ path: OUT + '/05-banner.png' });
   fakeVersion = null;
   await page.click('#bannerBtn');
@@ -242,9 +288,9 @@ try {
   const swOk = await p3.evaluate(() => navigator.serviceWorker.ready.then((r) => !!r.active)).catch(() => false);
   ok(swOk, 'service worker active');
   const cacheKeys = await p3.evaluate(async () => { await new Promise((r) => setTimeout(r, 800)); return caches.keys(); });
-  ok(cacheKeys.includes('rf-app-0.2.2'), 'app cache with version: ' + cacheKeys.join(','));
-  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.2.2')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
-  ok(cached.some((u) => u.includes('app.js?v=0.2.2')), 'shell precached');
+  ok(cacheKeys.includes('rf-app-0.2.3'), 'app cache with version: ' + cacheKeys.join(','));
+  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.2.3')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
+  ok(cached.some((u) => u.includes('app.js?v=0.2.3')), 'shell precached');
   ok(errs3.length === 0, 'sw: no JS errors ' + errs3.join(' | '));
   await ctx3.close();
 
@@ -260,6 +306,7 @@ try {
   await p4.click('#btnApi');
   await p4.waitForSelector('#apiOut table', { timeout: 10000 });
   const sum = await p4.inputValue('#v2summary');
+  ok(sum.includes('Übersetzer MyMemory: OK'), 'diag translation check');
   ok(sum.includes('Wikipedia en: OK') && sum.includes('Goldliste Manchester BESTANDEN') && sum.includes('Sprachen de,en'), 'diag summary:\n' + sum.slice(0, 900));
   ok(await p4.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'diag no horizontal scroll');
   if (OUT) await p4.screenshot({ path: OUT + '/07-diag.png', fullPage: true });

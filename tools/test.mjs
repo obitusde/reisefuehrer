@@ -24,15 +24,27 @@ export function mockFetch(fixture) {
     let body;
     if (u.hostname.endsWith('.wikipedia.org')) {
       const lang = u.hostname.split('.')[0];
-      const arr = fixture.wikipedia[lang] || [{ query: { pages: [] } }];
-      body = u.searchParams.get('incontinue') ? arr[1] : arr[0];
+      if ((u.searchParams.get('prop') || '').includes('extracts')) {
+        const titles = u.searchParams.get('titles').split('|');
+        body = { query: { pages: titles.map((t, i) => ({ pageid: i + 1, ns: 0, title: t,
+          extract: lang === 'de' ? t + ' ist ein Testort (synthetisch). Zweiter Satz.' : t + ' is a test place (synthetic). Second sentence.' })) } };
+      } else {
+        const arr = fixture.wikipedia[lang] || [{ query: { pages: [] } }];
+        body = u.searchParams.get('incontinue') ? arr[1] : arr[0];
+      }
     } else if (u.hostname === 'www.wikidata.org') {
       const ids = (u.searchParams.get('ids') || '').split('|');
       const entities = {};
       ids.forEach(id => { entities[id] = fixture.wikidata.entities[id] || { id, missing: '' }; });
       body = { entities };
     } else if (u.hostname === 'nominatim.openstreetmap.org') {
-      body = u.pathname.startsWith('/search') ? fixture.nominatimSearch : fixture.nominatim;
+      body = u.pathname.startsWith('/search')
+        ? (/imperial/i.test(u.searchParams.get('q')) ? fixture.nominatimSearch.imperial : fixture.nominatimSearch.default)
+        : fixture.nominatim;
+    } else if (u.hostname === 'api.mymemory.translated.net') {
+      const q = u.searchParams.get('q');
+      body = fixture.__mmQuota ? { responseData: { translatedText: 'MYMEMORY WARNING: YOU USED ALL AVAILABLE FREE TRANSLATIONS FOR TODAY' }, responseStatus: 429, quotaFinished: true }
+        : { responseData: { translatedText: '[DE] ' + q.replace("'", '&#39;') }, responseStatus: 200 };
     } else throw new Error('unexpected url ' + url);
     return { ok: true, status: 200, json: async () => JSON.parse(JSON.stringify(body)) };
   };
@@ -74,7 +86,7 @@ eq(cls([], [], ['Château de Morges']), 'schloss', 'French château de');
 
 eq(clsL(['scenic viewpoint'], [], []), 'aussicht', 'viewpoint class');
 eq(cls([], ['observation tower in Zurich'], []), 'aussicht', 'observation tower is a viewpoint');
-eq(core.starsFor(0.5, 'museum', cfg), 1, 'museum always at least 1 star');
+eq(core.starsFor(0.5, 'museum', cfg), 2, 'museum always at least 2 stars (orange)');
 eq(core.starsFor(0.5, 'aussicht', cfg), 1, 'viewpoint always at least 1 star');
 eq(core.starsFor(0.5, 'park', cfg), 0, 'park only by score');
 
@@ -94,10 +106,47 @@ eq(core.localLanguage({ cc: 'gb', region: 'GB-ENG' }, cfg), 'en', 'local languag
 eq(core.localLanguage({ cc: 'de' }, cfg), 'de', 'local language Germany');
 
 // ---- place search
-const hits = await core.searchPlaces('Manchester', mockFetch(fx));
-eq(hits.length, 2, 'search hits');
-eq(hits[0].name + '|' + hits[0].detail, 'Manchester|Greater Manchester, England, Vereinigtes Königreich', 'search hit text');
-ok(Math.abs(hits[0].lat - 53.479) < 0.01, 'search hit coords');
+const sf = mockFetch(fx);
+const hits = await core.searchPlaces('Manchester', sf, { west: -2.3, south: 53.4, east: -2.2, north: 53.5 });
+eq(hits.length, 2, 'search hits: duplicate Manchester merged');
+eq(hits[0].name + '|' + hits[0].typ + '|' + hits[0].detail, 'Manchester|Stadt|Greater Manchester, England, Vereinigtes Königreich', 'search hit text');
+eq(hits[1].detail, 'Hillsborough County, New Hampshire, Vereinigte Staaten', 'postcode removed');
+ok(Math.abs(hits[0].lat - 53.479) < 0.01 && hits[0].poi === false, 'search hit coords, settlement');
+ok(sf.calls[0].includes('viewbox=-2.3000%2C53.5000%2C-2.2000%2C53.4000') && sf.calls[0].includes('bounded=0'), 'search prefers map view');
+const ih = await core.searchPlaces('Imperial War Museum', mockFetch(fx));
+ok(ih.length === 2 && ih[0].poi && ih[0].typ === 'Museum', 'sight search: museum is a POI');
+
+// ---- short texts
+eq(core.shortLabel('Manchester Central Library', 'Manchester'), 'Central Library', 'label without city');
+eq(core.shortLabel('Hôtel de ville de Morges', 'Morges'), 'Hôtel de ville', 'label without "de Morges"');
+eq(core.shortLabel('Kathedrale von Manchester', 'Manchester'), 'Kathedrale', 'label without "von Manchester"');
+eq(core.shortLabel('Maison du dessin de presse', 'Morges'), 'Maison du dessin…', 'label shortened at word boundary');
+eq(core.shortLabel('Manchester', 'Manchester'), 'Manchester', 'label = city stays');
+eq(core.stripLocation('Museum in Morges (Schweiz)'), 'Museum', 'description without location');
+eq(core.stripLocation('Grade I listed building in Manchester, England'), 'Grade I listed building', 'description without location en');
+eq(core.firstSentence("The People's History Museum (PHM) in Manchester is the UK's national museum of democracy. It was founded in 1975."),
+  "The People's History Museum in Manchester is the UK's national museum of democracy.", 'first sentence, brackets removed');
+eq(core.firstSentence('Das Rathaus ist ein Bau von ca. 1877 im Stil der Neugotik. Es wurde von A. Waterhouse entworfen.'),
+  'Das Rathaus ist ein Bau von ca. 1877 im Stil der Neugotik.', 'first sentence keeps abbreviations');
+
+// ---- intros + translation
+const ip = [{ id: 'a', artikel: { de: 'Rathaus Manchester', en: 'Manchester Town Hall' } }, { id: 'b', artikel: { en: "Chetham's Library" } },
+  { id: 'c', artikel: { fr: 'Musée Alexis Forel' }, wikipedia: 'fr:Musée Alexis Forel' }];
+const intros = await core.loadIntros(ip, mockFetch(fx));
+eq(intros.a.lang + '|' + intros.a.text, 'de|Rathaus Manchester ist ein Testort.', 'intro German preferred');
+eq(intros.b.lang, 'en', 'intro English');
+eq(intros.c.lang + '|' + intros.c.text, 'fr|Musée Alexis Forel is a test place.', 'intro local language');
+core._resetTranslators();
+const tr = await core.translate("It's a test.", 'en', 'de', mockFetch(fx));
+eq(tr.via + '|' + tr.text, "mymemory|[DE] It's a test.", 'translation via MyMemory, entities decoded');
+const fxq = Object.assign({}, fx, { __mmQuota: true });
+let quotaErr = null;
+await core.translate('x', 'en', 'de', mockFetch(fxq)).catch((e) => { quotaErr = e.message; });
+eq(quotaErr, 'MyMemory-Tageslimit erreicht', 'quota detected');
+core._resetTranslators();
+globalThis.self = { Translator: { availability: async () => 'available', create: async () => ({ translate: async (t) => 'CHROME:' + t }) } };
+eq((await core.translate('Hi.', 'en', 'de', mockFetch(fx))).text, 'CHROME:Hi.', 'Chrome translator preferred when available');
+delete globalThis.self; core._resetTranslators();
 
 // ---- languages
 eq(core.languagesFor({ cc: 'ch', region: 'CH-VD' }, cfg).join(), 'de,en,fr', 'Vaud -> fr');
@@ -137,7 +186,7 @@ eq(by('John Rylands').typ, 'bibliothek', 'John Rylands typ via class label');
 eq(by('Cathedral').typ, 'kathedrale', 'Cathedral typ via class label');
 eq(by('Victoria station').sterne <= 1, true, 'station without great building at most 1 star (' + by('Victoria station').score + ')');
 eq(by('Arena bombing').sterne, 0, 'event no star');
-eq(by('Musée Exemple').sterne, 1, 'fr-only museum gets 1 star');
+eq(by('Musée Exemple').sterne, 2, 'fr-only museum gets 2 stars (museums always orange)');
 eq(by('Musée Exemple').typ, 'museum', 'fr-only museum typ');
 eq(by('Town Hall').name, 'Manchester Town Hall', 'display name = local (English in England)');
 eq(by('Town Hall').name2, 'Rathaus Manchester', 'second name = German');

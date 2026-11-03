@@ -1,5 +1,5 @@
 /*
- * Reiseführer – core logic (v0.2.2)
+ * Reiseführer – core logic (v0.2.3)
  * Shared by the app (index.html), the diagnostics page (diag.html) and Node tests.
  * No DOM access here. Network access only through the injected fetch function.
  */
@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var CORE_VERSION = '0.2.2';
+  var CORE_VERSION = '0.2.3';
 
   // ---------------------------------------------------------------- helpers
 
@@ -558,22 +558,205 @@
     });
   }
 
-  /** Search a place by name (Nominatim, only on explicit user action, no autocomplete). */
-  function searchPlaces(q, f) {
-    var url = 'https://nominatim.openstreetmap.org/search?' + qs({
-      q: q, format: 'jsonv2', limit: 5, 'accept-language': 'de'
-    });
+  var NOMINATIM_TYPES = {
+    city: 'Stadt', town: 'Stadt', village: 'Dorf', hamlet: 'Weiler', suburb: 'Stadtteil', quarter: 'Viertel',
+    neighbourhood: 'Viertel', city_district: 'Stadtbezirk', borough: 'Bezirk', municipality: 'Gemeinde',
+    county: 'Bezirk/Kreis', state_district: 'Bezirk', state: 'Region', region: 'Region', country: 'Land',
+    administrative: 'Verwaltungsgebiet', island: 'Insel', museum: 'Museum', gallery: 'Galerie',
+    attraction: 'Sehenswürdigkeit', viewpoint: 'Aussichtspunkt', artwork: 'Kunstwerk', castle: 'Burg/Schloss',
+    monument: 'Denkmal', memorial: 'Denkmal', ruins: 'Ruine', archaeological_site: 'Ausgrabung',
+    place_of_worship: 'Kirche/Gotteshaus', church: 'Kirche', cathedral: 'Kathedrale', theatre: 'Theater',
+    library: 'Bibliothek', park: 'Park', garden: 'Garten', zoo: 'Zoo', station: 'Bahnhof', square: 'Platz',
+    road: 'Straße', building: 'Gebäude', peak: 'Gipfel', lake: 'See', water: 'Gewässer'
+  };
+  var SETTLEMENT = ['city', 'town', 'village', 'hamlet', 'suburb', 'quarter', 'neighbourhood', 'city_district',
+    'borough', 'municipality', 'county', 'state_district', 'state', 'region', 'country', 'administrative', 'island'];
+
+  /**
+   * Search a place or sight by name (Nominatim, only on explicit user action, no autocomplete).
+   * view: optional {west, south, east, north} of the current map; nearby results are preferred.
+   * Duplicates (same name within 25 km) are merged.
+   */
+  function searchPlaces(q, f, view) {
+    var params = { q: q, format: 'jsonv2', limit: 10, 'accept-language': 'de' };
+    if (view) { params.viewbox = [view.west, view.north, view.east, view.south].map(function (x) { return x.toFixed(4); }).join(','); params.bounded = 0; }
+    var url = 'https://nominatim.openstreetmap.org/search?' + qs(params);
     return getJson(url, f).then(function (list) {
-      return (list || []).map(function (r) {
+      var out = [];
+      (list || []).forEach(function (r) {
+        var lat = parseFloat(r.lat), lon = parseFloat(r.lon);
+        if (isNaN(lat) || isNaN(lon)) return;
         var parts = String(r.display_name || '').split(', ');
-        return {
-          name: r.name || parts[0] || q,
-          detail: parts.slice(1).filter(function (x, i, a) { return i < 3 || i === a.length - 1; }).join(', '),
-          lat: parseFloat(r.lat), lon: parseFloat(r.lon),
-          bbox: r.boundingbox ? r.boundingbox.map(parseFloat) : null // [south, north, west, east]
-        };
-      }).filter(function (r) { return !isNaN(r.lat) && !isNaN(r.lon); });
+        var name = r.name || parts[0] || q;
+        var kind = r.addresstype || r.type || '';
+        var dup = out.some(function (o) {
+          return o.name.toLowerCase() === name.toLowerCase() && haversine(o.lat, o.lon, lat, lon) < 25000;
+        });
+        if (dup) return;
+        out.push({
+          name: name,
+          detail: parts.slice(1).filter(function (x, i, a) { return !/^\d{4,6}$/.test(x) && (i < 3 || i === a.length - 1); }).join(', '),
+          typ: NOMINATIM_TYPES[kind] || NOMINATIM_TYPES[r.type] || '',
+          poi: SETTLEMENT.indexOf(kind) < 0 && r.category !== 'boundary' && r.category !== 'place',
+          lat: lat, lon: lon
+        });
+      });
+      return out.slice(0, 6);
     });
+  }
+
+  // -------------------------------------------------------- short texts
+
+  function escRe(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+  /** Short map label: without the city name, at most `max` characters, cut at a word boundary. */
+  function shortLabel(name, ort, max) {
+    max = max || 18;
+    var s = String(name || '').trim();
+    if (ort) {
+      var t = s.replace(new RegExp('(^|[\\s,–-]+)' + escRe(ort) + '(?=$|[\\s,–-])', 'gi'), ' ')
+        .replace(/\s+/g, ' ').replace(/^[\s,–-]+|[\s,–-]+$/g, '')
+        .replace(/\s+(von|vom|de|du|des|d'|of|di|del|della|la|le)$/i, '').trim();
+      if (t.length >= 3) s = t;
+    }
+    if (s.length <= max) return s;
+    var cut = s.slice(0, max);
+    var sp = cut.lastIndexOf(' ');
+    if (sp >= 8) cut = cut.slice(0, sp);
+    return cut.replace(/[\s,–-]+$/, '') + '…';
+  }
+
+  /** Wikidata description without the location part: "Museum in Morges (Schweiz)" -> "Museum". */
+  function stripLocation(desc) {
+    var s = String(desc || '').split(/[,;]/)[0];
+    s = s.replace(/\s+(in|im|in der|in den|bei|nahe|near|at|in the|à|au|aux|en|a|nel|nella)\s+[A-ZÄÖÜÉÈ].*$/, '').trim();
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+
+  var ABBR = /(?:\b(?:St|Dr|Nr|ca|bzw|vgl|z|B|u|a|d|h|e|g|i|Mr|Mrs|Jr|Sr|No|Mt|Ste|Sta|S|v|Chr|Jh|Jhd)|\b[A-Z])$/;
+
+  /** First sentence of an extract, without bracketed asides and reference marks, at most ~220 chars. */
+  function firstSentence(text, max) {
+    max = max || 220;
+    var s = String(text || '').replace(/\s+/g, ' ').trim();
+    for (var k = 0; k < 3; k++) s = s.replace(/\s*\([^()]*\)/g, '').replace(/\s*\[[^\[\]]*\]/g, '');
+    s = s.replace(/\s+([,.;:])/g, '$1');
+    var re = /[.!?](?=\s+["„«(]?[A-ZÄÖÜÉÈÀ0-9])/g, m;
+    while ((m = re.exec(s))) {
+      if (!ABBR.test(s.slice(0, m.index))) { s = s.slice(0, m.index + 1); break; }
+    }
+    if (s.length > max) {
+      var cut = s.slice(0, max), sp = cut.lastIndexOf(' ');
+      s = (sp > max * 0.6 ? cut.slice(0, sp) : cut).replace(/[\s,;:–-]+$/, '') + ' …';
+    }
+    return s;
+  }
+
+  /** Article to read for a place: German if available, else English, else the longest one. */
+  function articleFor(p, prefer) {
+    var a = p.artikel || {};
+    var order = prefer || ['de', 'en'];
+    for (var i = 0; i < order.length; i++) if (a[order[i]]) return { lang: order[i], title: a[order[i]] };
+    var w = String(p.wikipedia || '');
+    var ix = w.indexOf(':');
+    return ix > 0 ? { lang: w.slice(0, ix), title: w.slice(ix + 1) } : null;
+  }
+
+  /**
+   * Loads the first sentence of the Wikipedia intro for several places (max 20 per request and language).
+   * Returns {id: {lang, text}}.
+   */
+  function loadIntros(places, f, retryDelays) {
+    var byLang = {};
+    places.forEach(function (p) {
+      var a = articleFor(p);
+      if (!a) return;
+      (byLang[a.lang] = byLang[a.lang] || []).push({ id: p.id, title: a.title });
+    });
+    var jobs = [];
+    Object.keys(byLang).forEach(function (lang) {
+      var items = byLang[lang];
+      for (var i = 0; i < items.length; i += 20) jobs.push({ lang: lang, items: items.slice(i, i + 20) });
+    });
+    var out = {};
+    return runLimited(jobs, 2, function (job) {
+      var url = 'https://' + job.lang + '.wikipedia.org/w/api.php?' + qs({
+        action: 'query', format: 'json', formatversion: 2, origin: '*', redirects: 1,
+        prop: 'extracts', exintro: 1, explaintext: 1, exsentences: 2, exlimit: 20,
+        titles: job.items.map(function (x) { return x.title; }).join('|')
+      });
+      return getJsonRetry(url, f, retryDelays).then(function (d) {
+        var q = d.query || {}, map = {};
+        (q.normalized || []).concat(q.redirects || []).forEach(function (n) { map[n.from] = n.to; });
+        var byTitle = {};
+        (q.pages || []).forEach(function (pg) { if (pg.extract) byTitle[pg.title] = pg.extract; });
+        job.items.forEach(function (it) {
+          var t = it.title, guard = 0;
+          while (map[t] && guard++ < 3) t = map[t];
+          var ex = byTitle[t];
+          if (ex) out[it.id] = { lang: job.lang, text: firstSentence(ex) };
+        });
+      }, function () { /* leave missing */ });
+    }).then(function () { return out; });
+  }
+
+  // ---------------------------------------------------------- translation
+
+  function decodeEntities(s) {
+    return String(s || '').replace(/&#(\d+);/g, function (m, n) { return String.fromCharCode(+n); })
+      .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+  }
+
+  var chromeTranslators = {};
+  // Chrome's built-in on-device translator (Translator API), if the browser has it
+  function translateChrome(text, from, to) {
+    var T = typeof self !== 'undefined' ? self.Translator : undefined;
+    if (!T || !T.availability) return Promise.reject(new Error('Browser ohne Übersetzer'));
+    var key = from + '>' + to;
+    if (!chromeTranslators[key]) {
+      // only use it if the language pack is already on the device (a download would block)
+      chromeTranslators[key] = withTimeout(T.availability({ sourceLanguage: from, targetLanguage: to }), 3000).then(function (a) {
+        if (a !== 'available') throw new Error('Sprachpaar ' + key + ': ' + a);
+        return withTimeout(T.create({ sourceLanguage: from, targetLanguage: to }), 5000);
+      });
+      chromeTranslators[key].catch(function () { /* remembered as failed for this session */ });
+    }
+    return chromeTranslators[key].then(function (t) { return withTimeout(t.translate(text), 5000); });
+  }
+
+  function withTimeout(p, ms) {
+    return Promise.race([p, new Promise(function (res, rej) { setTimeout(function () { rej(new Error('Zeitüberschreitung')); }, ms); })]);
+  }
+
+  var myMemoryBlocked = false;
+  // MyMemory: free web translation without key (daily limit for anonymous use)
+  function translateMyMemory(text, from, to, f) {
+    if (myMemoryBlocked) return Promise.reject(new Error('MyMemory-Tageslimit erreicht'));
+    var url = 'https://api.mymemory.translated.net/get?' + qs({ q: text.slice(0, 450), langpair: from + '|' + to });
+    return getJson(url, f).then(function (d) {
+      var t = d && d.responseData && d.responseData.translatedText;
+      if (d && (d.quotaFinished || +d.responseStatus === 429) || /MYMEMORY WARNING/i.test(t || '')) {
+        myMemoryBlocked = true;
+        throw new Error('MyMemory-Tageslimit erreicht');
+      }
+      if (!t || +d.responseStatus !== 200) throw new Error('MyMemory: ' + ((d && d.responseDetails) || 'Fehler'));
+      return decodeEntities(t);
+    });
+  }
+
+  /** Translates text; tries the providers in order. Resolves {text, via}. */
+  function translate(text, from, to, f, order) {
+    order = order || ['chrome', 'mymemory'];
+    var i = 0;
+    function next(err) {
+      if (i >= order.length) return Promise.reject(err || new Error('Keine Übersetzung verfügbar'));
+      var pr = order[i++];
+      var p = pr === 'chrome' ? translateChrome(text, from, to)
+        : pr === 'mymemory' ? withTimeout(translateMyMemory(text, from, to, f), 6000)
+        : Promise.reject(new Error('Unbekannter Übersetzer ' + pr));
+      return p.then(function (t) { return { text: t, via: pr }; }, next);
+    }
+    return next();
   }
 
   // --------------------------------------------------------------- links
@@ -615,6 +798,9 @@
     buildPlaces: buildPlaces, sortPlaces: sortPlaces, loadPlaces: loadPlaces,
     reverseGeocode: reverseGeocode, languagesFor: languagesFor, localLanguage: localLanguage,
     searchPlaces: searchPlaces, isLatin: isLatin, pickNames: pickNames,
+    shortLabel: shortLabel, stripLocation: stripLocation, firstSentence: firstSentence,
+    articleFor: articleFor, loadIntros: loadIntros, translate: translate,
+    _resetTranslators: function () { chromeTranslators = {}; myMemoryBlocked = false; },
     nameWithPlace: nameWithPlace, gmapsSearchUrl: gmapsSearchUrl, gmapsPinUrl: gmapsPinUrl,
     geoSearchUrl: geoSearchUrl, geoPinUrl: geoPinUrl, wikipediaUrl: wikipediaUrl,
     tripadvisorUrl: tripadvisorUrl, merkZeile: merkZeile
