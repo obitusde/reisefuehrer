@@ -306,5 +306,48 @@
       "ohne_stern_namen": [],
       "ohne_stern_typen": ["bach", "ereignis"]
     }
-  ]
+  ],
+  "symbole": {
+    "_hinweis": "Symbol im Kartenpunkt je Typ (v0.7.0). Alles andere: schlichter Punkt.",
+    "museum": ["museum"],
+    "kirche": ["kirche", "kathedrale", "kloster"],
+    "schloss": ["schloss", "burg", "palast", "herrenhaus"],
+    "denkmal": ["denkmal", "welterbe", "archaeologie", "kunst"],
+    "aussicht": ["aussicht"],
+    "natur": ["park", "natur"]
+  },
+  "staedte": {
+    "_hinweis": "Stadt-Sterne (PROJEKT.md 6c, v0.7.0). Je Kachel (kachel_grad) eine Wikidata-Abfrage: alle Einträge mit Koordinaten und mindestens min_sprachversionen Sprachversionen. Siedlungen (stadt_woerter in der Wikidata-Klasse) werden Städte, der Rest zählt als Sehenswürdigkeit (Punkte wie Abschnitt 6, ohne Artikellänge). Stadt-Score = Summe der top_n besten Sehenswürdigkeiten im Stadtradius + Bonus. Sterne rechnet die App aus score mit schwellen (ändern ohne Neuberechnen). Sehenswürdigkeiten außerhalb von Städten ab ausflug_ab Punkten erscheinen als Ausflugsziele. zoom: bis nur_grosse_bis nur Städte ★★/★★★, bis staedte_bis alle Städte mit Sternen und Ausflugsziele, darüber die normalen Orte.",
+    "aktiv": true,
+    "sparql": "https://query.wikidata.org/sparql",
+    "kachel_grad": 1,
+    "teilen_max": 2,
+    "min_sprachversionen": 12,
+    "pause_ms": 500,
+    "pause_429_s": 30,
+    "timeout_s": 70,
+    "radius_km": {"basis": 1.5, "pro_zehnfach": 1.5, "max": 8},
+    "top_n": 10,
+    "bonus": {"unesco": 3, "hauptstadt": 1},
+    "schwellen": {"3": 60, "2": 30, "1": 12},
+    "min_score_datei": 5,
+    "ausflug_ab": 9,
+    "zoom": {"nur_grosse_bis": 8, "staedte_bis": 11},
+    "max_marker": 160,
+    "stadt_woerter": ["city", "big city", "town", "village", "municipality", "commune", "comune", "hamlet", "human settlement", "metropolis", "market town", "spa town", "stadt", "gemeinde"],
+    "ausschluss_woerter": ["district", "region", "province", "department", "state", "canton", "country", "county", "arrondissement", "metropolitan area", "urban area", "agglomeration", "borough", "quarter", "neighbourhood", "neighborhood", "locality", "constituency", "diocese", "archdiocese", "parish", "deanery", "mountain range", "river", "stream", "railway", "railway line", "station", "railway station", "metro station", "airport", "airfield", "stadium", "arena", "university", "college", "school", "hospital", "company", "business", "enterprise", "organization", "road", "street", "motorway", "highway", "power station", "nuclear power plant", "military base", "barracks", "prison", "army", "football club", "sports club", "hotel"],
+    "ausschluss_typen": ["liste", "person", "siedlung", "ereignis", "parkplatz", "hotel", "gastro", "einkauf", "krankenhaus", "strasse", "bach", "fluss", "kanal", "organisation", "buero", "wohnhaus", "firma", "haltestelle", "bahnhof", "sport", "bildung", "viertel"],
+    "github_workflow": "https://github.com/obitusde/reisefuehrer/actions/workflows/staedte.yml",
+    "laender": [
+      {"code": "DE", "qid": "Q183", "name": "Deutschland", "bbox": [47.27, 5.86, 55.06, 15.04]},
+      {"code": "AT", "qid": "Q40", "name": "Österreich", "bbox": [46.37, 9.53, 49.02, 17.16]},
+      {"code": "CH", "qid": "Q39", "name": "Schweiz", "bbox": [45.82, 5.95, 47.81, 10.49]},
+      {"code": "FR", "qid": "Q142", "name": "Frankreich", "bbox": [41.33, -5.15, 51.09, 9.56]},
+      {"code": "BE", "qid": "Q31", "name": "Belgien", "bbox": [49.49, 2.54, 51.51, 6.41]},
+      {"code": "NL", "qid": "Q55", "name": "Niederlande", "bbox": [50.75, 3.35, 53.56, 7.23]},
+      {"code": "LU", "qid": "Q32", "name": "Luxemburg", "bbox": [49.44, 5.73, 50.19, 6.53]},
+      {"code": "IT", "qid": "Q38", "name": "Italien", "bbox": [36.62, 6.62, 47.1, 18.52]},
+      {"code": "GB", "qid": "Q145", "name": "Großbritannien", "bbox": [49.86, -8.65, 60.86, 1.77]}
+    ]
+  }
 }

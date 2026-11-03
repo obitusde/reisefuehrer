@@ -1,5 +1,5 @@
 /*
- * Reiseführer – core logic (v0.6.1)
+ * Reiseführer – core logic (v0.7.0)
  * Shared by the app (index.html), the diagnostics page (diag.html) and Node tests.
  * No DOM access here. Network access only through the injected fetch function.
  */
@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var CORE_VERSION = '0.6.1';
+  var CORE_VERSION = '0.7.0';
 
   // ---------------------------------------------------------------- helpers
 
@@ -195,7 +195,7 @@
   // Every request has a time limit, so that a hanging server never blocks the app (v0.4.1)
   function getJson(url, f, timeoutMs) {
     // (in tests FETCH_TIMEOUT is lowered; longer explicit limits are capped at three times the default)
-    var ms = Math.min(timeoutMs || FETCH_TIMEOUT, FETCH_TIMEOUT * 3);
+    var ms = Math.min(timeoutMs || FETCH_TIMEOUT, FETCH_TIMEOUT * 4);
     var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
     var timer = null;
     var req = Promise.resolve().then(function () {
@@ -1424,6 +1424,265 @@
     return [p.name, p.sterne ? starsText(p.sterne) : 'ohne Stern', p.ort || '–', gmapsSearchUrl(p)].join(' – ');
   }
 
+  // ------------------------------------------------- map symbols (v0.7.0)
+
+  /** Symbol group for a place type (config "symbole"), '' = plain dot. */
+  function iconFor(typ, cfg) {
+    var s = (cfg && cfg.symbole) || {};
+    for (var k in s) if (k.charAt(0) !== '_' && s[k].indexOf(typ) >= 0) return k;
+    return '';
+  }
+
+  // ------------------------------------------------ city stars (v0.7.0)
+  // PROJEKT.md 6c. One Wikidata query per map tile (1°, split on failure) gives every item with
+  // coordinates and enough language versions: settlements become city candidates, everything else
+  // counts as a sight. City score = sum of the best sights within the city radius + bonuses.
+
+  function cityTiles(bbox, deg) {
+    deg = deg || 1;
+    var out = [], f = function (x) { return Math.floor(x / deg + 1e-9) * deg; };
+    for (var s = f(bbox.south); s < bbox.north - 1e-9; s += deg) {
+      for (var w = f(bbox.west); w < bbox.east - 1e-9; w += deg) {
+        out.push({ south: +s.toFixed(4), west: +w.toFixed(4), north: +(s + deg).toFixed(4), east: +(w + deg).toFixed(4) });
+      }
+    }
+    return out;
+  }
+  function tileKey(t) { return [t.south, t.west, t.north, t.east].join(','); }
+  function splitTile(t) {
+    var ms = (t.south + t.north) / 2, mw = (t.west + t.east) / 2;
+    return [
+      { south: t.south, west: t.west, north: ms, east: mw }, { south: t.south, west: mw, north: ms, east: t.east },
+      { south: ms, west: t.west, north: t.north, east: mw }, { south: ms, west: mw, north: t.north, east: t.east }
+    ];
+  }
+
+  function citySparql(t, cfg) {
+    var c = cfg.staedte, min = c.min_sprachversionen || 12;
+    var en = function (v) { return 'STRAFTER(STR(' + v + '),"entity/")'; };
+    return 'SELECT ?item (SAMPLE(?c) AS ?coord) (SAMPLE(?s) AS ?sl) (MAX(?p) AS ?pop)' +
+      ' (GROUP_CONCAT(DISTINCT ' + en('?t') + ';separator="|") AS ?p31)' +
+      ' (GROUP_CONCAT(DISTINCT ?tl;separator="|") AS ?cls)' +
+      ' (GROUP_CONCAT(DISTINCT ' + en('?h') + ';separator="|") AS ?her)' +
+      ' (GROUP_CONCAT(DISTINCT ' + en('?land') + ';separator="|") AS ?land)' +
+      ' (SAMPLE(?u) AS ?unesco) (SAMPLE(?cp) AS ?cap) (SAMPLE(?ld) AS ?de) (SAMPLE(?le) AS ?en) (SAMPLE(?lx) AS ?lx) (SAMPLE(?ds) AS ?desc)' +
+      ' WHERE {' +
+      ' SERVICE wikibase:box { ?item wdt:P625 ?c. bd:serviceParam wikibase:cornerSouthWest "Point(' + t.west + ' ' + t.south + ')"^^geo:wktLiteral;' +
+      ' wikibase:cornerNorthEast "Point(' + t.east + ' ' + t.north + ')"^^geo:wktLiteral. }' +
+      ' ?item wikibase:sitelinks ?s. FILTER(?s >= ' + min + ')' +
+      ' OPTIONAL { ?item wdt:P31 ?t. OPTIONAL { ?t rdfs:label ?tl. FILTER(LANG(?tl) = "en") } }' +
+      ' OPTIONAL { ?item wdt:P1082 ?p. }' +
+      ' OPTIONAL { ?item wdt:P1435 ?h. }' +
+      ' OPTIONAL { ?item wdt:P17 ?land. }' +
+      ' OPTIONAL { ?item wdt:P757 ?u. }' +
+      ' OPTIONAL { ?item wdt:P1376 ?cp. }' +
+      ' OPTIONAL { ?item rdfs:label ?ld. FILTER(LANG(?ld) = "de") }' +
+      ' OPTIONAL { ?item rdfs:label ?le. FILTER(LANG(?le) = "en") }' +
+      ' OPTIONAL { ?item rdfs:label ?lx. FILTER(LANG(?lx) IN ("mul", "fr", "it", "nl")) }' +
+      ' OPTIONAL { ?item schema:description ?ds. FILTER(LANG(?ds) = "en") }' +
+      ' } GROUP BY ?item';
+  }
+
+  function parseCityRows(d) {
+    var rows = (d && d.results && d.results.bindings) || [];
+    var v = function (b, k) { return b[k] ? b[k].value : ''; };
+    var list = function (s) { return s ? s.split('|').filter(Boolean) : []; };
+    return rows.map(function (b) {
+      var m = /Point\(([-\d.eE]+) ([-\d.eE]+)\)/.exec(v(b, 'coord'));
+      if (!m) return null;
+      return {
+        q: v(b, 'item').replace(/^.*\//, ''), lat: +(+m[2]).toFixed(5), lon: +(+m[1]).toFixed(5),
+        name: v(b, 'de') || v(b, 'en') || v(b, 'lx'), name_en: v(b, 'en'),
+        sl: +v(b, 'sl') || 0, pop: Math.round(+v(b, 'pop') || 0),
+        p31: list(v(b, 'p31')), cls: list(v(b, 'cls')), h: list(v(b, 'her')), land: list(v(b, 'land')),
+        u: !!v(b, 'unesco'), cap: !!v(b, 'cap'), desc: v(b, 'desc')
+      };
+    }).filter(function (x) { return x && x.name; });
+  }
+
+  /**
+   * Loads the items of all tiles (one after the other; Wikidata asks for no parallel bulk queries).
+   * A tile that fails (timeout, HTTP 5xx) is split into four, at most `teilen_max` times.
+   * o: {cache: Map-like {get,set} tileKey -> items, onProgress(done, total, items), control: {cancelled}}
+   */
+  function loadCityTiles(tiles, cfg, f, o) {
+    o = o || {};
+    var c = cfg.staedte, url = c.sparql || 'https://query.wikidata.org/sparql';
+    var queue = tiles.map(function (t) { return { t: t, depth: 0 }; });
+    var total = queue.length, done = 0, items = {}, failed = [], queries = 0, splits = 0, t0 = Date.now();
+    function add(list) { list.forEach(function (x) { if (!items[x.q]) items[x.q] = x; }); }
+    function one(job, attempt) {
+      var key = tileKey(job.t);
+      var hit = o.cache && o.cache.get(key);
+      if (hit) return Promise.resolve(hit);
+      queries++;
+      return getJson(url + '?format=json&query=' + encodeURIComponent(citySparql(job.t, cfg)), f, (c.timeout_s || 70) * 1000)
+        .then(function (d) {
+          var list = parseCityRows(d);
+          if (o.cache) o.cache.set(key, list);
+          return list;
+        }, function (e) {
+          if (e && e.status === 429 && attempt < 4) return sleep((c.pause_429_s || 30) * 1000).then(function () { return one(job, attempt + 1); });
+          if (e && e.status >= 400 && e.status < 500 && e.status !== 429) throw e; // query error: splitting does not help
+          if (job.depth < (c.teilen_max || 2)) { e.split = true; throw e; }
+          if (attempt < 1) return sleep(5000).then(function () { return one(job, attempt + 1); });
+          throw e;
+        });
+    }
+    function next() {
+      if (o.control && o.control.cancelled) return Promise.resolve();
+      var job = queue.shift();
+      if (!job) return Promise.resolve();
+      return one(job, 0).then(function (list) { add(list); done++; }, function (e) {
+        if (e && e.split) {
+          splits++;
+          splitTile(job.t).forEach(function (t) { queue.unshift({ t: t, depth: job.depth + 1 }); });
+          total += 3;
+        } else { failed.push({ tile: job.t, error: (e && e.message) || 'Fehler' }); done++; }
+      }).then(function () {
+        if (o.onProgress) o.onProgress(done, total, Object.keys(items).length);
+        return queries && c.pause_ms ? sleep(c.pause_ms) : null;
+      }).then(next);
+    }
+    return next().then(function () {
+      return { items: Object.keys(items).map(function (k) { return items[k]; }), tiles: total, failed: failed, queries: queries, splits: splits, ms: Date.now() - t0 };
+    });
+  }
+
+  function anyHeadEnds(labels, words) {
+    var ws = words.map(function (w) { return { suffix: false, w: norm(w) }; });
+    return (labels || []).some(function (l) {
+      var h = headPhrase(l);
+      return ws.some(function (w) { return endsWithWord(h, w); });
+    });
+  }
+  function isCityItem(x, cfg) { return anyHeadEnds(x.cls, cfg.staedte.stadt_woerter || []); }
+
+  function cityRadius(pop, cfg) {
+    var r = cfg.staedte.radius_km || {};
+    var km = (r.basis || 1.5) + (r.pro_zehnfach || 1.5) * Math.max(0, Math.log(Math.max(pop || 0, 1000) / 1000) / Math.LN10);
+    return Math.min(r.max || 8, km) * 1000;
+  }
+
+  /** Points of one sight (score from PROJEKT.md 6 without article length), or null if it does not count. */
+  function sightScore(x, cfg) {
+    var c = cfg.staedte;
+    if (anyHeadEnds(x.cls, c.ausschluss_woerter || [])) return null;
+    var typ = classify(x.p31, x.cls, [x.desc], [x.name_en || x.name], cfg);
+    if ((c.ausschluss_typen || []).indexOf(typ) >= 0) return null;
+    var t = typeInfo(typ, cfg);
+    if (t.max_sterne === 0) return null;
+    var s = computeScore({ sprachversionen: x.sl, laenge: 0, denkmal: x.h, unesco: x.u, typ: typ, quellen: [] }, cfg).score;
+    return s > 0 ? { score: s, typ: typ } : null;
+  }
+
+  function gridIndex(list, cell) {
+    var g = {};
+    list.forEach(function (x) {
+      var k = Math.floor(x.lat / cell) + ',' + Math.floor(x.lon / cell);
+      (g[k] = g[k] || []).push(x);
+    });
+    return function (lat, lon) {
+      var a = Math.floor(lat / cell), b = Math.floor(lon / cell), out = [];
+      for (var i = a - 1; i <= a + 1; i++) for (var j = b - 1; j <= b + 1; j++) { var l = g[i + ',' + j]; if (l) out = out.concat(l); }
+      return out;
+    };
+  }
+
+  function cityStars(score, cfg) {
+    var th = cfg.staedte.schwellen;
+    return score >= th['3'] ? 3 : score >= th['2'] ? 2 : score >= th['1'] ? 1 : 0;
+  }
+
+  /**
+   * Cities and big sights of one country from the loaded items.
+   * land: {code, qid, bbox}. Returns {staedte: [...], orte: [...], stats}.
+   * Stars are computed again in the app from `score` (thresholds in config), so they can be tuned without recomputing.
+   */
+  function computeCities(items, cfg, land) {
+    var c = cfg.staedte, cell = 0.2;
+    var cands = [], sights = [];
+    items.forEach(function (x) {
+      if (isCityItem(x, cfg)) cands.push(x);
+      else {
+        var s = sightScore(x, cfg);
+        if (s) sights.push({ x: x, score: s.score, typ: s.typ });
+      }
+    });
+    // One marker per city: candidates inside the radius of a bigger one are merged into it
+    cands.sort(function (a, b) { return (b.pop - a.pop) || (b.sl - a.sl); });
+    var kept = [], keptGrid = {};
+    cands.forEach(function (x) {
+      x.r = cityRadius(x.pop, cfg);
+      var a = Math.floor(x.lat / cell), b = Math.floor(x.lon / cell), inside = false;
+      for (var i = a - 1; i <= a + 1 && !inside; i++) for (var j = b - 1; j <= b + 1 && !inside; j++) {
+        (keptGrid[i + ',' + j] || []).forEach(function (k) { if (!inside && haversine(k.lat, k.lon, x.lat, x.lon) < k.r) inside = true; });
+      }
+      if (inside) return;
+      x.sights = [];
+      kept.push(x);
+      var key = a + ',' + b;
+      (keptGrid[key] = keptGrid[key] || []).push(x);
+    });
+    var near = gridIndex(kept, cell);
+    var outside = [];
+    sights.forEach(function (s) {
+      var best = null, bestQ = Infinity;
+      near(s.x.lat, s.x.lon).forEach(function (k) {
+        var d = haversine(k.lat, k.lon, s.x.lat, s.x.lon);
+        if (d < k.r && d / k.r < bestQ) { bestQ = d / k.r; best = k; }
+      });
+      if (best) best.sights.push(s); else outside.push(s);
+    });
+    var inLand = function (x) {
+      return x.land.length ? x.land.indexOf(land.qid) >= 0 : inBbox(x, land.bbox);
+    };
+    var topN = c.top_n || 10, bonus = c.bonus || {}, minScore = c.min_score_datei || 0;
+    var staedte = [];
+    kept.forEach(function (k) {
+      if (!inLand(k) || !k.sights.length) return;
+      k.sights.sort(function (a, b) { return b.score - a.score; });
+      var sum = 0;
+      k.sights.slice(0, topN).forEach(function (s) { sum += s.score; });
+      var unesco = k.u || k.sights.some(function (s) { return s.x.u; });
+      if (unesco) sum += bonus.unesco || 0;
+      if (k.cap) sum += bonus.hauptstadt || 0;
+      sum = round1(sum);
+      if (sum < minScore) return;
+      staedte.push({
+        name: k.name, q: k.q, lat: +k.lat.toFixed(4), lon: +k.lon.toFixed(4), score: sum, pop: k.pop,
+        n: k.sights.length, unesco: unesco || undefined,
+        top: k.sights.slice(0, 3).map(function (s) { return [s.x.name, +s.x.lat.toFixed(4), +s.x.lon.toFixed(4), s.score]; })
+      });
+    });
+    staedte.sort(function (a, b) { return b.score - a.score; });
+    var orte = outside.filter(function (s) { return s.score >= (c.ausflug_ab || 9) && inLand(s.x); }).map(function (s) {
+      return { name: s.x.name, q: s.x.q, lat: +s.x.lat.toFixed(4), lon: +s.x.lon.toFixed(4), score: s.score, typ: s.typ, unesco: s.x.u || undefined };
+    }).sort(function (a, b) { return b.score - a.score; });
+    return {
+      staedte: staedte, orte: orte,
+      stats: { items: items.length, kandidaten: cands.length, staedte_gesamt: kept.length, orte_gesamt: sights.length, ausserhalb: outside.length }
+    };
+  }
+
+  /** Whole country: tiles over its bounding box, load, compute. */
+  function loadCountryCities(land, cfg, f, o) {
+    var tiles = cityTiles(bboxOf(land.bbox), cfg.staedte.kachel_grad || 1);
+    return loadCityTiles(tiles, cfg, f, o).then(function (r) {
+      var res = computeCities(r.items, cfg, { code: land.code, qid: land.qid, bbox: bboxOf(land.bbox) });
+      res.land = land.code;
+      res.version = CORE_VERSION;
+      res.stand = Date.now();
+      res.stats.kacheln = r.tiles; res.stats.abfragen = r.queries; res.stats.geteilt = r.splits;
+      res.stats.fehler = r.failed.length; res.stats.ms = r.ms;
+      res.fehler = r.failed;
+      return res;
+    });
+  }
+  function bboxOf(a) { return Array.isArray(a) ? { south: a[0], west: a[1], north: a[2], east: a[3] } : a; }
+
+  function cityWikiUrl(q) { return 'https://www.wikidata.org/wiki/Special:GoToLinkedPage/dewiki/' + encodeURIComponent(q); }
+
   return {
     VERSION: CORE_VERSION,
     haversine: haversine, formatDistance: formatDistance, compareVersions: compareVersions,
@@ -1450,6 +1709,9 @@
     osmandWebUrl: osmandWebUrl, osmandGoUrl: osmandGoUrl, osmandIntentUrl: osmandIntentUrl,
     nameWithPlace: nameWithPlace, gmapsSearchUrl: gmapsSearchUrl, gmapsPinUrl: gmapsPinUrl,
     geoSearchUrl: geoSearchUrl, geoPinUrl: geoPinUrl, wikipediaUrl: wikipediaUrl,
-    tripadvisorUrl: tripadvisorUrl, merkZeile: merkZeile
+    tripadvisorUrl: tripadvisorUrl, merkZeile: merkZeile,
+    iconFor: iconFor, cityTiles: cityTiles, splitTile: splitTile, citySparql: citySparql, parseCityRows: parseCityRows,
+    loadCityTiles: loadCityTiles, isCityItem: isCityItem, cityRadius: cityRadius, sightScore: sightScore,
+    computeCities: computeCities, cityStars: cityStars, loadCountryCities: loadCountryCities, bboxOf: bboxOf, cityWikiUrl: cityWikiUrl
   };
 });
