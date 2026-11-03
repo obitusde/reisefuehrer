@@ -1,69 +1,69 @@
 {
  "laender": {
   "CH": {
-   "stand": 1793730056822,
+   "stand": 1793733022934,
    "staedte": 48,
    "orte": 11,
    "fehler": 0,
    "kb": 9
   },
   "BE": {
-   "stand": 1793731808671,
+   "stand": 1793733141958,
    "staedte": 43,
    "orte": 2,
    "fehler": 0,
    "kb": 8
   },
   "LU": {
-   "stand": 1793731818556,
-   "staedte": 7,
+   "stand": 1793733142200,
+   "staedte": 8,
    "orte": 0,
    "fehler": 0,
    "kb": 1
   },
   "DE": {
-   "stand": 1793729479691,
-   "staedte": 184,
-   "orte": 42,
+   "stand": 1793733022179,
+   "staedte": 183,
+   "orte": 41,
    "fehler": 0,
    "kb": 35
   },
   "AT": {
-   "stand": 1793729686202,
-   "staedte": 54,
-   "orte": 7,
+   "stand": 1793733022649,
+   "staedte": 53,
+   "orte": 8,
    "fehler": 0,
    "kb": 9
   },
   "FR": {
-   "stand": 1793731803269,
-   "staedte": 290,
+   "stand": 1793733141763,
+   "staedte": 289,
    "orte": 31,
    "fehler": 0,
    "kb": 49
   },
   "NL": {
-   "stand": 1793731818435,
-   "staedte": 39,
-   "orte": 3,
+   "stand": 1793733142129,
+   "staedte": 38,
+   "orte": 4,
    "fehler": 0,
    "kb": 7
   },
   "IT": {
-   "stand": 1793732532398,
-   "staedte": 199,
+   "stand": 1793733218369,
+   "staedte": 198,
    "orte": 31,
    "fehler": 0,
    "kb": 36
   },
   "GB": {
-   "stand": 1793732797336,
+   "stand": 1793733218827,
    "staedte": 303,
-   "orte": 81,
+   "orte": 75,
    "fehler": 0,
    "kb": 54
   }
  },
  "version": "0.7.0",
- "stand": 1793732797898
+ "stand": 1793733219739
 }
