@@ -106,11 +106,11 @@
 
 <!-- ======================= v0.2 ======================= -->
 <section class="card" id="v02">
-  <h2>v0.2 – Karte, Orte, Sterne</h2>
+  <h2>v0.2 – Karte, Orte, Sterne <span class="muted">(v0.2.1)</span></h2>
   <p class="muted">Schritt 1 und 2 brauchen Internet und dauern zusammen etwa 10–30 Sekunden.</p>
   <button id="btnApi" type="button">1. Schnittstellen prüfen</button>
   <div id="apiOut" class="out"></div>
-  <button id="btnGold" type="button">2. Goldliste Manchester prüfen</button>
+  <button id="btnGold" type="button">2. Goldlisten prüfen (Manchester, Morges)</button>
   <div id="goldStatus" class="status"></div>
   <div id="goldOut" class="out"></div>
 
@@ -234,7 +234,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '0.2.0';
+  var VERSION = '0.2.1';
   var KEY = 'rf.diag.v1';
 
   var TESTS = [
@@ -545,14 +545,14 @@
   init();
 })();
 </script>
-<script src="core.js?v=0.2.0"></script>
+<script src="core.js?v=0.2.1"></script>
 <script>
 /* v0.2 diagnostics: API checks, gold list, manual checklist, summary */
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
   var KEY = 'rf.diag.v2';
-  var GOLD_CENTER_TEXT = 'Manchester Rathaus 53.4792, -2.2442';
+  var DV = '0.2.1';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function load() { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { return {}; } }
@@ -592,26 +592,28 @@
     out.innerHTML = '<p class="muted">Prüfe …</p>';
     var rows = [];
     getCfg().then(function (c) {
-      var lat = c.goldliste.lat, lon = c.goldliste.lon;
-      var wp = function (lang) {
-        return getJson(C.wikipediaQueryUrl(lang, lat, lon, 500, c)).then(function (d) {
+      var g0 = c.goldlisten[0], g1 = c.goldlisten[1] || g0;
+      var lat = g0.lat, lon = g0.lon;
+      var wp = function (lang, la, lo) {
+        return C.getJsonRetry(C.wikipediaQueryUrl(lang, la, lo, 500, c), f).then(function (d) {
           var pages = (d.query && d.query.pages) || [];
-          var withPv = pages.filter(function (p) { return p.pageviews; }).length;
           var withWd = pages.filter(function (p) { return p.pageprops && p.pageprops.wikibase_item; }).length;
           var withCo = pages.filter(function (p) { return p.coordinates; }).length;
-          return { text: pages.length + ' Artikel, Koord. ' + withCo + ', Wikidata ' + withWd + ', Aufrufe ' + (withPv || (d.continue ? 'folgen in Fortsetzung' : 0)),
-                   warn: !pages.length || (!withPv && !d.continue), qid: (pages.filter(function (p) { return p.pageprops && p.pageprops.wikibase_item; })[0] || {}).pageprops };
+          return { text: pages.length + ' Artikel, Koord. ' + withCo + ', Wikidata ' + withWd + (d.continue ? ', continue' : ''),
+                   warn: !pages.length, qid: (pages.filter(function (p) { return p.pageprops && p.pageprops.wikibase_item; })[0] || {}).pageprops };
         });
       };
-      return Promise.all([timed(wp('en')), timed(wp('de'))]).then(function (r) {
-        rows.push(['Wikipedia en', r[0]]); rows.push(['Wikipedia de', r[1]]);
+      return Promise.all([timed(wp('en', lat, lon)), timed(wp('de', lat, lon)), timed(wp('fr', g1.lat, g1.lon))]).then(function (r) {
+        rows.push(['Wikipedia en', r[0]]); rows.push(['Wikipedia de', r[1]]); rows.push(['Wikipedia fr (' + g1.name + ')', r[2]]);
         var q = (r[0].ok && r[0].v.qid && r[0].v.qid.wikibase_item) || 'Q42';
         var wd = getJson('https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&origin=*&ids=' + q + '&props=sitelinks|claims|descriptions&languages=de|en')
           .then(function (d) {
             var e = d.entities[q];
             return { text: q + ': ' + C.sitelinkCount(e.sitelinks) + ' Sprachversionen, P31 ' + ((e.claims.P31 || []).length) + ', „' + ((e.descriptions.en || e.descriptions.de || {}).value || '') + '“' };
           });
-        var nom = C.reverseGeocode(lat, lon, f).then(function (n) { return { text: 'Ort: ' + (n || '(leer)'), warn: !n }; });
+        var nom = C.reverseGeocode(g1.lat, g1.lon, f).then(function (n) {
+          return { text: g1.name + ': ' + (n.name || '(leer)') + ', ' + (n.cc || '?') + ' ' + (n.region || '') + ' → Sprachen ' + C.languagesFor(n, c).join(','), warn: !n.name };
+        });
         var tile = f('https://tile.openstreetmap.org/12/2020/1325.png', { mode: 'cors' }).then(function (r) {
           return { text: 'CORS ' + (r.ok ? 'ja' : 'HTTP ' + r.status) + ' (Kacheln können zwischengespeichert werden)' };
         });
@@ -655,57 +657,81 @@
   function k(n) { return n >= 10000 ? Math.round(n / 1000) + 'k' : String(n); }
   function line(p) {
     var t = p.teile;
-    return 'S' + p.sterne + ' ' + p.score.toFixed(1) + ' ' + p.name + ' [' + p.typ + ']' +
+    return 'S' + p.sterne + ' ' + p.score.toFixed(1) + ' ' + p.name + ' [' + p.typ + (p.klassen && p.klassen[0] ? ': ' + p.klassen[0] : '') + ']' +
       ' SV=' + t.sprachversionen + '(' + p.sprachversionen + ')' +
-      ' AU=' + t.aufrufe + '(' + (p.aufrufe90 == null ? '?' : k(p.aufrufe90)) + ')' +
       ' LA=' + t.laenge + '(' + k(p.laenge) + ')' +
       (t.denkmal ? ' DM=' + t.denkmal : '') + ' TY=' + t.typ;
   }
+
+  function runOneGold(c, g, topN) {
+    var cache = {};
+    var status = $('goldStatus');
+    status.textContent = g.name + ': bestimme Ort …';
+    return withTimeoutP(C.reverseGeocode(g.lat, g.lon, f).catch(function () { return {}; }), 6000, {}).then(function (info) {
+      var langs = C.languagesFor(info, c);
+      return C.loadPlaces({
+        lat: g.lat, lon: g.lon, radius: g.radius_m, cfg: c, fetch: f, langs: langs,
+        wdCache: { get: function (k) { return cache[k]; }, set: function (k, v) { cache[k] = v; } },
+        onProgress: function (t) { status.textContent = g.name + ': ' + t; }
+      });
+    }).then(function (res) {
+      var P = res.places, checks = [];
+      var find = function (n) { return P.filter(function (x) { return matchName(x, n); })[0]; };
+      (g.drei_sterne || []).forEach(function (n) {
+        var p = find(n);
+        checks.push({ ok: !!p && p.sterne === 3, text: n + ': ' + (p ? C.starsText(p.sterne) || 'kein Stern' : 'nicht gefunden') });
+      });
+      (g.mindestens_ein_stern || []).forEach(function (n) {
+        var p = find(n);
+        checks.push({ ok: !!p && p.sterne >= 1, text: n + ': ' + (p ? (C.starsText(p.sterne) || 'kein Stern') + ' (' + p.name + ')' : 'nicht gefunden') });
+      });
+      (g.ohne_stern_namen || []).forEach(function (n) {
+        var p = find(n);
+        checks.push({ ok: !p || p.sterne === 0, text: n + ': ' + (p ? (p.sterne ? C.starsText(p.sterne) + ' (soll keiner)' : 'kein Stern') : 'nicht im Umkreis') });
+      });
+      (g.ohne_stern_typen || []).forEach(function (t) {
+        var bad = P.filter(function (x) { return x.typ === t && x.sterne > 0; });
+        checks.push({ ok: !bad.length, text: 'Typ ' + t + ' ohne Stern: ' + (bad.length ? bad.map(function (x) { return x.name; }).join(', ') : 'ok') });
+      });
+      var cnt = [0, 0, 0, 0]; P.forEach(function (p) { cnt[p.sterne]++; });
+      var allOk = checks.every(function (x) { return x.ok; });
+      var head = 'Goldliste ' + g.name + ' ' + (allOk ? 'BESTANDEN' : 'NICHT bestanden') + ' (' + g.lat + ', ' + g.lon + ', ' + g.radius_m + ' m)';
+      var stats = P.length + ' Orte (' + res.stats.perLang + '), ★★★ ' + cnt[3] + ' · ★★ ' + cnt[2] + ' · ★ ' + cnt[1] + ' · ohne ' + cnt[0] +
+        ', ' + (res.stats.ms / 1000).toFixed(1) + ' s, ' + res.stats.requests + ' Anfragen';
+      var top = P.slice(0, topN).map(line);
+      var generic = P.slice(topN).filter(function (p) { return p.typ === 'gebaeude' || p.typ === 'sonstiges'; }).slice(0, 10).map(line);
+      var lines = [head, stats].concat(checks.map(function (x) { return (x.ok ? 'OK ' : 'FEHLER ') + x.text; }))
+        .concat(res.warnings.map(function (w) { return 'Hinweis: ' + w; }))
+        .concat(['Top ' + topN + ':'], top)
+        .concat(generic.length ? ['Ohne erkannten Typ (weiter unten):'].concat(generic) : []);
+      var html = '<p class="' + (allOk ? 'pass' : 'fail') + '">' + esc(head) + '</p>' +
+        '<p class="muted">' + esc(stats) + '</p><table>' +
+        checks.map(function (x) { return '<tr><td class="' + (x.ok ? 'pass' : 'fail') + '">' + (x.ok ? 'OK' : 'FEHLER') + '</td><td>' + esc(x.text) + '</td></tr>'; }).join('') +
+        '</table>' + (res.warnings.length ? '<p class="warnc">' + esc(res.warnings.join('; ')) + '</p>' : '') +
+        '<details><summary>Top ' + topN + ' mit Punkten</summary><pre class="top">' + esc(top.join('\n')) + '</pre></details>';
+      return { lines: lines, html: html };
+    }, function (e) {
+      return { lines: ['Goldliste ' + g.name + ': FEHLER ' + e.message], html: '<p class="fail">' + esc(g.name + ': ' + e.message) + '</p>' };
+    });
+  }
+
+  function withTimeoutP(p, ms, fb) { return Promise.race([p, new Promise(function (r) { setTimeout(function () { r(fb); }, ms); })]); }
 
   function runGold() {
     var out = $('goldOut'), status = $('goldStatus');
     $('btnGold').disabled = true;
     out.innerHTML = '';
     getCfg().then(function (c) {
-      var g = c.goldliste;
-      var cache = {};
-      return C.loadPlaces({
-        lat: g.lat, lon: g.lon, radius: g.radius_m, cfg: c, fetch: f,
-        wdCache: { get: function (k) { return cache[k]; }, set: function (k, v) { cache[k] = v; } },
-        onProgress: function (t) { status.textContent = t; }
-      }).then(function (res) {
+      var lists = c.goldlisten || [];
+      var all = [], html = '';
+      // sequential: keeps the request rate low
+      return lists.reduce(function (pr, g, i) {
+        return pr.then(function () {
+          return runOneGold(c, g, i === 0 ? 30 : 15).then(function (r) { all = all.concat(r.lines, ['']); html += r.html; out.innerHTML = html; });
+        });
+      }, Promise.resolve()).then(function () {
         status.textContent = '';
-        var P = res.places, checks = [];
-        g.drei_sterne.forEach(function (n) {
-          var p = P.filter(function (x) { return matchName(x, n); })[0];
-          checks.push({ ok: !!p && p.sterne === 3, text: n + ': ' + (p ? C.starsText(p.sterne) || 'kein Stern' : 'nicht gefunden'), p: p });
-        });
-        (g.ohne_stern_namen || []).forEach(function (n) {
-          var p = P.filter(function (x) { return matchName(x, n); })[0];
-          checks.push({ ok: !p || p.sterne === 0, text: n + ': ' + (p ? (p.sterne ? C.starsText(p.sterne) + ' (soll keiner)' : 'kein Stern') : 'nicht im Umkreis'), p: p });
-        });
-        (g.ohne_stern_typen || []).forEach(function (t) {
-          var bad = P.filter(function (x) { return x.typ === t && x.sterne > 0; });
-          checks.push({ ok: !bad.length, text: 'Typ ' + t + ' ohne Stern: ' + (bad.length ? bad.map(function (x) { return x.name; }).join(', ') : 'ok') });
-        });
-        var cnt = [0, 0, 0, 0]; P.forEach(function (p) { cnt[p.sterne]++; });
-        var allOk = checks.every(function (x) { return x.ok; });
-        var head = 'Goldliste ' + (allOk ? 'BESTANDEN' : 'NICHT bestanden') + ' (' + GOLD_CENTER_TEXT + ', ' + g.radius_m + ' m)';
-        var stats = P.length + ' Orte (' + res.stats.perLang + '), ★★★ ' + cnt[3] + ' · ★★ ' + cnt[2] + ' · ★ ' + cnt[1] + ' · ohne ' + cnt[0] +
-          ', ' + (res.stats.ms / 1000).toFixed(1) + ' s, ' + res.stats.requests + ' Anfragen';
-        var top = P.slice(0, 40).map(line);
-        var extra = P.filter(function (p) { return ['bach', 'fluss', 'strasse', 'kanal'].indexOf(p.typ) >= 0 && P.indexOf(p) >= 40; }).map(line);
-        st.gold = [head, stats].concat(checks.map(function (x) { return (x.ok ? 'OK ' : 'FEHLER ') + x.text; }))
-          .concat(res.warnings.map(function (w) { return 'Hinweis: ' + w; }))
-          .concat(['Top 40 (S=Sterne, Punkte, SV=Sprachversionen, AU=Aufrufe 90 T., LA=Länge, DM=Denkmal, TY=Typ):'], top)
-          .concat(extra.length ? ['Flüsse/Straßen weiter unten:'].concat(extra) : []);
-        save();
-        out.innerHTML = '<p class="' + (allOk ? 'pass' : 'fail') + '">' + esc(head) + '</p>' +
-          '<p class="muted">' + esc(stats) + '</p><table>' +
-          checks.map(function (x) { return '<tr><td class="' + (x.ok ? 'pass' : 'fail') + '">' + (x.ok ? 'OK' : 'FEHLER') + '</td><td>' + esc(x.text) + '</td></tr>'; }).join('') +
-          '</table>' + (res.warnings.length ? '<p class="warnc">' + esc(res.warnings.join('; ')) + '</p>' : '') +
-          '<details><summary>Top 40 mit Punkten</summary><pre class="top">' + esc(top.join('\n')) + '</pre></details>';
-        renderSummary();
+        st.gold = all; save(); renderSummary();
       });
     }).catch(function (e) {
       status.textContent = '';
@@ -721,7 +747,7 @@
   }
 
   function renderSummary() {
-    var L = ['Reiseführer Diagnose v0.2.0 – Abnahme v0.2', 'Datum: ' + new Date().toLocaleString('de-DE'), 'Gerät: ' + navigator.userAgent, ''];
+    var L = ['Reiseführer Diagnose v' + DV + ' – Abnahme v0.2', 'Datum: ' + new Date().toLocaleString('de-DE'), 'Gerät: ' + navigator.userAgent, ''];
     L.push('1 Schnittstellen:'); L = L.concat(st.api || ['nicht geprüft']); L.push('');
     L.push('2 Goldliste:'); L = L.concat(st.gold || ['nicht geprüft']); L.push('');
     L.push('3 In der App:');
@@ -740,7 +766,7 @@
   $('v2note').value = st.note || '';
   renderSummary();
   if (st.api) $('apiOut').innerHTML = '<p class="muted">Letztes Ergebnis:</p><pre class="top">' + esc(st.api.join('\n')) + '</pre>';
-  if (st.gold) $('goldOut').innerHTML = '<p class="muted">Letztes Ergebnis:</p><pre class="top">' + esc(st.gold.slice(0, 12).join('\n')) + '</pre>';
+  if (st.gold) $('goldOut').innerHTML = '<p class="muted">Letztes Ergebnis:</p><pre class="top">' + esc(st.gold.filter(function (l) { return !/^S\d /.test(l); }).join('\n')) + '</pre>';
   $('btnApi').addEventListener('click', runApi);
   $('btnGold').addEventListener('click', runGold);
   $('checklist').addEventListener('change', function (e) {

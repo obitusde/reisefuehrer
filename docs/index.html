@@ -11,7 +11,7 @@
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="stylesheet" href="lib/leaflet/leaflet.css">
-<link rel="stylesheet" href="style.css?v=0.2.0">
+<link rel="stylesheet" href="style.css?v=0.2.1">
 </head>
 <body>
 <div id="app">
@@ -38,9 +38,9 @@
 
   <div class="filters">
     <select id="fStars" aria-label="Mindeststerne">
-      <option value="3">★★★</option>
-      <option value="2">★★ und mehr</option>
-      <option value="1">★ und mehr</option>
+      <option value="3">nur ★★★</option>
+      <option value="2">ab ★★</option>
+      <option value="1">ab ★</option>
       <option value="0">Alle Orte</option>
     </select>
     <select id="fRadius" aria-label="Radius"></select>
@@ -51,7 +51,7 @@
   <ul id="list" class="list"></ul>
 
   <footer class="foot">
-    <span>Reiseführer <b id="version">v0.2.0</b></span>
+    <span>Reiseführer <b id="version">v0.2.1</b></span>
     <span>Sterne = Faustregel</span>
   </footer>
 </div>
@@ -67,7 +67,7 @@
 <div id="toast" class="toast" hidden></div>
 
 <script src="lib/leaflet/leaflet.js"></script>
-<script src="core.js?v=0.2.0"></script>
-<script src="app.js?v=0.2.0"></script>
+<script src="core.js?v=0.2.1"></script>
+<script src="app.js?v=0.2.1"></script>
 </body>
 </html>

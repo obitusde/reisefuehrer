@@ -35,8 +35,8 @@ function ok(c, m) { if (c) passes++; else { fails++; console.log('FAIL', m); } }
 async function mockApis(ctx) {
   await ctx.route(/wikipedia\.org\/w\/api\.php/, (route) => {
     const u = new URL(route.request().url());
-    const arr = fx.wikipedia[u.hostname.split('.')[0]];
-    const body = u.searchParams.get('pvipcontinue') ? arr[1] : arr[0];
+    const arr = fx.wikipedia[u.hostname.split('.')[0]] || [{ query: { pages: [] } }];
+    const body = u.searchParams.get('incontinue') ? arr[1] : arr[0];
     route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
   });
   await ctx.route(/www\.wikidata\.org/, (route) => {
@@ -50,7 +50,7 @@ async function mockApis(ctx) {
 
 async function newCtx(browser, opts = {}) {
   const ctx = await browser.newContext({
-    viewport: { width: 412, height: opts.height || 780 }, deviceScaleFactor: opts.dpr || 1, isMobile: true, hasTouch: true,
+    viewport: { width: opts.width || 412, height: opts.height || 780 }, deviceScaleFactor: opts.dpr || 1, isMobile: true, hasTouch: true,
     geolocation: { latitude: 53.4792, longitude: -2.2442, accuracy: 20 }, permissions: ['geolocation'],
     colorScheme: opts.dark ? 'dark' : 'light', serviceWorkers: opts.sw ? 'allow' : 'block', locale: 'de-DE'
   });
@@ -70,7 +70,7 @@ try {
   const page = await ctx.newPage(); const errs = []; watch(page, errs);
   await page.goto(BASE + 'index.html');
   await page.waitForSelector('.empty');
-  ok((await page.textContent('#version')) === 'v0.2.0', 'footer version');
+  ok((await page.textContent('#version')) === 'v0.2.1', 'footer version');
   if (OUT) await page.screenshot({ path: OUT + '/01-start.png' });
 
   await page.click('#btnLocate');
@@ -163,10 +163,10 @@ try {
   ok(Math.abs((await page.$('#mapWrap').then((e) => e.boundingBox())).height - after) < 10, 'split persisted');
 
   // update banner (fake newer version, then ?testupdate=1)
-  fakeVersion = '0.2.1';
+  fakeVersion = '0.2.2';
   await page.reload();
   await page.waitForSelector('#banner:not([hidden])');
-  ok((await page.textContent('#bannerText')).includes('v0.2.1'), 'banner shows remote version');
+  ok((await page.textContent('#bannerText')).includes('v0.2.2'), 'banner shows remote version');
   if (OUT) await page.screenshot({ path: OUT + '/05-banner.png' });
   fakeVersion = null;
   await page.click('#bannerBtn');
@@ -178,6 +178,31 @@ try {
   ok((await page.textContent('#bannerText')).includes('(Test)'), 'testupdate banner');
   ok(errs.length === 0, 'no JS errors: ' + errs.join(' | '));
   await ctx.close();
+
+  // ---------------- small viewport like the user's phone (display size enlarged)
+  const ctxS = await newCtx(browser, { height: 626, width: 329 });
+  const pS = await ctxS.newPage(); const errsS = []; watch(pS, errsS);
+  await pS.goto(BASE + 'index.html');
+  await pS.click('#btnLocate'); await pS.waitForSelector('.item');
+  const layS = await pS.evaluate(() => {
+    const r = (s) => document.querySelector(s).getBoundingClientRect();
+    const sel = [...document.querySelectorAll('.filters select')].map((x) => x.scrollWidth <= x.clientWidth + 1);
+    const pillsOk = (() => { const a = r('#btnLocate'), b = r('#btnHere'); return a.right < b.left; })();
+    return { scrollW: document.documentElement.scrollWidth, w: innerWidth, h: innerHeight, list: r('#list').height, foot: r('.foot').bottom, pillsOk, sel };
+  });
+  ok(layS.scrollW <= layS.w, 'small: no horizontal scroll');
+  ok(Math.abs(layS.foot - layS.h) < 2, 'small: fits viewport');
+  ok(layS.list > 100, 'small: list visible ' + layS.list);
+  ok(layS.pillsOk, 'small: map buttons do not overlap');
+  ok(layS.sel.every(Boolean), 'small: filter texts not cut ' + JSON.stringify(layS.sel));
+  if (OUT) await pS.screenshot({ path: OUT + '/08-klein-liste.png' });
+  await pS.click('.item >> nth=0'); await pS.waitForSelector('#sheet:not([hidden])');
+  const sheetS = await pS.evaluate(() => { const b = document.querySelector('.actions').getBoundingClientRect(); return b.right <= innerWidth && b.left >= 0; });
+  ok(sheetS, 'small: action buttons inside screen');
+  await pS.waitForTimeout(400);
+  if (OUT) await pS.screenshot({ path: OUT + '/08-klein-ort.png' });
+  ok(errsS.length === 0, 'small: no JS errors ' + errsS.join(' | '));
+  await ctxS.close();
 
   // ---------------- standalone height, dark mode, screenshot at real DPR
   const ctx2 = await newCtx(browser, { height: 870, dark: true, dpr: OUT ? 2.625 : 1 });
@@ -195,9 +220,9 @@ try {
   const swOk = await p3.evaluate(() => navigator.serviceWorker.ready.then((r) => !!r.active)).catch(() => false);
   ok(swOk, 'service worker active');
   const cacheKeys = await p3.evaluate(async () => { await new Promise((r) => setTimeout(r, 800)); return caches.keys(); });
-  ok(cacheKeys.includes('rf-app-0.2.0'), 'app cache with version: ' + cacheKeys.join(','));
-  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.2.0')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
-  ok(cached.some((u) => u.includes('app.js?v=0.2.0')), 'shell precached');
+  ok(cacheKeys.includes('rf-app-0.2.1'), 'app cache with version: ' + cacheKeys.join(','));
+  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.2.1')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
+  ok(cached.some((u) => u.includes('app.js?v=0.2.1')), 'shell precached');
   ok(errs3.length === 0, 'sw: no JS errors ' + errs3.join(' | '));
   await ctx3.close();
 
@@ -207,11 +232,13 @@ try {
   await p4.goto(BASE + 'diag.html');
   await p4.click('#btnGold');
   await p4.waitForSelector('#goldOut .pass, #goldOut .fail', { timeout: 10000 });
-  ok((await p4.textContent('#goldOut')).includes('BESTANDEN'), 'diag gold list passes on synthetic data');
+  await p4.waitForFunction(() => !document.getElementById('btnGold').disabled, null, { timeout: 15000 });
+  ok((await p4.textContent('#goldOut')).includes('Goldliste Manchester BESTANDEN'), 'diag gold list Manchester passes on synthetic data');
+  ok((await p4.textContent('#goldOut')).includes('Goldliste Morges'), 'diag runs Morges list');
   await p4.click('#btnApi');
   await p4.waitForSelector('#apiOut table', { timeout: 10000 });
   const sum = await p4.inputValue('#v2summary');
-  ok(sum.includes('Wikipedia en: OK') && sum.includes('Goldliste BESTANDEN'), 'diag summary:\n' + sum.slice(0, 900));
+  ok(sum.includes('Wikipedia en: OK') && sum.includes('Goldliste Manchester BESTANDEN') && sum.includes('Sprachen de,en'), 'diag summary:\n' + sum.slice(0, 900));
   ok(await p4.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'diag no horizontal scroll');
   if (OUT) await p4.screenshot({ path: OUT + '/07-diag.png', fullPage: true });
   ok(errs4.length === 0, 'diag: no JS errors ' + errs4.join(' | '));

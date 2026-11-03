@@ -1,14 +1,14 @@
-/* Reiseführer – app (v0.2.0). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.2.1). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.2.0';
+  var VERSION = '0.2.1';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
   var K = {
     settings: 'rf.settings', last: 'rf.last', merk: 'rf.merk', wd: 'rf.wdcache',
-    ort: 'rf.ortcache', view: 'rf.view', split: 'rf.split'
+    ort: 'rf.ortcache2', view: 'rf.view', split: 'rf.split'
   };
   var LS = {
     get: function (k, d) {
@@ -23,7 +23,9 @@
   // -------------------------------------------------------------- state
   var cfg = null;
   var settings = LS.get(K.settings, {}) || {};
-  var last = LS.get(K.last, null);       // {lat, lon, radius, ort, time, places, warnings}
+  var last = LS.get(K.last, null);       // {version, lat, lon, radius, ort, time, places, warnings}
+  // Results saved by an older version were scored differently: drop them (user searches again)
+  if (last && last.version !== VERSION) { last = null; LS.del(K.last); }
   var merk = LS.get(K.merk, []) || [];   // saved place objects
   var wdStore = LS.get(K.wd, {}) || {};
   var wdCache = { get: function (k) { return wdStore[k]; }, set: function (k, v) { wdStore[k] = v; } };
@@ -126,7 +128,7 @@
       return '<option value="' + r + '">' + (r < 1000 ? r + ' m' : (r / 1000) + ' km') + '</option>';
     }).join('');
     $('fRadius').value = String(settings.radius);
-    $('fKat').innerHTML = '<option value="">Alle Kategorien</option>' + cfg.kategorien.map(function (k) {
+    $('fKat').innerHTML = '<option value="">Alle Typen</option>' + cfg.kategorien.map(function (k) {
       return '<option value="' + esc(k.id) + '">' + esc(k.label) + '</option>';
     }).join('');
     $('fKat').value = settings.kat;
@@ -252,19 +254,20 @@
     return Promise.race([p, new Promise(function (res) { setTimeout(function () { res(fallback); }, ms); })]);
   }
 
-  function getOrt(lat, lon) {
+  // {name, cc, region} of the search point (Nominatim, cached per ~1 km)
+  function getPlaceInfo(lat, lon) {
     var key = lat.toFixed(2) + ',' + lon.toFixed(2);
     var oc = LS.get(K.ort, {}) || {};
-    if (oc[key]) return Promise.resolve(oc[key]);
-    var p = C.reverseGeocode(lat, lon, function (u, o) { return fetch(u, o); }).then(function (name) {
-      if (name) {
+    if (oc[key] && typeof oc[key] === 'object') return Promise.resolve(oc[key]);
+    var p = C.reverseGeocode(lat, lon, function (u, o) { return fetch(u, o); }).then(function (info) {
+      if (info && (info.name || info.cc)) {
         var keys = Object.keys(oc);
         if (keys.length > 200) delete oc[keys[0]];
-        oc[key] = name; LS.set(K.ort, oc);
+        oc[key] = info; LS.set(K.ort, oc);
       }
-      return name;
-    }, function () { return ''; });
-    return withTimeout(p, 6000, '');
+      return info || {};
+    }, function () { return {}; });
+    return withTimeout(p, 6000, {});
   }
 
   function saveWd() {
@@ -288,16 +291,20 @@
     var radius = settings.radius;
     drawSearchCircle(lat, lon, radius);
     if (fit) map.fitBounds(searchCircle.getBounds(), { padding: [12, 12] });
-    setStatus('Suche Orte …', 'busy');
-    var ortP = getOrt(lat, lon);
-    C.loadPlaces({
-      lat: lat, lon: lon, radius: radius, cfg: cfg, wdCache: wdCache,
-      fetch: function (u, o) { return fetch(u, o); },
-      onProgress: function (t) { setStatus(t, 'busy'); }
+    setStatus('Bestimme Ort und Sprache …', 'busy');
+    var ort = '';
+    getPlaceInfo(lat, lon).then(function (info) {
+      ort = info.name || '';
+      return C.loadPlaces({
+        lat: lat, lon: lon, radius: radius, cfg: cfg, wdCache: wdCache,
+        langs: C.languagesFor(info, cfg),
+        fetch: function (u, o) { return fetch(u, o); },
+        onProgress: function (t) { setStatus(t, 'busy'); }
+      });
     }).then(function (res) {
-      return ortP.then(function (ort) {
+      return Promise.resolve().then(function () {
         res.places.forEach(function (p) { p.ort = ort || ''; });
-        last = { lat: lat, lon: lon, radius: radius, ort: ort || '', time: Date.now(), places: res.places, warnings: res.warnings };
+        last = { version: VERSION, lat: lat, lon: lon, radius: radius, ort: ort || '', time: Date.now(), places: res.places, warnings: res.warnings };
         if (!LS.set(K.last, last)) LS.del(K.last);
         saveWd();
         selectedId = null;
@@ -454,10 +461,9 @@
     var t = p.teile || {};
     var rows = [
       ['Sprachversionen (' + p.sprachversionen + ')', t.sprachversionen],
-      ['Aufrufe 90 Tage (' + (p.aufrufe90 == null ? 'unbekannt' : p.aufrufe90.toLocaleString('de-DE')) + ')', t.aufrufe],
       ['Artikellänge (' + (p.laenge || 0).toLocaleString('de-DE') + ' Bytes)', t.laenge],
       ['Denkmal/UNESCO', t.denkmal],
-      ['Typ: ' + p.typ_label, t.typ]
+      ['Typ: ' + p.typ_label + (p.klassen && p.klassen.length ? ' (Wikidata: ' + p.klassen.join(', ') + ')' : ''), t.typ]
     ];
     var html =
       '<div class="pl-stars s' + p.sterne + '">' + (p.sterne ? C.starsText(p.sterne) : '–') +

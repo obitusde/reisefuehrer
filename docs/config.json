@@ -4,7 +4,6 @@
   "wikipedia": {
     "sprachen": ["de", "en"],
     "limit": 500,
-    "aufrufe_tage": 60,
     "radien_m": [300, 1000, 3000, 10000],
     "radius_standard_m": 1000
   },
@@ -12,15 +11,13 @@
   "score": {
     "gewichte": {
       "sprachversionen": 3.0,
-      "aufrufe90": 1.5,
       "artikellaenge": 0.5
     },
     "quellen_bonus": 0.5,
     "denkmal_bonus": { "unesco": 3, "hoechste": 2, "denkmal": 1 },
     "denkmal_hoechste_qids": ["Q15700818", "Q10387684", "Q8274529"],
     "unesco_qids": ["Q9259"],
-    "schwellen": { "3": 14, "2": 11, "1": 8 },
-    "schwellen_ohne_aufrufe": { "3": 8, "2": 6, "1": 4 }
+    "schwellen": { "3": 8, "2": 6, "1": 4 }
   },
 
   "sterne_text": {
@@ -52,34 +49,34 @@
       "qids": ["Q5"], "woerter": [] },
     { "id": "siedlung", "label": "Stadt/Ort", "gewicht": -1, "max_sterne": 0, "kategorie": "sonstiges",
       "qids": ["Q515", "Q1549591", "Q3957", "Q532", "Q486972"],
-      "woerter": ["city", "town", "village", "metropolitan borough", "borough", "county", "civil parish", "ward", "stadt", "großstadt", "dorf", "gemeinde", "landkreis", "bezirk"] },
+      "woerter": ["city", "town", "village", "metropolitan borough", "borough", "county", "civil parish", "ward", "commune", "municipality", "comune", "stadt", "großstadt", "dorf", "gemeinde", "landkreis", "bezirk"] },
     { "id": "welterbe", "label": "UNESCO-Welterbe", "gewicht": 3, "kategorie": "denkmal",
       "qids": ["Q9259"], "woerter": ["world heritage site", "welterbe", "weltkulturerbe", "welterbestätte"] },
     { "id": "kathedrale", "label": "Kathedrale", "gewicht": 3, "kategorie": "gebaeude",
-      "qids": ["Q2977", "Q163687"], "woerter": ["cathedral", "cathedral church", "kathedrale", "dom", "münster", "minster", "basilica", "basilika"] },
+      "qids": ["Q2977", "Q163687"], "woerter": ["cathedral", "cathedral church", "kathedrale", "dom", "münster", "minster", "basilica", "basilika", "cathédrale", "basilique", "catedral", "cattedrale", "duomo"] },
     { "id": "kloster", "label": "Kloster", "gewicht": 2.5, "kategorie": "gebaeude",
       "qids": ["Q44613", "Q160742"], "woerter": ["abbey", "monastery", "priory", "convent", "kloster", "abtei", "*kloster"] },
     { "id": "schloss", "label": "Schloss", "gewicht": 3, "kategorie": "gebaeude",
       "qids": ["Q751876"], "woerter": ["château", "chateau", "schloss", "*schloss", "stately home", "country house"] },
     { "id": "burg", "label": "Burg", "gewicht": 3, "kategorie": "gebaeude",
-      "qids": ["Q23413", "Q57831", "Q57821"], "woerter": ["castle", "fortress", "fort", "burg", "burgruine", "festung"] },
+      "qids": ["Q23413", "Q57831", "Q57821"], "woerter": ["castle", "fortress", "fort", "burg", "burgruine", "festung", "castello", "castillo", "forteresse"] },
     { "id": "palast", "label": "Palast", "gewicht": 3, "kategorie": "gebaeude",
       "qids": ["Q16560"], "woerter": ["palace", "palast", "palais"] },
     { "id": "rathaus", "label": "Rathaus", "gewicht": 2.5, "kategorie": "gebaeude",
-      "qids": ["Q25550691", "Q543654"], "woerter": ["town hall", "city hall", "guildhall", "hôtel de ville", "hotel de ville", "rathaus"] },
-    { "id": "museum", "label": "Museum", "gewicht": 2.5, "kategorie": "museum",
-      "qids": ["Q33506", "Q207694", "Q1007870"], "woerter": ["museum", "*museum", "art gallery", "gallery", "galerie", "kunsthalle"] },
+      "qids": ["Q25550691", "Q543654"], "woerter": ["town hall", "city hall", "guildhall", "hôtel de ville", "hotel de ville", "mairie", "rathaus", "municipio", "ayuntamiento"] },
+    { "id": "museum", "label": "Museum", "gewicht": 3, "kategorie": "museum",
+      "qids": ["Q33506", "Q207694", "Q1007870"], "woerter": ["museum", "*museum", "art gallery", "gallery", "galerie", "kunsthalle", "musée", "museo", "museu", "muzeum"] },
     { "id": "bibliothek", "label": "Bibliothek", "gewicht": 2.5, "kategorie": "gebaeude",
-      "qids": ["Q7075"], "woerter": ["library", "bibliothek", "*bibliothek"] },
+      "qids": ["Q7075"], "woerter": ["library", "bibliothek", "*bibliothek", "bibliothèque", "biblioteca"] },
     { "id": "kirche", "label": "Kirche", "gewicht": 2, "kategorie": "gebaeude",
       "qids": ["Q16970", "Q108325", "Q32815", "Q34627", "Q44539"],
-      "woerter": ["church", "chapel", "mosque", "synagogue", "temple", "kirche", "*kirche", "kapelle", "moschee", "synagoge", "tempel"] },
+      "woerter": ["church", "chapel", "mosque", "synagogue", "temple", "kirche", "*kirche", "kapelle", "moschee", "synagoge", "tempel", "église", "chapelle", "iglesia", "chiesa", "temple protestant"] },
     { "id": "theater", "label": "Theater", "gewicht": 1, "kategorie": "kunst",
       "qids": ["Q24354", "Q153562", "Q1060829"], "woerter": ["theatre", "theater", "opera house", "concert hall", "opernhaus", "oper", "konzerthaus", "konzertsaal"] },
     { "id": "haltestelle", "label": "Haltestelle", "gewicht": -1, "kategorie": "sonstiges",
       "qids": ["Q2175765", "Q953806", "Q928830"], "woerter": ["tram stop", "bus stop", "metro station", "haltestelle"] },
-    { "id": "bahnhof", "label": "Bahnhof", "gewicht": 1, "kategorie": "industrie",
-      "qids": ["Q55488"], "woerter": ["railway station", "train station", "bahnhof", "*bahnhof"] },
+    { "id": "bahnhof", "label": "Bahnhof", "gewicht": -1.5, "kategorie": "industrie",
+      "qids": ["Q55488"], "woerter": ["railway station", "train station", "bahnhof", "*bahnhof", "gare"] },
     { "id": "bruecke", "label": "Brücke", "gewicht": 1, "kategorie": "bruecke",
       "qids": ["Q12280"], "woerter": ["bridge", "viaduct", "aqueduct", "brücke", "*brücke", "viadukt", "aquädukt"] },
     { "id": "denkmal", "label": "Denkmal", "gewicht": 1, "kategorie": "denkmal",
@@ -92,7 +89,7 @@
       "qids": ["Q12518"], "woerter": ["tower", "clock tower", "turm", "*turm"] },
     { "id": "archaeologie", "label": "Archäologie/Ruine", "gewicht": 1, "kategorie": "denkmal",
       "qids": ["Q839954"], "woerter": ["archaeological site", "ruin", "ruins", "roman fort", "ruine", "ausgrabung"] },
-    { "id": "ereignis", "label": "Ereignis", "gewicht": -1, "kategorie": "sonstiges",
+    { "id": "ereignis", "label": "Ereignis", "gewicht": -1, "max_sterne": 0, "kategorie": "sonstiges",
       "qids": ["Q1190554", "Q1656682"], "woerter": ["massacre", "battle", "bombing", "attack", "riot", "disaster", "explosion", "event", "schlacht", "anschlag", "ereignis"] },
     { "id": "parkplatz", "label": "Parkplatz", "gewicht": -3, "kategorie": "sonstiges",
       "qids": ["Q6501349"], "woerter": ["car park", "parking", "parkhaus", "parkplatz"] },
@@ -125,27 +122,49 @@
     { "id": "viertel", "label": "Viertel", "gewicht": 0, "kategorie": "sonstiges",
       "qids": ["Q123705"], "woerter": ["neighbourhood", "neighborhood", "area", "district", "quarter", "suburb", "stadtteil", "ortsteil", "viertel"] },
     { "id": "organisation", "label": "Organisation", "gewicht": -3, "kategorie": "sonstiges",
-      "qids": ["Q43229", "Q476028", "Q215380"], "woerter": ["football club", "band", "organisation", "organization", "association", "verein"] },
+      "qids": ["Q43229", "Q476028", "Q215380"], "woerter": ["football club", "band", "organisation", "organization", "association", "verein", "diocese", "archdiocese", "bistum", "erzbistum", "diözese", "parish"] },
     { "id": "buero", "label": "Bürogebäude", "gewicht": -2, "kategorie": "gebaeude",
       "qids": ["Q1021645"], "woerter": ["office building", "office block", "headquarters", "bürogebäude", "bürohaus"] },
-    { "id": "gebaeude", "label": "Gebäude", "gewicht": 0, "kategorie": "gebaeude",
+    { "id": "gebaeude", "label": "Gebäude", "gewicht": 0, "generisch": true, "kategorie": "gebaeude",
       "qids": ["Q41176", "Q811979", "Q11303"], "woerter": ["building", "listed building", "structure", "skyscraper", "gebäude", "bauwerk", "hochhaus"] },
     { "id": "wohnhaus", "label": "Wohnhaus", "gewicht": -3, "kategorie": "gebaeude",
       "qids": ["Q3947"], "woerter": ["house", "apartment building", "apartments", "residential building", "wohnhaus", "wohngebäude"] },
     { "id": "firma", "label": "Firma", "gewicht": -3, "kategorie": "sonstiges",
-      "qids": ["Q4830453", "Q783794", "Q6881511"], "woerter": ["company", "business", "retailer", "brand", "unternehmen", "firma"] }
+      "qids": ["Q4830453", "Q783794", "Q6881511"], "woerter": ["company", "business", "enterprise", "retailer", "brand", "unternehmen", "firma"] }
   ],
 
   "karten_app_standard": "google",
   "claude_uebergabe": "claude-new",
 
-  "goldliste": {
-    "name": "Manchester",
-    "lat": 53.4792,
-    "lon": -2.2442,
-    "radius_m": 1000,
-    "drei_sterne": ["Manchester Town Hall", "Manchester Cathedral", "John Rylands", "Science and Industry Museum"],
-    "ohne_stern_namen": ["River Tib"],
-    "ohne_stern_typen": ["bach"]
-  }
+  "landessprachen": {
+    "_hinweis": "Zusätzliche Wikipedia-Sprache je Land (Ländercode) oder Region (ISO 3166-2, hat Vorrang). Daten von Nominatim.",
+    "fr": "fr", "be": ["fr", "nl"], "lu": "fr", "mc": "fr", "it": "it", "sm": "it", "es": "es", "pt": "pt", "nl": "nl",
+    "pl": "pl", "cz": "cs", "sk": "sk", "hu": "hu", "si": "sl", "hr": "hr", "dk": "da", "se": "sv", "no": "no",
+    "fi": "fi", "is": "is", "gr": "el", "tr": "tr", "ro": "ro", "bg": "bg", "ie": "en", "gb": "en", "us": "en",
+    "ch": "de", "CH-VD": "fr", "CH-GE": "fr", "CH-NE": "fr", "CH-JU": "fr", "CH-FR": "fr", "CH-VS": "fr", "CH-TI": "it",
+    "IT-32": "de"
+  },
+
+  "goldlisten": [
+    {
+      "name": "Manchester",
+      "lat": 53.4792,
+      "lon": -2.2442,
+      "radius_m": 1000,
+      "drei_sterne": ["Manchester Town Hall", "Manchester Cathedral", "John Rylands", "Science and Industry Museum"],
+      "mindestens_ein_stern": [],
+      "ohne_stern_namen": ["River Tib"],
+      "ohne_stern_typen": ["bach", "ereignis"]
+    },
+    {
+      "name": "Morges",
+      "lat": 46.511,
+      "lon": 6.498,
+      "radius_m": 1000,
+      "drei_sterne": [],
+      "mindestens_ein_stern": ["Forel", "Dessin de presse"],
+      "ohne_stern_namen": [],
+      "ohne_stern_typen": ["bach", "ereignis"]
+    }
+  ]
 }

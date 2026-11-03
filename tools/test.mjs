@@ -24,8 +24,8 @@ export function mockFetch(fixture) {
     let body;
     if (u.hostname.endsWith('.wikipedia.org')) {
       const lang = u.hostname.split('.')[0];
-      const arr = fixture.wikipedia[lang];
-      body = u.searchParams.get('pvipcontinue') ? arr[1] : arr[0];
+      const arr = fixture.wikipedia[lang] || [{ query: { pages: [] } }];
+      body = u.searchParams.get('incontinue') ? arr[1] : arr[0];
     } else if (u.hostname === 'www.wikidata.org') {
       const ids = (u.searchParams.get('ids') || '').split('|');
       const entities = {};
@@ -41,7 +41,8 @@ export function mockFetch(fixture) {
 }
 
 // ---- classification
-const cls = (p31, descs, titles) => core.classify(p31, descs, titles, cfg);
+const cls = (p31, descs, titles) => core.classify(p31, [], descs, titles, cfg);
+const clsL = (labels, descs, titles) => core.classify([], labels, descs, titles, cfg);
 eq(cls(['Q2977'], [], []), 'kathedrale', 'P31 cathedral');
 eq(cls(['Q41176', 'Q16970'], [], []), 'kirche', 'P31 order: church beats building');
 eq(cls([], ['Grade I listed church in Manchester, England'], []), 'kirche', 'desc head church');
@@ -60,6 +61,24 @@ eq(cls([], ['Grade II listed house in Bath'], []), 'wohnhaus', 'house');
 eq(cls([], ['opera house in Paris'], []), 'theater', 'opera house is not a house');
 eq(cls([], ['police station in Manchester'], []), 'sonstiges', 'police station is not a railway station');
 eq(cls([], [], []), 'sonstiges', 'nothing');
+eq(clsL(['research library'], [], []), 'bibliothek', 'class label research library');
+eq(clsL(['Anglican cathedral', 'church building'], [], []), 'kathedrale', 'class label cathedral beats church');
+eq(clsL(['library building'], ['late-Victorian neo-Gothic building in Manchester'], ['John Rylands Research Institute and Library']), 'bibliothek', 'generic building defers to specific title');
+eq(clsL(['skyscraper'], ['skyscraper in Manchester'], ['Beetham Tower, Manchester']), 'turm', 'generic skyscraper -> title tower');
+eq(clsL(['office building'], [], []), 'buero', 'office building specific');
+eq(clsL(['terrorist attack'], [], []), 'ereignis', 'event');
+eq(clsL(['diocese of the Church of England'], [], ['Anglican Diocese of Manchester']), 'organisation', 'diocese is not a church');
+eq(clsL(['commune of France'], [], []), 'siedlung', 'commune');
+eq(cls([], [], ['Musée Alexis Forel']), 'museum', 'French title musée');
+eq(cls([], [], ['Château de Morges']), 'schloss', 'French château de');
+
+// ---- languages
+eq(core.languagesFor({ cc: 'ch', region: 'CH-VD' }, cfg).join(), 'de,en,fr', 'Vaud -> fr');
+eq(core.languagesFor({ cc: 'ch', region: 'CH-ZH' }, cfg).join(), 'de,en', 'Zürich -> de only');
+eq(core.languagesFor({ cc: 'ch', region: 'CH-TI' }, cfg).join(), 'de,en,it', 'Ticino -> it');
+eq(core.languagesFor({ cc: 'gb', region: 'GB-ENG' }, cfg).join(), 'de,en', 'England');
+eq(core.languagesFor({ cc: 'be' }, cfg).join(), 'de,en,fr,nl', 'Belgium two languages');
+eq(core.languagesFor({}, cfg).join(), 'de,en', 'unknown place');
 
 // ---- sitelinks
 eq(core.sitelinkCount({ enwiki: 1, dewiki: 1, commonswiki: 1, enwikivoyage: 1, specieswiki: 1, frwiki: 1 }), 3, 'sitelink count');
@@ -80,15 +99,22 @@ eq(core.formatDistance(1234), '1,2 km', 'distance format');
 const f = mockFetch(fx);
 const cache = new Map();
 const wdCache = { get: k => cache.get(k), set: (k, v) => cache.set(k, v) };
-const res = await core.loadPlaces({ lat: fx.center.lat, lon: fx.center.lon, radius: 1000, cfg, fetch: f, wdCache });
+const res = await core.loadPlaces({ lat: fx.center.lat, lon: fx.center.lon, radius: 1000, cfg, fetch: f, wdCache, langs: ['de', 'en', 'fr'] });
 const by = n => res.places.find(p => (p.artikel.en || p.artikel.de || '').includes(n) || p.name.includes(n));
 eq(res.warnings.length, 0, 'no warnings: ' + res.warnings.join('; '));
-eq(res.places.length, 20, 'merged count (19 wd items + 1 de-only)');
+eq(res.places.length, 23, 'merged count (21 wd items + 1 de-only + 1 fr-only)');
 eq(f.calls.filter(u => u.includes('en.wikipedia')).length, 2, 'en continuation followed');
-ok(by('Town Hall').aufrufe90 > 20000, 'pageviews merged from continuation and both languages');
+ok(by('Town Hall').laenge === 52000, 'length merged from continuation, longest article');
+ok(!f.calls.some(u => u.includes('pageviews')), 'no pageviews requested');
+eq(by('John Rylands').typ, 'bibliothek', 'John Rylands typ via class label');
+eq(by('Cathedral').typ, 'kathedrale', 'Cathedral typ via class label');
+eq(by('Victoria station').sterne <= 1, true, 'station without great building at most 1 star (' + by('Victoria station').score + ')');
+eq(by('Arena bombing').sterne, 0, 'event no star');
+eq(by('Musée Exemple').sterne, 1, 'fr-only museum gets 1 star');
+eq(by('Musée Exemple').typ, 'museum', 'fr-only museum typ');
 eq(by('Town Hall').name, 'Rathaus Manchester', 'display name prefers de');
 eq(by('Town Hall').wikipedia, 'en:Manchester Town Hall', 'wikipedia = longer article');
-for (const n of cfg.goldliste.drei_sterne) eq(by(n) && by(n).sterne, 3, 'gold 3 stars: ' + n);
+for (const n of cfg.goldlisten[0].drei_sterne) eq(by(n) && by(n).sterne, 3, 'gold 3 stars: ' + n);
 eq(by('River Tib').sterne, 0, 'River Tib no star');
 eq(by('River Tib').typ, 'bach', 'River Tib typ');
 eq(by('Manchester') && res.places.find(p => p.wikidata === 'Q900013').sterne, 0, 'city article capped at 0');
@@ -102,18 +128,26 @@ eq(res.places.find(p => p.id.startsWith('wp:de:')).name, 'Gedenktafel am Rathaus
 // cache: second run makes no Wikidata request
 const f2 = mockFetch(fx);
 await core.loadPlaces({ lat: fx.center.lat, lon: fx.center.lon, radius: 1000, cfg, fetch: f2, wdCache });
-eq(f2.calls.filter(u => u.includes('wikidata')).length, 0, 'wikidata cache used');
+eq(f2.calls.filter(u => u.includes('wikidata')).length, 0, 'wikidata cache used (items and classes)');
 
-// no pageviews -> fallback thresholds + warning
-const fxNoViews = JSON.parse(JSON.stringify(fx));
-fxNoViews.wikipedia.en = [{ query: { pages: fx.wikipedia.en[0].query.pages } }];
-fxNoViews.wikipedia.de[0].query.pages.forEach(p => delete p.pageviews);
-const r3 = await core.loadPlaces({ lat: 53.4792, lon: -2.2442, radius: 1000, cfg, fetch: mockFetch(fxNoViews), wdCache });
-ok(r3.warnings.some(w => w.includes('Seitenaufrufe')), 'warning without pageviews');
-ok(r3.places.every(p => p.aufrufe90 === null), 'aufrufe null');
+// "Search is currently too busy" -> retried, then fine
+let busyLeft = 2;
+const fbusy = async (url) => {
+  if (url.includes('de.wikipedia') && busyLeft-- > 0) return { ok: true, status: 200, json: async () => ({ error: { code: 'search-error', info: 'Search is currently too busy. Please try again later.' } }) };
+  return mockFetch(fx)(url);
+};
+const r3 = await core.loadPlaces({ lat: 53.4792, lon: -2.2442, radius: 1000, cfg, fetch: fbusy, wdCache, retryDelays: [5, 5] });
+ok(r3.warnings.length === 0 && r3.places.some(p => p.artikel.de), 'busy retried: ' + r3.warnings.join('; '));
+let busyAlways = async (url) => url.includes('de.wikipedia') ? { ok: true, status: 200, json: async () => ({ error: { info: 'Search is currently too busy.' } }) } : mockFetch(fx)(url);
+const r3b = await core.loadPlaces({ lat: 53.4792, lon: -2.2442, radius: 1000, cfg, fetch: busyAlways, wdCache, retryDelays: [5, 5] });
+ok(r3b.places.length > 0 && r3b.warnings.some(w => /Wikipedia de: Search is currently too busy/.test(w)), 'busy gives up after retries with warning');
+
+// reverse geocode returns name, country, region
+const rg = await core.reverseGeocode(53.4792, -2.2442, mockFetch(fx));
+eq(rg.name + '|' + rg.cc + '|' + rg.region, 'Manchester|gb|GB-ENG', 'reverse geocode info');
 
 // one language failing -> still results, warning
-const fbad = async (url) => url.includes('de.wikipedia') ? { ok: false, status: 503, json: async () => ({}) } : mockFetch(fx)(url);
+const fbad = async (url) => url.includes('de.wikipedia') ? { ok: false, status: 404, json: async () => ({}) } : mockFetch(fx)(url);
 const r4 = await core.loadPlaces({ lat: 53.4792, lon: -2.2442, radius: 1000, cfg, fetch: fbad, wdCache });
 ok(r4.places.length > 0 && r4.warnings.some(w => w.includes('Wikipedia de')), 'partial failure tolerated');
 

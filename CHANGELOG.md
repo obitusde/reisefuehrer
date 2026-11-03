@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.2.1 – 03.11.2026 – Sterne nach erstem Handy-Test korrigiert
+
+Anlass: Goldliste am Handy (v0.2.0) nicht bestanden (Science and Industry Museum ★★), Reihenfolge wirr, Wikipedia de „too busy“, Museen in Morges fehlten.
+
+- **Seitenaufrufe entfernt** (Entscheidung Nutzer): Wikipedia lieferte sie nur für wenige Artikel pro Antwort (7 von 110), dadurch wurden Orte mit unterschiedlichen Schwellen bewertet. Score jetzt nur aus Sprachversionen, Artikellänge, Denkmal/UNESCO und Typ. Schwellen wieder wie in PROJEKT.md: ★★★ ≥ 8, ★★ ≥ 6, ★ ≥ 4. Suche schneller (keine Fortsetzungsabfragen mehr).
+- **Typ-Erkennung über Wikidata-Klassennamen:** Die App lädt die Namen der Wikidata-Klassen (z. B. „research library“, „railway station“) und sucht darin die Stichwörter aus `config.json` (1–2 Abfragen mehr, zwischengespeichert). Allgemeine Typen wie „Gebäude“ gelten nur, wenn kein genauerer Hinweis da ist (Titel „… Library“ schlägt Beschreibung „building“).
+- **Landessprache:** Zusätzlich zu de/en wird die Wikipedia der Landessprache abgefragt (Tabelle `landessprachen` in `config.json`, Land/Region von Nominatim; Schweiz nach Kanton, z. B. Waadt → fr). Damit erscheinen Orte, die nur einen französischen Artikel haben.
+- **Wiederholen bei Überlastung:** „Search is currently too busy“, HTTP 429 und 5xx werden zweimal mit Pause wiederholt.
+- **Ereignisse** (Anschläge, Massaker u. ä.) bekommen keine Sterne (Entscheidung Nutzer: nur wenn vor Ort etwas zu sehen ist; das hat dann meist einen eigenen Artikel, z. B. ein Denkmal). Unter „Alle Orte“ weiter sichtbar.
+- **Bahnhöfe** Gewicht −1,5 (vorher +1, Entscheidung Nutzer): nur mit Denkmalstatus und vielen Sprachversionen kommen sie nach oben.
+- Museum-Gewicht +3 (vorher +2,5). Neue Stichwörter (u. a. französisch/italienisch/spanisch, Diözese → Organisation).
+- „Warum ★★★?“ zeigt jetzt auch die Wikidata-Klasse.
+- **Diagnose:** zwei Goldlisten (Manchester; Morges mit Musée Alexis Forel und Maison du Dessin de Presse ≥ ★), Prüfung der französischen Wikipedia und der Sprachwahl, Orte ohne erkannten Typ werden zur Nachkalibrierung aufgelistet.
+- Oberflächentest zusätzlich mit 329 × 626 px (Anzeigegröße auf dem Handy des Nutzers).
+
+### Annahmen/Abweichungen
+
+- Abweichung von PROJEKT.md 6: Term `aufrufe90` entfällt (dort als „wenn verfügbar“ beschrieben).
+- Gespeicherte Ergebnisse aus v0.2.0 werden beim Start verworfen (anders berechnete Sterne); einfach neu suchen. Merkliste und Einstellungen bleiben.
+- Weiterhin nur mit synthetischen Testdaten geprüft; die echte Goldliste läuft am Handy.
+
 ## v0.2.0 – 03.11.2026 – Karte, Wikipedia-Orte, Sterne, Aktionen, Merkliste, PWA
 
 - **App** (`docs/index.html`, `app.js`, `style.css`): Leaflet-Karte mit OpenStreetMap-Kacheln, „Mein Standort“ und „Hier suchen“ (sucht um die Kartenmitte). Radius 300 m / 1 km / 3 km / 10 km.
