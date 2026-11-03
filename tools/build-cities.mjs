@@ -115,8 +115,49 @@ async function build(codes) {
   return anyFail;
 }
 
+// ---- v0.8 test: directory of ALL places with a Wikipedia article for a few tiles, with page views and Wikivoyage.
+// node tools/build-cities.mjs --verzeichnis "46,6,47,7;46,7,47,8" [--fokus "46.15,6.0,47.0,7.3"]
+async function verzeichnis(arg, fokusArg) {
+  const vc = JSON.parse(JSON.stringify(cfg));
+  Object.assign(vc.staedte, {
+    min_sprachversionen: 1, titel_sprachen: ['de', 'en', 'fr', 'it'], wikivoyage: true,
+    gewicht_sprachen: 2, gewicht_aufrufe: 1.5, bonus_wikivoyage_ort: 0, ausflug_ab: 4, min_score_datei: 0,
+    bonus: { unesco: 3, hauptstadt: 1, wikivoyage: 5, aufrufe_faktor: 3, sprachversionen_faktor: 0.05 }
+  });
+  const tiles = arg.split(';').filter(Boolean).map((t) => { const [a, b, c, d] = t.split(',').map(Number); return { south: a, west: b, north: c, east: d }; });
+  const fk = fokusArg ? fokusArg.split(',').map(Number) : null;
+  const fokus = fk ? { south: fk[0], west: fk[1], north: fk[2], east: fk[3] } : null;
+  const inF = (x) => !fokus || core.inBbox(x, fokus);
+  const t0 = Date.now();
+  const r = await core.loadCityTiles(tiles, vc, f, { onProgress: (d, t, n) => console.log('  Kachel ' + d + '/' + t + ', ' + n + ' Einträge, ' + fmtMs(Date.now() - t0)) });
+  const bytes = JSON.stringify(r.items).length;
+  console.log('Wikidata: ' + r.items.length + ' Einträge, ' + r.queries + ' Abfragen, ' + r.splits + ' geteilt, Fehler ' + JSON.stringify(r.failed) + ', ' + fmtMs(r.ms) + ', ' + Math.round(bytes / 1024) + ' KB (kompakt)');
+  const pv = await core.loadPageviews(r.items, vc, f, {});
+  console.log('Seitenaufrufe: ' + pv.requests + ' Abfragen, ' + pv.failed + ' fehlgeschlagen, ' + fmtMs(pv.ms));
+  const land = vc.staedte.laender.find((l) => l.code === 'CH');
+  const res = core.computeCities(r.items, vc, { ...land, bbox: core.bboxOf(land.bbox) });
+  // all sights with score (computeCities marks x.fate; recompute scores here for the list)
+  const sights = r.items.filter((x) => !core.isCityItem(x, vc)).map((x) => ({ x, s: core.sightScore(x, vc) })).filter((o) => o.s && inF(o.x));
+  sights.sort((a, b) => b.s.score - a.s.score);
+  const fmt = (o) => o.s.score + ' ' + o.x.name + ' [' + o.s.typ + (o.s.natur ? ', Natur' : '') + '] sl ' + o.x.sl + ', ' + o.x.pv + '/Tag' + (o.x.wv ? ', WV' : '') + (o.x.u ? ', UNESCO' : '');
+  console.log('\nSehenswürdigkeiten im Fokus: ' + sights.length);
+  const hist = {}; sights.forEach((o) => { const b = Math.floor(o.s.score); hist[b] = (hist[b] || 0) + 1; });
+  console.log('Verteilung Punkte: ' + Object.keys(hist).sort((a, b) => b - a).map((k) => k + ':' + hist[k]).join(' '));
+  console.log('\nTOP 60:'); sights.slice(0, 60).forEach((o, i) => console.log('  ' + (i + 1) + '. ' + fmt(o)));
+  console.log('\nStichprobe (jede 25.):'); sights.filter((_, i) => i >= 60 && i % 25 === 0).forEach((o) => console.log('  ' + fmt(o)));
+  console.log('\nMUSEEN:'); sights.filter((o) => o.s.typ === 'museum').forEach((o) => console.log('  ' + fmt(o)));
+  console.log('\nNicht gezählt (häufigste Klassen):');
+  const nc = {}; r.items.filter((x) => inF(x) && !core.isCityItem(x, vc) && !core.sightScore(x, vc)).forEach((x) => { const k = x.cls[0] || '(ohne Klasse)'; nc[k] = (nc[k] || 0) + 1; });
+  console.log('  ' + Object.entries(nc).sort((a, b) => b[1] - a[1]).slice(0, 40).map(([k, v]) => k + ' ' + v).join(', '));
+  console.log('\nSTÄDTE im Fokus:'); res.staedte.filter(inF).slice(0, 60).forEach((c, i) => console.log('  ' + (i + 1) + '. ' + c.score + ' ' + c.name + ' (' + c.pop + ' Einw., sl ' + c.sl + ', ' + c.pv + '/Tag' + (c.wv ? ', WV' : '') + ', ' + c.n + ' Orte) – ' + c.top.map((t) => t[0] + ' ' + t[3]).join(', ')));
+  console.log('\nAUSFLUGSZIELE (außerhalb von Städten) im Fokus:'); res.orte.filter(inF).slice(0, 40).forEach((o) => console.log('  ' + o.score + ' ' + o.name + ' [' + o.typ + ']'));
+  console.log('\nGesamt ' + fmtMs(Date.now() - t0));
+}
+
 const args = process.argv.slice(2);
-if (args[0] === '--probe') {
+if (args[0] === '--verzeichnis') {
+  await verzeichnis(args[1], args[3]);
+} else if (args[0] === '--probe') {
   await probe(args[1] || '50.9,6.9,51.0,7.0');
 } else {
   const known = cfg.staedte.laender.map((l) => l.code);

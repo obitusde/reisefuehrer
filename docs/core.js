@@ -1460,12 +1460,21 @@
   function citySparql(t, cfg) {
     var c = cfg.staedte, min = c.min_sprachversionen || 12;
     var en = function (v) { return 'STRAFTER(STR(' + v + '),"entity/")'; };
+    var tl = c.titel_sprachen || [], sel = '', opt = '';
+    tl.forEach(function (l) {
+      sel += ' (SAMPLE(?t_' + l + ') AS ?t_' + l + ')';
+      opt += ' OPTIONAL { ?a_' + l + ' schema:about ?item; schema:isPartOf <https://' + l + '.wikipedia.org/>; schema:name ?t_' + l + '. }';
+    });
+    if (c.wikivoyage) {
+      sel += ' (SAMPLE(?wv1) AS ?wv)';
+      opt += ' OPTIONAL { ?wv1 schema:about ?item; schema:isPartOf ?wvs. FILTER(?wvs IN (<https://de.wikivoyage.org/>, <https://en.wikivoyage.org/>, <https://fr.wikivoyage.org/>, <https://it.wikivoyage.org/>)) }';
+    }
     return 'SELECT ?item (SAMPLE(?c) AS ?coord) (SAMPLE(?s) AS ?sl) (MAX(?p) AS ?pop) (MAX(?ar) AS ?area)' +
       ' (GROUP_CONCAT(DISTINCT ' + en('?t') + ';separator="|") AS ?p31)' +
       ' (GROUP_CONCAT(DISTINCT ?tl;separator="|") AS ?cls)' +
       ' (GROUP_CONCAT(DISTINCT ' + en('?h') + ';separator="|") AS ?her)' +
       ' (GROUP_CONCAT(DISTINCT ' + en('?land') + ';separator="|") AS ?land)' +
-      ' (SAMPLE(?u) AS ?unesco) (SAMPLE(?cp) AS ?cap) (SAMPLE(?ld) AS ?de) (SAMPLE(?le) AS ?en) (SAMPLE(?lx) AS ?lx) (SAMPLE(?ds) AS ?desc)' +
+      ' (SAMPLE(?u) AS ?unesco) (SAMPLE(?cp) AS ?cap) (SAMPLE(?ld) AS ?de) (SAMPLE(?le) AS ?en) (SAMPLE(?lx) AS ?lx) (SAMPLE(?ds) AS ?desc)' + sel +
       ' WHERE {' +
       ' SERVICE wikibase:box { ?item wdt:P625 ?c. bd:serviceParam wikibase:cornerSouthWest "Point(' + t.west + ' ' + t.south + ')"^^geo:wktLiteral;' +
       ' wikibase:cornerNorthEast "Point(' + t.east + ' ' + t.north + ')"^^geo:wktLiteral. }' +
@@ -1480,7 +1489,7 @@
       ' OPTIONAL { ?item rdfs:label ?ld. FILTER(LANG(?ld) = "de") }' +
       ' OPTIONAL { ?item rdfs:label ?le. FILTER(LANG(?le) = "en") }' +
       ' OPTIONAL { ?item rdfs:label ?lx. FILTER(LANG(?lx) IN ("mul", "fr", "it", "nl")) }' +
-      ' OPTIONAL { ?item schema:description ?ds. FILTER(LANG(?ds) = "en") }' +
+      ' OPTIONAL { ?item schema:description ?ds. FILTER(LANG(?ds) = "en") }' + opt +
       ' } GROUP BY ?item';
   }
 
@@ -1496,7 +1505,9 @@
         name: v(b, 'de') || v(b, 'en') || v(b, 'lx'), name_en: v(b, 'en'),
         sl: +v(b, 'sl') || 0, pop: Math.round(+v(b, 'pop') || 0), km2: Math.round((+v(b, 'area') || 0) / 1e4) / 100,
         p31: list(v(b, 'p31')), cls: list(v(b, 'cls')), h: list(v(b, 'her')), land: list(v(b, 'land')),
-        u: !!v(b, 'unesco'), cap: !!v(b, 'cap'), desc: v(b, 'desc')
+        u: !!v(b, 'unesco'), cap: !!v(b, 'cap'), desc: v(b, 'desc'),
+        titel: Object.keys(b).filter(function (k) { return /^t_[a-z]+$/.test(k); }).reduce(function (o, k) { o[k.slice(2)] = b[k].value; return o; }, {}),
+        wv: !!v(b, 'wv')
       };
     }).filter(function (x) { return x && x.name; });
   }
@@ -1601,6 +1612,11 @@
       if (typ === 'sonstiges' && !anyHeadEnds(x.cls, c.sehenswert_woerter || [])) return null;
     }
     var s = computeScore({ sprachversionen: x.sl, laenge: 0, denkmal: x.h, unesco: x.u, typ: typ, quellen: [] }, cfg).score;
+    // directory (v0.8 test): language versions weighted differently, plus Wikipedia page views per day
+    if (c.gewicht_sprachen != null) s += (c.gewicht_sprachen - (cfg.score.gewichte.sprachversionen || 0)) * log10p(x.sl);
+    if (c.gewicht_aufrufe) s += c.gewicht_aufrufe * log10p(x.pv);
+    if (x.wv && c.bonus_wikivoyage_ort) s += c.bonus_wikivoyage_ort;
+    s = round1(s);
     // nature (mountains, lakes, glaciers …) never counts for a city: big mountain municipalities would collect dozens of peaks
     var natur = typ === 'natur' || anyHeadEnds(x.cls, c.natur_woerter || []);
     return s > 0 ? { score: s, typ: typ, natur: natur } : null;
@@ -1708,10 +1724,12 @@
       // buildings are not below an industrial city; only for cities that have at least two sights
       if (k.sights.length >= 2) sum += (bonus.sprachversionen_faktor || 0) * k.sl;
       if (k.cap) sum += bonus.hauptstadt || 0;
+      if (k.wv) sum += bonus.wikivoyage || 0;
+      if (k.pv && bonus.aufrufe_faktor) sum += bonus.aufrufe_faktor * log10p(k.pv);
       sum = round1(sum);
       if (sum < minScore) return;
       staedte.push({
-        name: k.name, q: k.q, lat: +k.lat.toFixed(4), lon: +k.lon.toFixed(4), score: sum, pop: k.pop,
+        name: k.name, q: k.q, lat: +k.lat.toFixed(4), lon: +k.lon.toFixed(4), score: sum, pop: k.pop, sl: k.sl, pv: k.pv, wv: k.wv || undefined,
         n: k.sights.length, unesco: unesco || undefined,
         top: k.sights.slice(0, 3).map(function (s) { return [s.x.name, +s.x.lat.toFixed(4), +s.x.lon.toFixed(4), s.score]; })
       });
@@ -1724,6 +1742,54 @@
       staedte: staedte, orte: orte,
       stats: { items: items.length, kandidaten: cands.length, staedte_gesamt: kept.length, orte_gesamt: sights.length, ausserhalb: outside.length }
     };
+  }
+
+  /**
+   * Average Wikipedia page views per day (last `tage` days, all languages in x.titel added up) → x.pv.
+   * MediaWiki returns up to 50 titles per request (prop=pageviews), so 1000 places are about 20–60 requests.
+   */
+  function loadPageviews(items, cfg, f, o) {
+    o = o || {};
+    var c = cfg.staedte, days = c.aufrufe_tage || 30, jobs = [], byTitle = {};
+    (c.titel_sprachen || []).forEach(function (l) {
+      var titles = [];
+      items.forEach(function (x) {
+        var t = x.titel && x.titel[l];
+        if (!t) return;
+        var key = l + ':' + t;
+        (byTitle[key] = byTitle[key] || []).push(x);
+        if (byTitle[key].length === 1) titles.push(t);
+      });
+      for (var i = 0; i < titles.length; i += 50) jobs.push({ l: l, titles: titles.slice(i, i + 50) });
+    });
+    items.forEach(function (x) { x.pv = 0; });
+    var done = 0, failed = 0, t0 = Date.now();
+    function one(job) {
+      var sum = {}, norm = {};
+      function req(cont) {
+        var url = 'https://' + job.l + '.wikipedia.org/w/api.php?' + qs(Object.assign({
+          action: 'query', format: 'json', formatversion: 2, prop: 'pageviews', pvipdays: days, origin: '*', titles: job.titles.join('|')
+        }, cont || {}));
+        return getJsonRetry(url, f, [2000, 5000]).then(function (d) {
+          var q = d.query || {};
+          (q.normalized || []).forEach(function (n) { norm[n.to] = n.from; });
+          (q.pages || []).forEach(function (pg) {
+            var n = 0;
+            Object.keys(pg.pageviews || {}).forEach(function (k) { n += pg.pageviews[k] || 0; });
+            sum[pg.title] = (sum[pg.title] || 0) + n;
+            if (norm[pg.title]) sum[norm[pg.title]] = (sum[norm[pg.title]] || 0) + n;
+          });
+          if (d.continue) return req(d.continue);
+        });
+      }
+      return req().then(function () {
+        Object.keys(sum).forEach(function (t) { (byTitle[job.l + ':' + t] || []).forEach(function (x) { x.pv += sum[t] / days; }); });
+      }, function () { failed++; }).then(function () { done++; if (o.onProgress) o.onProgress(done, jobs.length); });
+    }
+    return runLimited(jobs, c.aufrufe_parallel || 4, one).then(function () {
+      items.forEach(function (x) { x.pv = Math.round(x.pv * 10) / 10; });
+      return { requests: jobs.length, failed: failed, ms: Date.now() - t0 };
+    });
   }
 
   /** Whole country: tiles over its bounding box, load, compute. */
@@ -1773,6 +1839,6 @@
     tripadvisorUrl: tripadvisorUrl, merkZeile: merkZeile,
     iconFor: iconFor, cityTiles: cityTiles, splitTile: splitTile, citySparql: citySparql, parseCityRows: parseCityRows,
     loadCityTiles: loadCityTiles, isCityItem: isCityItem, cityRadius: cityRadius, sightScore: sightScore,
-    computeCities: computeCities, cityStars: cityStars, ortStars: ortStars, loadCountryCities: loadCountryCities, bboxOf: bboxOf, cityWikiUrl: cityWikiUrl
+    computeCities: computeCities, loadPageviews: loadPageviews, cityStars: cityStars, ortStars: ortStars, loadCountryCities: loadCountryCities, bboxOf: bboxOf, cityWikiUrl: cityWikiUrl
   };
 });
