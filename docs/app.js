@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '0.6.1';
+  var VERSION = '0.7.0';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
@@ -199,8 +199,10 @@
     }).addTo(map);
     areaLayer = L.layerGroup().addTo(map);
     markerLayer = L.layerGroup().addTo(map);
-    map.on('zoomend', renderMarkers);
+    cityLayer = L.layerGroup().addTo(map);
+    map.on('zoomend', function () { renderMarkers(); scheduleCities(); });
     map.on('moveend', function () {
+      scheduleCities();
       var c = map.getCenter();
       LS.set(K.view, { lat: c.lat, lon: c.lng, z: map.getZoom() });
     });
@@ -247,6 +249,7 @@
   }
 
   var DOT_R = { 3: 11, 2: 8, 1: 6, 0: 5 };
+  var DOT_R_IC = { 3: 13, 2: 10, 1: 9, 0: 8 };  // with symbol (v0.7.0)
   var LBL_PX = { 3: 12, 2: 11, 1: 11, 0: 10 };
   var measureCtx = null;
   function textWidth(t, px) {
@@ -257,9 +260,22 @@
     } catch (e) { return t.length * px * 0.55; }
   }
 
+  // White symbols inside the dot (v0.7.0), viewBox 0 0 24 24
+  var ICONS = {
+    museum: 'M12 2 23 8H1zM3 10h3.5v8H3zM10.25 10h3.5v8h-3.5zM17.5 10H21v8h-3.5zM1 19.5h22V22H1z',
+    kirche: 'M10.3 1h3.4v6h5.8v3.4h-5.8V23h-3.4V10.4H4.5V7h5.8z',
+    schloss: 'M2 23V7h4v3h3V7h6v3h3V7h4v16h-7.5v-6h-5v6z',
+    denkmal: 'M9.7 1h4.6L16 17H8zM5 18.5h14V23H5z',
+    aussicht: 'M12 4.5C5.5 4.5 1 12 1 12s4.5 7.5 11 7.5S23 12 23 12 18.5 4.5 12 4.5zm0 12a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z',
+    natur: 'M12 1 3.5 13.5h5L5 18.5h6V23h2v-4.5h6l-3.5-5h5z'
+  };
+  function iconSvg(k) { return ICONS[k] ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="' + ICONS[k] + '"/></svg>' : ''; }
+  function dotR(p) { return (C.iconFor(p.typ, cfg) ? DOT_R_IC : DOT_R)[p.sterne] || 5; }
+
   function markerIcon(p, sel, label, side) {
-    var html = '<span class="mk mk' + p.sterne + (sel ? ' sel' : '') + '"></span>';
-    if (label) html += '<span class="mk-lbl l' + p.sterne + (side === 'left' ? ' left' : '') + '">' + esc(label) + '</span>';
+    var ic = C.iconFor(p.typ, cfg);
+    var html = '<span class="mk mk' + p.sterne + (ic ? ' ic' : '') + (sel ? ' sel' : '') + '">' + iconSvg(ic) + '</span>';
+    if (label) html += '<span class="mk-lbl l' + p.sterne + (ic ? ' lic' : '') + (side === 'left' ? ' left' : '') + '">' + esc(label) + '</span>';
     return L.divIcon({ className: 'mk-wrap', html: html, iconSize: [36, 36], iconAnchor: [18, 18] });
   }
 
@@ -267,6 +283,7 @@
   function renderMarkers() {
     if (!map) return;
     markerLayer.clearLayers();
+    if (cityMode()) return; // zoomed out: city stars instead of single places (v0.7.0)
     var z = map.getZoom(), minZoomSmall = (cfg.marker && cfg.marker.stern1_ab_zoom) || 16;
     var maxChars = (cfg.marker && cfg.marker.beschriftung_max_zeichen) || 18;
     var shown = visiblePlaces().filter(function (p) {
@@ -281,7 +298,7 @@
     shown.forEach(function (p) {
       var sel = p.id === selectedId;
       var pt = map.latLngToContainerPoint([p.lat, p.lon]);
-      var r = DOT_R[p.sterne] || 5, px = LBL_PX[p.sterne] || 11;
+      var r = dotR(p), px = LBL_PX[p.sterne] || 11;
       var label = C.shortLabel(p.name, last && last.ort, maxChars);
       var w = textWidth(label, px) + 3;
       var right = { x1: pt.x + r + 2, y1: pt.y - px * 0.75, x2: pt.x + r + 2 + w, y2: pt.y + px * 0.75 };
@@ -299,6 +316,198 @@
       });
       markerLayer.addLayer(m);
     });
+  }
+
+  // ------------------------------------------------------ city stars (v0.7.0)
+  // Zoomed out: cities with stars and big sights outside cities instead of single places (PROJEKT.md 6c).
+  // Data per country: own computation (IndexedDB "staedte:<code>") or the file shipped with the app (docs/staedte/<code>.json).
+  var cityLayer = null, cityData = {}, cityJob = null, cityCur = null, cityTimer = null;
+  function SC() { return cfg.staedte || {}; }
+  function cityMode() {
+    var c = SC();
+    return !!(map && c.aktiv && settings.staedte !== false && map.getZoom() <= ((c.zoom && c.zoom.staedte_bis) || 11));
+  }
+  function landsIn(b) { return (SC().laender || []).filter(function (l) { return C.bboxOverlaps(C.bboxOf(l.bbox), b); }); }
+  function landByCode(code) { return (SC().laender || []).filter(function (l) { return l.code === code; })[0] || null; }
+  function fetchShipped(code) {
+    return fetch('staedte/' + code + '.json', { cache: 'no-cache' })
+      .then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
+  }
+  function loadCityLand(code) {
+    if (cityData[code] && cityData[code].then) return cityData[code];
+    if (cityData[code]) return Promise.resolve(cityData[code]);
+    var pr = withTimeout(IDB.get('staedte:' + code), 3000, null).then(function (own) {
+      return fetchShipped(code).then(function (shipped) {
+        var pick = own && (!shipped || (own.stand || 0) >= (shipped.stand || 0)) ? own : shipped;
+        if (pick) pick.quelle = pick === own ? 'handy' : 'datei';
+        cityData[code] = pick || { keine: true, staedte: [], orte: [] };
+        return cityData[code];
+      });
+    });
+    cityData[code] = pr;
+    return pr;
+  }
+  function scheduleCities() { clearTimeout(cityTimer); cityTimer = setTimeout(renderCities, 120); }
+
+  function renderCities() {
+    if (!cityLayer) return;
+    cityLayer.clearLayers();
+    if (!cityMode()) return;
+    var c = SC(), z = map.getZoom(), big = z <= ((c.zoom && c.zoom.nur_grosse_bis) || 8);
+    var b = viewBbox(), dy = (b.north - b.south) * 0.1, dx = (b.east - b.west) * 0.1;
+    var pad = { south: b.south - dy, north: b.north + dy, west: b.west - dx, east: b.east + dx };
+    var list = [], waiting = false, seen = {};
+    landsIn(pad).forEach(function (l) {
+      var d = cityData[l.code];
+      if (!d || d.then) { waiting = true; loadCityLand(l.code).then(scheduleCities); return; }
+      (d.staedte || []).forEach(function (x) {
+        var st = C.cityStars(x.score, cfg);
+        if (st >= (big ? 2 : 1) && C.inBbox(x, pad) && !seen[x.q]) { seen[x.q] = 1; list.push({ k: 'c', x: x, s: st }); }
+      });
+      if (!big) (d.orte || []).forEach(function (x) { if (C.inBbox(x, pad) && !seen[x.q]) { seen[x.q] = 1; list.push({ k: 'o', x: x, s: 3 }); } });
+    });
+    list.sort(function (a, b2) { return (b2.s - a.s) || ((a.k === 'c') ? -1 : 0) - ((b2.k === 'c') ? -1 : 0) || (b2.x.score - a.x.score); });
+    list = list.slice(0, c.max_marker || 160);
+    var boxes = [];
+    function free(bx) { return !boxes.some(function (o) { return bx.x1 < o.x2 && bx.x2 > o.x1 && bx.y1 < o.y2 && bx.y2 > o.y1; }); }
+    list.forEach(function (it) {
+      var x = it.x, pt = map.latLngToContainerPoint([x.lat, x.lon]);
+      var hw = it.k === 'c' ? (7 + 5 * it.s) : 13, hh = it.k === 'c' ? 9 : 13;
+      var dot = { x1: pt.x - hw, y1: pt.y - hh, x2: pt.x + hw, y2: pt.y + hh };
+      if (!free(dot) && it.s < 3) return;  // crowded: drop smaller ones entirely
+      var px = it.k === 'c' && it.s >= 2 ? 13 : 12, w = textWidth(x.name, px) + 4;
+      var right = { x1: pt.x + hw + 2, y1: pt.y - px * 0.75, x2: pt.x + hw + 2 + w, y2: pt.y + px * 0.75 };
+      var left = { x1: pt.x - hw - 2 - w, y1: right.y1, x2: pt.x - hw - 2, y2: right.y2 };
+      var side = free(right) ? 'right' : free(left) ? 'left' : '';
+      boxes.push(dot);
+      if (side) boxes.push(side === 'right' ? right : left);
+      var lbl = side ? '<span class="ct-lbl ' + (it.k === 'o' ? 'o' : 'c' + it.s) + '" style="' + (side === 'right' ? 'left:' : 'right:') + 'calc(50% + ' + (hw + 2) + 'px)">' + esc(x.name) + '</span>' : '';
+      var html = it.k === 'c'
+        ? '<span class="ct ct' + it.s + '">' + C.starsText(it.s) + '</span>' + lbl
+        : '<span class="mk mk3 ic">' + (iconSvg(C.iconFor(x.typ, cfg)) || iconSvg('denkmal')) + '</span>' + lbl;
+      var m = L.marker([x.lat, x.lon], {
+        icon: L.divIcon({ className: 'mk-wrap', html: html, iconSize: [36, 36], iconAnchor: [18, 18] }),
+        keyboard: false, title: x.name, zIndexOffset: it.s * 400 + (it.k === 'c' ? 100 : 0)
+      });
+      m.on('click', function (e) { if (e.originalEvent) L.DomEvent.stopPropagation(e); openCity(it); });
+      cityLayer.addLayer(m);
+    });
+    if (!list.length && !waiting && !cityHintShown) {
+      var none = landsIn(b).length === 0;
+      cityHintShown = true;
+      toast(none ? 'Stadt-Sterne gibt es für dieses Land noch nicht.' : 'Noch keine Stadt-Sterne geladen – ⚙ → Stadt-Sterne.', 3500);
+    }
+  }
+  var cityHintShown = false;
+
+  function fmtPop(n) { return n ? (n >= 1e6 ? (Math.round(n / 1e5) / 10).toString().replace('.', ',') + ' Mio.' : n.toLocaleString('de-DE')) + ' Einwohner' : ''; }
+  function openCity(it) {
+    var x = it.x;
+    cityCur = it;
+    var stand = '';
+    Object.keys(cityData).some(function (k) { var d = cityData[k]; if (d && !d.then && ((d.staedte || []).indexOf(x) >= 0 || (d.orte || []).indexOf(x) >= 0)) { stand = dateText(d.stand) + (d.quelle === 'handy' ? ', im Handy berechnet' : ''); return true; } return false; });
+    var html;
+    if (it.k === 'c') {
+      html = '<p class="stars s' + it.s + '">' + C.starsText(it.s) + ' <span class="small">Stadt · ' + x.score.toFixed(0) + ' Punkte</span></p>' +
+        '<p class="small">' + [fmtPop(x.pop), x.n + ' bekannte Sehenswürdigkeiten', x.unesco ? 'UNESCO-Welterbe' : ''].filter(Boolean).join(' · ') + '</p>' +
+        '<h3>Die bekanntesten</h3><ul class="city-top">' + (x.top || []).map(function (t, i) {
+          return '<li><button type="button" data-a="citytop" data-i="' + i + '">' + esc(t[0]) + '</button></li>';
+        }).join('') + '</ul>';
+    } else {
+      html = '<p class="stars s3">★★★ <span class="small">Ausflugsziel außerhalb von Städten · ' + esc(C.typeInfo(x.typ, cfg).label) + (x.unesco ? ' · UNESCO-Welterbe' : '') + '</span></p>';
+    }
+    html += '<div class="actions">' +
+        '<button class="btn primary" type="button" data-a="cityzoom">🔍 Hineinzoomen und suchen</button>' +
+        '<a class="btn" href="' + C.cityWikiUrl(x.q) + '" target="_blank" rel="noopener">Wikipedia</a>' +
+      '</div>' +
+      '<p class="small">Stadt-Sterne sind eine Faustregel: Summe der bekanntesten Sehenswürdigkeiten (Wikidata, Sprachversionen und Denkmalstatus)' + (stand ? ', Stand ' + esc(stand) : '') + '.</p>';
+    openSheet(x.name, html);
+    $('sheetBody').removeAttribute('data-place');
+    $('sheetBody').setAttribute('data-view', 'city');
+  }
+  function cityZoom(lat, lon, z) {
+    closeSheet();
+    map.setView([lat, lon], z, { animate: false });
+    doSearch(viewBbox());
+  }
+
+  // ---- (re)compute in the phone, one country after the other
+  function cityMetaHtml() {
+    var c = SC();
+    if (!c.aktiv) return '';
+    var rows = (c.laender || []).map(function (l) {
+      var d = cityData[l.code], info;
+      if (cityJob && cityJob.code === l.code) info = 'wird berechnet …';
+      else if (!d || d.then) info = 'noch nicht geladen';
+      else if (d.keine) info = 'noch keine Daten';
+      else {
+        var cnt = { 3: 0, 2: 0, 1: 0 };
+        (d.staedte || []).forEach(function (x) { var st = C.cityStars(x.score, cfg); if (st) cnt[st]++; });
+        info = (cnt[1] + cnt[2] + cnt[3]) + ' Städte (★★★ ' + cnt[3] + ', ★★ ' + cnt[2] + ') · ' + (d.orte || []).length + ' Ausflugsziele · Stand ' + dateText(d.stand) +
+          (d.quelle === 'handy' ? ' (im Handy)' : '') + ((d.fehler || []).length ? ' · <span class="warnc">' + d.fehler.length + ' Kacheln fehlen</span>' : '');
+      }
+      return '<li data-land="' + esc(l.code) + '"><b>' + esc(l.name) + '</b><span class="small">' + info + '</span>' +
+        '<div class="actions"><button class="btn" type="button" data-a="cityrun"' + (cityJob ? ' disabled' : '') + '>Neu berechnen</button></div></li>';
+    }).join('');
+    return '<h3>⭐ Stadt-Sterne (Ausflüge)</h3>' +
+      '<p class="small">Beim Herauszoomen zeigt die Karte Städte mit Sternen statt einzelner Orte (bis Zoom ' + (c.zoom.staedte_bis) + '), dazu große Ausflugsziele außerhalb von Städten. Ganz weit draußen nur ★★ und ★★★. Antippen: die bekanntesten Sehenswürdigkeiten, „Hineinzoomen und suchen“.</p>' +
+      '<label class="opt"><input type="checkbox" id="showCities"' + (settings.staedte !== false ? ' checked' : '') + '> Stadt-Sterne auf der Karte zeigen</label>' +
+      '<ul class="areas">' + rows + '</ul>' +
+      '<div class="actions"><button class="btn wide" type="button" data-a="cityall"' + (cityJob ? ' disabled' : '') + '>Alle Länder neu berechnen</button></div>' +
+      '<p class="small">„Neu berechnen“ fragt Wikidata direkt vom Handy ab und rechnet alle großen Sehenswürdigkeiten des Landes neu (je Land etwa 3–15 Minuten, die App muss offen bleiben). ' +
+      'Die mitgelieferten Daten rechnet eine <a href="' + esc(c.github_workflow || '#') + '" target="_blank" rel="noopener">GitHub Action</a> (dort „Run workflow“).</p>';
+  }
+  function loadAllCityMeta() {
+    return Promise.all((SC().laender || []).map(function (l) { return loadCityLand(l.code); }));
+  }
+
+  function cityCompute(codes) {
+    if (cityJob) { toast('Es wird schon gerechnet.'); return; }
+    var job = { codes: codes.slice(), code: codes[0], t0: Date.now(), cancelled: false, text: 'startet …', done: 0, total: 0, ok: [], bad: [] };
+    cityJob = job;
+    if (navigator.wakeLock && navigator.wakeLock.request) navigator.wakeLock.request('screen').then(function (l) { job.lock = l; }).catch(function () {});
+    if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {});
+    job.timer = setInterval(renderCityJob, 1000);
+    renderCityJob();
+    var cache = new Map(), f = function (u, o) { return fetch(u, o); };
+    codes.reduce(function (pr, code) {
+      return pr.then(function () {
+        if (job.cancelled) return;
+        var l = landByCode(code);
+        job.code = code; job.name = l.name; job.done = 0; job.total = 0; job.text = 'Wikidata …';
+        refreshSettings();
+        return C.loadCountryCities(l, cfg, f, {
+          cache: cache, control: job,
+          onProgress: function (d, t, n) { job.done = d; job.total = t; job.text = 'Kachel ' + d + '/' + t + ' · ' + n + ' Einträge'; renderCityJob(); }
+        }).then(function (res) {
+          if (job.cancelled) return;
+          if (res.stats.fehler >= res.stats.kacheln) throw new Error('Wikidata nicht erreichbar');
+          res.quelle = 'handy';
+          return IDB.set('staedte:' + code, res).then(function () {
+            cityData[code] = res; job.ok.push(l.name + ' ' + res.staedte.filter(function (x) { return C.cityStars(x.score, cfg) > 0; }).length);
+          });
+        }).catch(function (e) { job.bad.push(l.name + ' (' + (e && e.message || 'Fehler') + ')'); });
+      });
+    }, Promise.resolve()).then(function () {
+      clearInterval(job.timer);
+      if (job.lock) { try { job.lock.release(); } catch (e) { /* ignore */ } }
+      cityJob = null;
+      renderCityJob();
+      scheduleCities();
+      refreshSettings();
+      toast(job.cancelled ? 'Berechnung abgebrochen.' : 'Stadt-Sterne neu berechnet' + (job.ok.length ? ': ' + job.ok.join(', ') + ' Städte' : '') +
+        (job.bad.length ? '. Fehlgeschlagen: ' + job.bad.join(', ') : '') + '.', 6000);
+    });
+  }
+  function renderCityJob() {
+    var el = $('cprep');
+    if (!cityJob) { el.hidden = true; el.innerHTML = ''; return; }
+    var s = Math.floor((Date.now() - cityJob.t0) / 1000);
+    el.innerHTML = '<span class="prep-text">⭐ <b>' + esc(cityJob.name || '') + '</b>' + (cityJob.codes.length > 1 ? ' (' + (cityJob.codes.indexOf(cityJob.code) + 1) + '/' + cityJob.codes.length + ')' : '') + ': ' +
+      esc(cityJob.text || '') + ' · ' + Math.floor(s / 60) + ':' + ('0' + s % 60).slice(-2) + '</span>' +
+      '<button type="button" class="st-btn" data-a="citycancel">Abbrechen</button>' +
+      (cityJob.total ? '<span class="bar"><span style="width:' + Math.round(100 * cityJob.done / cityJob.total) + '%"></span></span>' : '');
+    el.hidden = false;
   }
 
   // ------------------------------------------------------------ splitter
@@ -1046,6 +1255,7 @@
       '<div class="actions"><button class="btn primary wide" type="button" data-a="prep"' + (km2 > maxKm2 || prep ? ' disabled' : '') + '>' +
         (prep ? 'Wird gerade vorbereitet …' : 'Kartenausschnitt vorbereiten') + '</button></div>' +
       areasHtml() +
+      cityMetaHtml() +
       fullscreenHtml() +
       '<h3>Karten-App für „In Google Maps“ und „Pin“</h3>' +
       [['google', 'Google Maps (Web-Link, empfohlen)'], ['geo', 'Android-Karten-App (geo:-Link, Auswahl möglich)'], ['osmand', 'OsmAnd (öffnet OsmAnd+; „Pin“ per geo:-Link)']].map(function (o) {
@@ -1075,6 +1285,7 @@
     openSheet('Einstellungen', html);
     $('sheetBody').removeAttribute('data-place');
     $('sheetBody').setAttribute('data-view', 'settings');
+    if ((SC().laender || []).some(function (l) { return !cityData[l.code] || cityData[l.code].then; })) loadAllCityMeta().then(refreshSettings);
     if (navigator.storage && navigator.storage.estimate) {
       navigator.storage.estimate().then(function (e) {
         if ($('storageInfo')) $('storageInfo').textContent = 'Speicher der App: ' + Math.round((e.usage || 0) / 1e5) / 10 + ' MB belegt.';
@@ -1423,6 +1634,10 @@
       if (e.target.closest('[data-a="prepcancel"]') && prep) { prep.cancelled = true; prepStep('breche ab …'); }
       else openSettings();
     });
+    $('cprep').addEventListener('click', function (e) {
+      if (e.target.closest('[data-a="citycancel"]') && cityJob) { cityJob.cancelled = true; cityJob.text = 'breche ab …'; renderCityJob(); }
+      else openSettings();
+    });
     $('btnMerk').addEventListener('click', openMerk);
     $('btnSearch').addEventListener('click', openSearch);
     $('btnSettings').addEventListener('click', openSettings);
@@ -1524,6 +1739,17 @@
       } else if (a === 'prep') {
         prepareArea(viewBbox());
         refreshSettings();
+      } else if (a === 'cityrun') {
+        cityCompute([el.closest('[data-land]').getAttribute('data-land')]);
+        refreshSettings();
+      } else if (a === 'cityall') {
+        cityCompute((SC().laender || []).map(function (l) { return l.code; }));
+        refreshSettings();
+      } else if (a === 'cityzoom' && cityCur) {
+        cityZoom(cityCur.x.lat, cityCur.x.lon, cityCur.k === 'c' ? 14 : 15);
+      } else if (a === 'citytop' && cityCur) {
+        var tp = (cityCur.x.top || [])[parseInt(el.getAttribute('data-i'), 10)];
+        if (tp) cityZoom(tp[1], tp[2], 16);
       } else if (a === 'areashow' || a === 'arearun' || a === 'areadel') {
         var ar = areaById(el.closest('[data-area]').getAttribute('data-area'));
         if (!ar) return;
@@ -1536,6 +1762,7 @@
       if (e.target.id === 'focusSel') { settings.focus = e.target.value; saveSettings(); setTellStatus(''); return; }
       if (e.target.name === 'uebergabe') { settings.uebergabe = e.target.value; saveSettings(); toast('Übergabe gespeichert'); return; }
       if (e.target.id === 'useOsm') { settings.osm = e.target.checked; saveSettings(); toast('Gilt ab der nächsten Suche'); return; }
+      if (e.target.id === 'showCities') { settings.staedte = e.target.checked; saveSettings(); renderMarkers(); scheduleCities(); return; }
       if (e.target.id === 'hideHeard') { settings.hideHeard = e.target.checked; saveSettings(); renderAll(); return; }
       if (e.target.name === 'kapp') {
         settings.kartenApp = e.target.value; saveSettings();

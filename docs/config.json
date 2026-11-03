@@ -326,7 +326,7 @@
     "pause_ms": 500,
     "pause_429_s": 30,
     "timeout_s": 70,
-    "radius_km": {"basis": 1.5, "pro_zehnfach": 1.5, "max": 8},
+    "radius_km": {"basis": 1.5, "pro_zehnfach": 1.5, "min": 1, "max": 12},
     "top_n": 10,
     "bonus": {"unesco": 3, "hauptstadt": 1},
     "schwellen": {"3": 60, "2": 30, "1": 12},
@@ -336,6 +336,9 @@
     "max_marker": 160,
     "stadt_woerter": ["city", "big city", "town", "village", "municipality", "commune", "comune", "hamlet", "human settlement", "metropolis", "market town", "spa town", "stadt", "gemeinde"],
     "ausschluss_woerter": ["district", "region", "province", "department", "state", "canton", "country", "county", "arrondissement", "metropolitan area", "urban area", "agglomeration", "borough", "quarter", "neighbourhood", "neighborhood", "locality", "constituency", "diocese", "archdiocese", "parish", "deanery", "mountain range", "river", "stream", "railway", "railway line", "station", "railway station", "metro station", "airport", "airfield", "stadium", "arena", "university", "college", "school", "hospital", "company", "business", "enterprise", "organization", "road", "street", "motorway", "highway", "power station", "nuclear power plant", "military base", "barracks", "prison", "army", "football club", "sports club", "hotel"],
+    "stadt_sicher_woerter": ["city", "big city", "town", "village", "market town", "spa town", "metropolis", "hamlet"],
+    "keine_stadt_woerter": ["insurgency", "rebellion", "historical country", "former municipality"],
+    "sehenswert_woerter": ["tourist attraction", "cemetery", "triumphal arch", "square", "plaza", "opera house", "zoo", "amusement park", "theme park", "botanical garden", "garden", "aquarium", "landmark", "architectural landmark", "fountain", "gate", "city gate", "ruins", "tower", "national park", "nature reserve", "lake", "waterfall", "mountain", "island", "beach", "cave", "gorge", "glacier", "pass", "peninsula", "cape", "old town", "historic centre", "historic district", "pilgrimage site", "shrine", "sanctuary", "temple", "amphitheatre", "roman theatre", "viaduct", "aqueduct", "lighthouse", "pier", "promenade", "observation tower", "skyscraper", "monument", "memorial", "statue", "palace", "villa", "mansion", "fortification", "city walls", "castle", "bridge", "canal"],
     "ausschluss_typen": ["liste", "person", "siedlung", "ereignis", "parkplatz", "hotel", "gastro", "einkauf", "krankenhaus", "strasse", "bach", "fluss", "kanal", "organisation", "buero", "wohnhaus", "firma", "haltestelle", "bahnhof", "sport", "bildung", "viertel"],
     "github_workflow": "https://github.com/obitusde/reisefuehrer/actions/workflows/staedte.yml",
     "laender": [

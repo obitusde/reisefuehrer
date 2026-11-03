@@ -9,7 +9,7 @@ on:
         required: false
         default: ''
       probe:
-        description: 'Nur Test: eine Kachel "süd,west,nord,ost" ansehen, nichts speichern'
+        description: 'Nur Test: Kacheln "süd,west,nord,ost;…" ansehen (erste ausführlich), nichts speichern'
         required: false
         default: ''
 permissions:
@@ -31,7 +31,7 @@ jobs:
         env:
           PROBE: ${{ inputs.probe }}
         run: |
-          if ! [[ "$PROBE" =~ ^[-0-9.,]+$ ]]; then echo "Ungültig"; exit 1; fi
+          if ! [[ "$PROBE" =~ ^[-0-9.,\;]+$ ]]; then echo "Ungültig"; exit 1; fi
           node tools/build-cities.mjs --probe "$PROBE"
       - name: Berechnen
         if: ${{ inputs.probe == '' }}

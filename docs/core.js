@@ -1460,7 +1460,7 @@
   function citySparql(t, cfg) {
     var c = cfg.staedte, min = c.min_sprachversionen || 12;
     var en = function (v) { return 'STRAFTER(STR(' + v + '),"entity/")'; };
-    return 'SELECT ?item (SAMPLE(?c) AS ?coord) (SAMPLE(?s) AS ?sl) (MAX(?p) AS ?pop)' +
+    return 'SELECT ?item (SAMPLE(?c) AS ?coord) (SAMPLE(?s) AS ?sl) (MAX(?p) AS ?pop) (MAX(?ar) AS ?area)' +
       ' (GROUP_CONCAT(DISTINCT ' + en('?t') + ';separator="|") AS ?p31)' +
       ' (GROUP_CONCAT(DISTINCT ?tl;separator="|") AS ?cls)' +
       ' (GROUP_CONCAT(DISTINCT ' + en('?h') + ';separator="|") AS ?her)' +
@@ -1472,6 +1472,7 @@
       ' ?item wikibase:sitelinks ?s. FILTER(?s >= ' + min + ')' +
       ' OPTIONAL { ?item wdt:P31 ?t. OPTIONAL { ?t rdfs:label ?tl. FILTER(LANG(?tl) = "en") } }' +
       ' OPTIONAL { ?item wdt:P1082 ?p. }' +
+      ' OPTIONAL { ?item p:P2046/psn:P2046/wikibase:quantityAmount ?ar. }' +
       ' OPTIONAL { ?item wdt:P1435 ?h. }' +
       ' OPTIONAL { ?item wdt:P17 ?land. }' +
       ' OPTIONAL { ?item wdt:P757 ?u. }' +
@@ -1493,7 +1494,7 @@
       return {
         q: v(b, 'item').replace(/^.*\//, ''), lat: +(+m[2]).toFixed(5), lon: +(+m[1]).toFixed(5),
         name: v(b, 'de') || v(b, 'en') || v(b, 'lx'), name_en: v(b, 'en'),
-        sl: +v(b, 'sl') || 0, pop: Math.round(+v(b, 'pop') || 0),
+        sl: +v(b, 'sl') || 0, pop: Math.round(+v(b, 'pop') || 0), km2: Math.round((+v(b, 'area') || 0) / 1e4) / 100,
         p31: list(v(b, 'p31')), cls: list(v(b, 'cls')), h: list(v(b, 'her')), land: list(v(b, 'land')),
         u: !!v(b, 'unesco'), cap: !!v(b, 'cap'), desc: v(b, 'desc')
       };
@@ -1556,12 +1557,21 @@
       return ws.some(function (w) { return endsWithWord(h, w); });
     });
   }
-  function isCityItem(x, cfg) { return anyHeadEnds(x.cls, cfg.staedte.stadt_woerter || []); }
+  // A settlement: class like "commune of France", "town"; without population only a clear "city/town/village"
+  // (so that e.g. "Paris Commune", an insurgency, is no city).
+  function isCityItem(x, cfg) {
+    var c = cfg.staedte;
+    if (!anyHeadEnds(x.cls, c.stadt_woerter || [])) return false;
+    if (anyHeadEnds(x.cls, c.keine_stadt_woerter || [])) return false;
+    return x.pop > 0 || anyHeadEnds(x.cls, c.stadt_sicher_woerter || ['city', 'town', 'village']);
+  }
 
-  function cityRadius(pop, cfg) {
+  /** Radius in metres: from the area (circle of the same size, +10 %) if known, else from the population. */
+  function cityRadius(pop, cfg, km2) {
     var r = cfg.staedte.radius_km || {};
-    var km = (r.basis || 1.5) + (r.pro_zehnfach || 1.5) * Math.max(0, Math.log(Math.max(pop || 0, 1000) / 1000) / Math.LN10);
-    return Math.min(r.max || 8, km) * 1000;
+    var km = km2 > 0 ? 1.1 * Math.sqrt(km2 / Math.PI)
+      : (r.basis || 1.5) + (r.pro_zehnfach || 1.5) * Math.max(0, Math.log(Math.max(pop || 0, 1000) / 1000) / Math.LN10);
+    return Math.max(r.min || 1, Math.min(r.max || 8, km)) * 1000;
   }
 
   /** Points of one sight (score from PROJEKT.md 6 without article length), or null if it does not count. */
@@ -1572,6 +1582,8 @@
     if ((c.ausschluss_typen || []).indexOf(typ) >= 0) return null;
     var t = typeInfo(typ, cfg);
     if (t.max_sterne === 0) return null;
+    // only things one can visit: a known type, or a class from the extra list (cemetery, triumphal arch, …)
+    if (typ === 'sonstiges' && !anyHeadEnds(x.cls, c.sehenswert_woerter || [])) return null;
     var s = computeScore({ sprachversionen: x.sl, laenge: 0, denkmal: x.h, unesco: x.u, typ: typ, quellen: [] }, cfg).score;
     return s > 0 ? { score: s, typ: typ } : null;
   }
@@ -1613,7 +1625,7 @@
     cands.sort(function (a, b) { return (b.pop - a.pop) || (b.sl - a.sl); });
     var kept = [], keptGrid = {};
     cands.forEach(function (x) {
-      x.r = cityRadius(x.pop, cfg);
+      x.r = cityRadius(x.pop, cfg, x.km2);
       var a = Math.floor(x.lat / cell), b = Math.floor(x.lon / cell), inside = false;
       for (var i = a - 1; i <= a + 1 && !inside; i++) for (var j = b - 1; j <= b + 1 && !inside; j++) {
         (keptGrid[i + ',' + j] || []).forEach(function (k) { if (!inside && haversine(k.lat, k.lon, x.lat, x.lon) < k.r) inside = true; });

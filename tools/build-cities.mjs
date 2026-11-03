@@ -23,14 +23,18 @@ const cache = new Map(); // tiles shared between countries (borders)
 function fmtMs(ms) { const s = Math.round(ms / 1000); return s < 90 ? s + ' s' : Math.round(s / 60) + ' min'; }
 
 async function probe(arg) {
-  const [s, w, n, e] = arg.split(',').map(Number);
-  const r = await core.loadCityTiles([{ south: s, west: w, north: n, east: e }], cfg, f, {});
+  const tiles = arg.split(';').filter(Boolean).map((t) => { const [s, w, n, e] = t.split(',').map(Number); return { south: s, west: w, north: n, east: e }; });
+  for (const t of tiles.slice(1)) { // timing of further tiles only
+    const t0 = Date.now(), x = await core.loadCityTiles([t], cfg, f, {});
+    console.log('Kachel ' + JSON.stringify(t) + ': ' + x.items.length + ' Einträge, ' + x.queries + ' Abfragen, ' + x.splits + ' geteilt, ' + fmtMs(Date.now() - t0) + (x.failed.length ? ' FEHLER ' + JSON.stringify(x.failed) : ''));
+  }
+  const r = await core.loadCityTiles(tiles.slice(0, 1), cfg, f, {});
   console.log('Einträge:', r.items.length, 'Abfragen:', r.queries, 'geteilt:', r.splits, 'Fehler:', JSON.stringify(r.failed), fmtMs(r.ms));
   const rows = r.items.map((x) => {
     const city = core.isCityItem(x, cfg), sc = city ? null : core.sightScore(x, cfg);
     return { x, city, sc };
   }).sort((a, b) => b.x.sl - a.x.sl);
-  for (const { x, city, sc } of rows.slice(0, 120)) {
+  for (const { x, city, sc } of rows.slice(0, 60)) {
     console.log((city ? 'STADT ' : sc ? 'ORT   ' : '--    ') + x.name + ' | ' + x.q + ' | sl ' + x.sl + ' | pop ' + x.pop +
       ' | ' + (sc ? sc.typ + ' ' + sc.score : '') + ' | ' + x.cls.slice(0, 4).join('; '));
   }

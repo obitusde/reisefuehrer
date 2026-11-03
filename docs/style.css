@@ -95,6 +95,31 @@ button { cursor: pointer; }
 .mk1 { width: 12px; height: 12px; background: var(--s1); border-width: 1.5px; }
 .mk0 { width: 9px; height: 9px; background: var(--s0); border-width: 1.5px; }
 .mk.sel { outline: 4px solid rgba(14, 107, 125, .55); outline-offset: 1px; }
+/* symbols inside the dot (v0.7.0) */
+.mk.ic { display: flex; align-items: center; justify-content: center; }
+.mk.ic svg { width: 64%; height: 64%; fill: #fff; display: block; }
+.mk3.ic { width: 26px; height: 26px; } .mk2.ic { width: 20px; height: 20px; }
+.mk1.ic { width: 18px; height: 18px; border-width: 1.5px; } .mk0.ic { width: 16px; height: 16px; border-width: 1.5px; }
+.mk-lbl.l3.lic { left: calc(50% + 15px); } .mk-lbl.l2.lic { left: calc(50% + 12px); }
+.mk-lbl.l1.lic { left: calc(50% + 11px); } .mk-lbl.l0.lic { left: calc(50% + 10px); }
+.mk-lbl.l3.lic.left { left: auto; right: calc(50% + 15px); } .mk-lbl.l2.lic.left { left: auto; right: calc(50% + 12px); }
+.mk-lbl.l1.lic.left { left: auto; right: calc(50% + 11px); } .mk-lbl.l0.lic.left { left: auto; right: calc(50% + 10px); }
+/* city stars (v0.7.0): pill with the stars, name beside it */
+.ct {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  padding: 1px 5px; border-radius: 9px; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .45);
+  font: 700 11px/14px system-ui, Roboto, sans-serif; color: #fff; white-space: nowrap; letter-spacing: -1px;
+}
+.ct3 { background: var(--s3); } .ct2 { background: var(--s2); } .ct1 { background: var(--s1); }
+.ct-lbl {
+  position: absolute; top: 50%; transform: translateY(-50%); white-space: nowrap;
+  font: 700 13px/1.2 system-ui, Roboto, sans-serif; color: #1c1b19;
+  text-shadow: 0 0 2px #fff, 0 0 3px #fff, 0 0 4px #fff;
+}
+.ct-lbl.c1 { font-weight: 600; font-size: 12px; color: #3a3935; }
+.ct-lbl.o { font-weight: 600; font-size: 12px; font-style: italic; }
+.city-top li { margin: 6px 0; }
+.city-top button { all: unset; cursor: pointer; color: var(--accent); }
 .mk-lbl {
   position: absolute; left: calc(50% + 13px); top: 50%; transform: translateY(-50%);
   white-space: nowrap; pointer-events: auto;
