@@ -1662,7 +1662,15 @@
       for (var i = a - 1; i <= a + 1 && !inside; i++) for (var j = b - 1; j <= b + 1 && !inside; j++) {
         (keptGrid[i + ',' + j] || []).forEach(function (k) { if (!inside && haversine(k.lat, k.lon, x.lat, x.lon) < k.r * merge) inside = k; });
       }
-      if (inside) { x.fate = 'zusammengelegt mit ' + inside.name; return; }
+      if (inside) {
+        // the better-known item names the marker (Lyon, not "Métropole de Lyon"); the bigger radius stays
+        if (x.sl > inside.sl) {
+          x.fate = 'zusammengelegt, ersetzt ' + inside.name;
+          ['name', 'name_en', 'q', 'lat', 'lon', 'sl', 'land'].forEach(function (f) { inside[f] = x[f]; });
+          inside.u = inside.u || x.u; inside.cap = inside.cap || x.cap;
+        } else x.fate = 'zusammengelegt mit ' + inside.name;
+        return;
+      }
       x.fate = 'Stadt, Radius ' + Math.round(x.r) + ' m';
       x.sights = [];
       kept.push(x);

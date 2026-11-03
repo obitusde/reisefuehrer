@@ -432,6 +432,14 @@ eq(core.iconFor('sonstiges', cfg), '', 'other: plain dot');
   ok(core.isCityItem(it('Q220', 'Rom', 0, 0, 1, ['comune of Italy', 'big city', 'capital city'], { pop: 2.7e6 }), cfg), 'Rome is a city');
   ok(core.isCityItem(it('Q10690', 'Cardiff', 0, 0, 1, ['city', 'principal area of Wales', 'county borough'], { pop: 3e5 }), cfg), 'Cardiff: city although also county borough');
   ok(!core.isCityItem(it('Q2', 'Wrexham County Borough', 0, 0, 1, ['principal area of Wales', 'county borough', 'municipality'], { pop: 1e5 }), cfg), 'county borough is no city');
+  ok(core.isCityItem(it('Q18125', 'Manchester', 0, 0, 1, ['unparished area', 'city status in the United Kingdom', 'civil parish'], { pop: 547627 }), cfg), 'Manchester (city status) is a city');
+  {
+    const lyon = core.computeCities([
+      it('Q1', 'Métropole de Lyon', 45.76, 4.84, 90, ['metropolis'], { pop: 1.4e6, km2: 534 }),
+      it('Q456', 'Lyon', 45.7578, 4.832, 197, ['commune of France', 'big city'], { pop: 519127, km2: 47.9 }),
+      it('Q5', 'Fourvière', 45.7622, 4.8226, 40, ['basilica'], { p31: ['Q163687'] })], cfg, { code: 'FR', qid: 'Q142', bbox: core.bboxOf([41, -5, 51, 9]) });
+    ok(lyon.staedte.length === 1 && lyon.staedte[0].name === 'Lyon' && lyon.staedte[0].q === 'Q456', 'merged: the better-known item names the city: ' + JSON.stringify(lyon.staedte.map((c) => c.name)));
+  }
   ok(core.isCityItem(it('Q1726', 'München', 0, 0, 1, ['urban district of Germany', 'big city', 'municipality of Germany'], { pop: 1.5e6 }), cfg), 'Munich (urban district) is a city');
   const bam = core.sightScore(it('Q3', 'Altstadt Bamberg', 0, 0, 50, ['historic district', 'old town'], { h: ['Q9259'] }), cfg);
   ok(bam && bam.typ === 'welterbe' && bam.score > 10, 'UNESCO old town counts although "district": ' + JSON.stringify(bam));
