@@ -20,7 +20,7 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 const CITIES_GB = { land: 'GB', stand: Date.parse('2026-11-03'), fehler: [], orte: [
   { name: 'Peak District', q: 'Q1', lat: 53.35, lon: -1.8, score: 9.5, typ: 'natur' }], staedte: [
   { name: 'Manchester', q: 'Q18125', lat: 53.4794, lon: -2.2453, score: 70, pop: 550000, n: 40, top: [['Manchester Town Hall', 53.4794, -2.2446, 9.1], ['Manchester Cathedral', 53.4851, -2.2446, 8.5], ['John Rylands Library', 53.4804, -2.2484, 8.4]] },
-  { name: 'Liverpool', q: 'Q24826', lat: 53.4084, lon: -2.9916, score: 45, pop: 490000, n: 30, top: [['Royal Liver Building', 53.4058, -2.9958, 8]] },
+  { name: 'Liverpool', q: 'Q24826', lat: 53.4084, lon: -2.9916, score: 35, pop: 490000, n: 30, top: [['Royal Liver Building', 53.4058, -2.9958, 8]] },
   { name: 'Chester', q: 'Q170263', lat: 53.19, lon: -2.89, score: 20, pop: 80000, n: 8, top: [['Chester Cathedral', 53.1923, -2.8906, 8]] },
   { name: 'Stockport', q: 'Q2', lat: 53.4083, lon: -2.1494, score: 6, pop: 100000, n: 2, top: [['Stockport Viaduct', 53.4096, -2.1625, 5]] }] };
 const B = (q, name, lon, lat, o) => ({ item: { value: 'http://www.wikidata.org/entity/' + q }, coord: { value: 'Point(' + lon + ' ' + lat + ')' },
