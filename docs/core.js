@@ -1,5 +1,5 @@
 /*
- * Reiseführer – core logic (v0.9.0)
+ * Reiseführer – core logic (v0.9.1)
  * Shared by the app (index.html), the diagnostics page (diag.html) and Node tests.
  * No DOM access here. Network access only through the injected fetch function.
  */
@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var CORE_VERSION = '0.9.0';
+  var CORE_VERSION = '0.9.1';
 
   // ---------------------------------------------------------------- helpers
 
@@ -1987,9 +1987,10 @@
       var a = pts[i], b = pts[i + 1], k = Math.cos(((a.lat + b.lat) / 2) * Math.PI / 180);
       var bx = (b.lon - a.lon) * k * 111.32, by = (b.lat - a.lat) * 110.57;
       var px = (p.lon - a.lon) * k * 111.32, py = (p.lat - a.lat) * 110.57;
-      var len2 = bx * bx + by * by, t = len2 ? Math.max(0, Math.min(1, (px * bx + py * by) / len2)) : 0;
+      var len2 = bx * bx + by * by, t0 = len2 ? (px * bx + py * by) / len2 : 0, t = Math.max(0, Math.min(1, t0));
       var dx = px - t * bx, dy = py - t * by, d = Math.sqrt(dx * dx + dy * dy), len = Math.sqrt(len2);
-      if (d < best.d) best = { d: d, along: run + t * len };
+      // beyond: before the start or after the destination (not between them)
+      if (d < best.d) best = { d: d, along: run + t * len, beyond: (i === 0 && t0 < 0) || (i === pts.length - 2 && t0 > 1) };
       run += len;
     }
     best.total = run;
@@ -2030,7 +2031,8 @@
       var s = x.st || 0;
       if (k === 'c' && !s) return;
       var r = lineDistance(x, pts);
-      if (r.d <= w[s]) out.push({ k: k, x: x, s: s, d: round1(r.d), along: round1(r.along), umweg: round1(2 * r.d) });
+      // v0.9.1: behind the start or past the destination only within the width of one star less (Chillon is not on the way from Morges to Lyon)
+      if (r.d <= (r.beyond ? w[Math.max(0, s - 1)] : w[s])) out.push({ k: k, x: x, s: s, d: round1(r.d), along: round1(r.along), umweg: round1(2 * r.d) });
     };
     (res && res.staedte || []).forEach(function (x) { take('c', x); });
     (res && res.orte || []).forEach(function (x) { take('o', x); });

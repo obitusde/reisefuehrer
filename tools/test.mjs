@@ -604,6 +604,10 @@ eq(core.classify(['Q4830453'], ['company', 'museum'], [''], ['Firma X'], cfg), '
   ok(names.join(',') === 'Rolle,Schloss Prangins,Genf Kathedrale', 'bike corridor: in order along the route, widths by stars: ' + names.join(','));
   ok(pick.every((p, i) => i === 0 || p.along >= pick[i - 1].along) && pick.every((p) => p.d <= core.corridorWidths('fahrrad', cfg)[p.s]), 'sorted by km from start, all within their width');
   ok(Math.abs(pick[0].umweg - 2 * pick[0].d) <= 0.11, 'detour = there and back');
+  // behind the start: Chillon-like ★★★ 30 km the other way is not on the way; a town just behind the start still is
+  const lyonPts = [morges, lyon];
+  const back = core.corridorPick({ staedte: [{ name: 'Nah', q: 'Qa', lat: 46.55, lon: 6.62, st: 3 }], orte: [{ name: 'Weit', q: 'Qb', lat: 46.414, lon: 6.927, st: 3 }] }, lyonPts, 'auto', cfg);
+  ok(back.map((p) => p.x.name).join(',') === 'Nah', 'behind the start only within the width of one star less: ' + back.map((p) => p.x.name + ' ' + p.d).join(','));
 }
 
 // ---- version consistency across files

@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.9.1 – 04.11.2026 – Strecke: nichts hinter dem Start
+
+- Hinter dem Start und nach dem Ziel gilt nur noch die Breite für einen Stern weniger (★★★ mit Auto: 15 statt 40 km). Im Test Morges → Lyon standen sonst Schloss Chillon und Lavaux (35 und 19 km hinter Morges, in der Gegenrichtung) in der Liste.
+- **Geprüft mit echten Daten** (GitHub Action, Eingabe `strecke`):
+  - Fahrrad Morges → Genf: 44 km Luftlinie, 7 Stücke, 61 Ziele, alle innerhalb ihrer Breite, nach km sortiert; erstes Laden 2 Minuten.
+  - Auto Morges → Lyon: 153 km, 61 Stücke, erstes Laden 9 Minuten, 154 Ziele, alle innerhalb ihrer Breite, sortiert.
+
+### Annahmen/Abweichungen
+
+- **Erstes Laden ist langsamer als in PROJEKT.md verlangt** (Fahrrad Morges → Genf: 2 Minuten statt unter 20 Sekunden), weil das Verzeichnis alle Einträge der Stücke holt. Beim zweiten Mal kommen die Stücke aus dem Handy und es geht in Sekunden. Gemessen auf GitHub, auf dem Handy noch nicht.
+- Die Luftlinie Morges → Genf führt über den Genfersee; zwischen km 5 und 35 liegt darum fast nichts. Morges → Lyon führt über den Jura statt über Genf.
+
 ## v0.9.0 – 04.11.2026 – Strecke: was liegt zwischen Start und Ziel
 
 Nächste Funktion aus PROJEKT.md (6b, Korridormodus), gebaut auf dem Verzeichnis aus v0.8.
