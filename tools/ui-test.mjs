@@ -143,7 +143,7 @@ try {
   if (process.env.DEBUG) { page.on('request', (r) => { if (/extracts|mymemory/.test(r.url())) console.log('REQ', decodeURIComponent(r.url()).slice(0, 160)); }); page.on('requestfailed', (r) => console.log('FAILED', r.url().slice(0, 120), r.failure() && r.failure().errorText)); page.on('console', (m) => console.log('CONSOLE', m.text())); }
   await page.goto(BASE + 'index.html');
   await page.waitForSelector('.empty');
-  ok((await page.textContent('#version')) === 'v0.8.2', 'footer version');
+  ok((await page.textContent('#version')) === 'v0.8.3', 'footer version');
   if (OUT) await page.screenshot({ path: OUT + '/01-start.png' });
 
   await page.click('#btnLocate');
@@ -178,7 +178,7 @@ try {
   ok(descs.some((d) => d.startsWith('Übersetzt: ')), 'English intro translated in list: ' + descs.join(' | '));
   ok(descs.some((d) => /ist ein Testort\. Zweiter Satz\.$/.test(d)), 'German intro shown as is (2 short sentences)');
   ok(!descs.some((d) => /maschinell/.test(d)), 'no translation note');
-  ok((await page.textContent('#ortLabel')) === 'Manchester', 'ort label');
+  ok(await page.$eval('#ortLabel', (el) => el.hidden), 'v0.8.3 no place name chip on the map');
   ok((await page.textContent('#status')).includes('★★★'), 'status counts');
   const names4 = await page.$$eval('.it-name', (els) => els.map((e) => e.textContent));
   ok(names4.filter((n) => n === 'Manchester Town Hall').length === 1, 'v0.4: Town Hall once in list');
@@ -437,10 +437,10 @@ try {
   ok(splitNow && +splitNow > 12, 'split persisted: ' + splitNow);
 
   // update banner (fake newer version, then ?testupdate=1)
-  fakeVersion = '0.8.3';
+  fakeVersion = '0.8.4';
   await page.reload();
   await page.waitForSelector('#banner:not([hidden])');
-  ok((await page.textContent('#bannerText')).includes('v0.8.3'), 'banner shows remote version');
+  ok((await page.textContent('#bannerText')).includes('v0.8.4'), 'banner shows remote version');
   if (OUT) await page.screenshot({ path: OUT + '/05-banner.png' });
   fakeVersion = null;
   await page.click('#bannerBtn');
@@ -571,9 +571,9 @@ try {
   const swOk = await p3.evaluate(() => navigator.serviceWorker.ready.then((r) => !!r.active)).catch(() => false);
   ok(swOk, 'service worker active');
   const cacheKeys = await p3.evaluate(async () => { await new Promise((r) => setTimeout(r, 800)); return caches.keys(); });
-  ok(cacheKeys.includes('rf-app-0.8.2'), 'app cache with version: ' + cacheKeys.join(','));
-  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.8.2')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
-  ok(cached.some((u) => u.includes('app.js?v=0.8.2')), 'shell precached');
+  ok(cacheKeys.includes('rf-app-0.8.3'), 'app cache with version: ' + cacheKeys.join(','));
+  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.8.3')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
+  ok(cached.some((u) => u.includes('app.js?v=0.8.3')), 'shell precached');
   ok(errs3.length === 0, 'sw: no JS errors ' + errs3.join(' | '));
   await ctx3.close();
 
@@ -618,11 +618,11 @@ try {
     await p8.click('#btnHere');
     await p8.waitForFunction(() => /Lade Gegend/.test(document.getElementById('zoomHint').textContent), null, { timeout: 8000 }).catch(() => {});
     await p8.waitForFunction(() => /Lade \d+\/\d+ …/.test(document.getElementById('btnHere').textContent), null, { timeout: 5000 }).catch(() => {});
-    await p8.waitForFunction(() => /^Zoom 10 · \d+ Ziele im Ausschnitt$/.test(document.getElementById('zoomHint').textContent), null, { timeout: 30000 });
+    await p8.waitForFunction(() => document.getElementById('zoomHint').hidden && /^Fertig: /.test(document.getElementById('toast').textContent), null, { timeout: 30000 });
     ok(/^Fertig: \d+ Ziele im Ausschnitt$/.test(await p8.textContent('#toast')) && (await p8.textContent('#btnHere')) === 'Hier suchen', 'v0.8.2 clear end: message "Fertig", button back: ' + await p8.textContent('#toast'));
     const vzl = await p8.$$eval('.vz-item b', (els) => els.map((e) => e.textContent));
     ok(vzl[0] === 'Luxemburg' && vzl.includes('Burg Vianden') === false && vzl.length >= 3, 'v0.8.2 list shows what was found, most important first: ' + vzl.join(', '));
-    ok(await p8.$eval('#zoomHint', (el) => el.getBoundingClientRect().height < 36), 'v0.8.2 hint in one line');
+    ok(await p8.$eval('#zoomHint', (el) => el.hidden), 'v0.8.3 no hint when there is nothing to say');
     ok(SPARQL_CALLS.length > n0 && SPARQL_CALLS.slice(n0).every((c) => { const [w, s, e, n] = c.split(',').map(Number); return Math.abs(e - w - 0.25) < 1e-6 && Math.abs(n - s - 0.25) < 1e-6; }),
       'v0.8 "Hier suchen" at zoom 10 loads 0.25° tiles: ' + SPARQL_CALLS.slice(n0).length);
     const ix = await p8.evaluate(() => new Promise((res) => { const r = indexedDB.open('reisefuehrer', 1); r.onsuccess = () => { const q = r.result.transaction('kv').objectStore('kv').get('vz:index'); q.onsuccess = () => res(q.result); }; }));
@@ -633,7 +633,7 @@ try {
     if (OUT) await p8.screenshot({ path: OUT + '/13-verzeichnis-zoom10.png' });
     // zoom 14: all sights of the directory without "Hier suchen"
     await p8.evaluate(() => window.__rfMap.setView([49.6105, 6.1325], 15, { animate: false }));
-    await p8.waitForFunction(() => /^„Hier suchen“: alle Ziele mit Kurzinfos$/.test(document.getElementById('zoomHint').textContent) && document.querySelectorAll('.mk-lbl').length >= 2, null, { timeout: 10000 })
+    await p8.waitForFunction(() => document.querySelectorAll('.mk-lbl').length >= 2, null, { timeout: 10000 })
       .catch(() => {});
     const lbl15 = await p8.$$eval('.mk-lbl', (els) => els.map((e) => e.textContent));
     ok(lbl15.some((t) => /Kathedrale/.test(t)) && !(await p8.$('.item')), 'v0.8 zoom 15: loaded sights shown before the detail search: ' + lbl15.join(', '));
@@ -645,6 +645,17 @@ try {
     await p8.click('[data-a="cityhere"]');
     await p8.waitForFunction(() => localStorage.getItem('rf.last') && !document.getElementById('btnHere').disabled, null, { timeout: 15000 });
     ok(true, 'v0.8 "Hier suchen" from the sight sheet searches');
+    // v0.8.3: list on/off, no place chip, location button with symbol only
+    ok(await p8.$eval('#ortLabel', (el) => el.hidden) && (await p8.textContent('#btnLocate')).trim() === '◎', 'v0.8.3 no place name chip; location button only ◎');
+    const h0 = await p8.$eval('#mapWrap', (el) => el.getBoundingClientRect().height);
+    await p8.click('#btnList');
+    await p8.waitForTimeout(200);
+    const h1 = await p8.$eval('#mapWrap', (el) => el.getBoundingClientRect().height);
+    ok(h1 > h0 + 150 && !(await p8.isVisible('#scroller')), 'v0.8.3 list off: map on the whole screen ' + h0 + ' -> ' + h1);
+    await p8.reload(); await p8.waitForSelector('#btnList');
+    ok(!(await p8.isVisible('#scroller')), 'v0.8.3 list off is remembered');
+    await p8.click('#btnList'); await p8.waitForTimeout(200);
+    ok(await p8.isVisible('#scroller'), 'v0.8.3 list on again');
     // settings
     await p8.click('#btnSettings');
     await p8.waitForFunction(() => /Stücke gespeichert/.test(document.getElementById('sheetBody').textContent));

@@ -1,8 +1,8 @@
-/* Reiseführer – app (v0.8.2). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.8.3). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.8.2';
+  var VERSION = '0.8.3';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
@@ -179,6 +179,7 @@
 
     initMap();
     initSplitter();
+    setListOff(!!settings.listeAus, true);
     bindUI();
     autoFullscreen();
     renderMerkCount();
@@ -187,6 +188,16 @@
     renderAll();
     loadAreas();
     dirInit();
+  }
+
+  // v0.8.3: the list under the map can be switched off (map on the whole screen)
+  function setListOff(off, quiet) {
+    settings.listeAus = !!off; saveSettings();
+    $('app').classList.toggle('nolist', !!off);
+    $('btnList').setAttribute('aria-pressed', off ? 'false' : 'true');
+    $('btnList').classList.toggle('off', !!off);
+    if (map) setTimeout(function () { map.invalidateSize(); scheduleMarkers(); scheduleCities(); }, 50);
+    if (!quiet) toast(off ? 'Liste aus' : 'Liste an', 1200);
   }
 
   // ---------------------------------------------------------------- map
@@ -457,7 +468,7 @@
   // after loading: a short message, and the list shows what was found
   function dirDone(already) {
     var n = dirInView(viewBbox()).length;
-    toast((already ? 'Schon geladen' : 'Fertig') + ': ' + (n ? n + ' Ziele im Ausschnitt' : 'hier nichts gefunden'), 3000);
+    toast('Fertig: ' + (n ? n + (n === 1 ? ' Ziel' : ' Ziele') + ' im Ausschnitt' : 'hier nichts gefunden'), 3000);
     if (!last || !last.places) renderList();
   }
   function estText(n) { var s = n * 6; return s < 90 ? 'ca. ' + Math.max(10, Math.round(s / 10) * 10) + ' s' : 'ca. ' + Math.round(s / 60) + ' min'; }
@@ -469,19 +480,15 @@
     var z = map.getZoom(), d = DZ(), reg = (d.zoom && d.zoom.region) || 9, nah = (d.zoom && d.zoom.nah) || 12;
     var b = viewBbox(), n = DIR.missing.length, tooMany = dirOn() && n > (d.max_kacheln_knopf || 150), small = detailOk(b);
     var txt, btn = '';
-    if (busy && !busyQuiet) txt = 'Suche läuft …';
+    if (busy && !busyQuiet) { txt = 'Suche läuft …'; btn = '<button type="button" data-h="stop" aria-label="Abbrechen">✕</button>'; }
     else if (DIR.job || DIR.queue.length) {
       txt = 'Lade Gegend ' + Math.min(DIR.done + 1, DIR.total || 1) + '/' + (DIR.total || 1) + ' …';
       btn = '<button type="button" data-h="cancel" aria-label="Abbrechen">✕</button>';
     } else if (tooMany && !small) txt = 'Zu weit draußen – näher heranzoomen';
     else if (dirOn() && n) txt = '„Hier suchen“ lädt die Gegend (' + estText(n) + ')';
-    else if (small && !(last && last.places && C.bboxOverlaps(last.bbox || b, b))) txt = '„Hier suchen“: alle Ziele mit Kurzinfos';
-    else {
-      var cnt = dirOn() ? dirInView(b).length : 0;
-      txt = 'Zoom ' + z + (dirOn() ? ' · ' + (cnt ? cnt + ' Ziele im Ausschnitt' : 'hier nichts gefunden') : '');
-    }
-    el.innerHTML = '<span>' + esc(txt) + '</span>' + btn;
-    el.hidden = false;
+    // v0.8.3: otherwise no hint (wish of the user)
+    el.innerHTML = txt ? '<span>' + esc(txt) + '</span>' + btn : '';
+    el.hidden = !txt;
     if (!busy) $('btnHere').textContent = DIR.job || DIR.queue.length ? 'Lade ' + Math.min(DIR.done + 1, DIR.total || 1) + '/' + (DIR.total || 1) + ' …' : 'Hier suchen';
     $('btnHere').classList.toggle('dim', tooMany && !small);
   }
@@ -989,9 +996,7 @@
   function renderAll() {
     renderMarkers();
     renderList();
-    var ol = $('ortLabel');
-    ol.textContent = last && last.ort ? last.ort : '';
-    ol.hidden = !(last && last.ort);
+    $('ortLabel').hidden = true; // v0.8.3: the name of the last search was misleading once the map was moved
   }
 
   function renderList() {
@@ -1040,7 +1045,7 @@
         '<div class="it-main">' +
           '<span class="it-stars s' + p.sterne + '">' + (p.sterne ? C.starsText(p.sterne) : '·') + '</span>' +
           '<span class="it-text"><span class="it-name">' + esc(p.name) + '</span>' +
-          (p.name2 ? '<span class="it-name2">' + esc(p.name2) + '</span>' : '') +
+          (p.name2 && [p.name, p.typ_label].every(function (t) { return String(t || '').toLowerCase() !== String(p.name2).toLowerCase(); }) ? '<span class="it-name2">' + esc(p.name2) + '</span>' : '') +
           '<span class="it-meta">' + esc(meta) + ' <span class="it-src src-' + (tag === 'W' ? 'w' : tag === 'OSM' ? 'o' : 'wo') + '">' + tag + '</span></span>' +
           '<span class="it-desc">' + esc(kurzText(p)) + '</span>' +
           '</span></div>' +
@@ -1517,16 +1522,16 @@
   // the installed app switches to full screen itself at the first tap.
   function autoFullscreen() {
     document.addEventListener('pointerup', function go() {
-      if (!isInstalled() || settings.vollbild === false || document.fullscreenElement || !document.documentElement.requestFullscreen) return;
+      if (!isInstalled() || settings.vollbild !== true || document.fullscreenElement || !document.documentElement.requestFullscreen) return;
       try { document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(function () {}); } catch (e) { /* ignore */ }
     }, true);
   }
   function fullscreenHtml() {
     if (isInstalled()) {
-      return '<h3>Vollbild</h3><label class="opt"><input type="checkbox" id="autoFs"' + (settings.vollbild !== false ? ' checked' : '') + '> Beim ersten Antippen auf Vollbild schalten (ohne Android-Leiste)</label>';
+      return '<h3>Vollbild</h3><label class="opt"><input type="checkbox" id="autoFs"' + (settings.vollbild === true ? ' checked' : '') + '> Beim ersten Antippen auf Vollbild schalten (ohne Android-Leiste; Chrome zeigt dann jedes Mal einen Hinweis)</label>';
     }
     return '<h3>App installieren / Vollbild</h3>' +
-      '<p class="small">Chrome-Menü ⋮ → „App installieren“ (oder „Zum Startbildschirm hinzufügen“ → „Installieren“) und vom Startbildschirm öffnen. Die installierte App schaltet beim ersten Antippen auf Vollbild. ' +
+      '<p class="small">Chrome-Menü ⋮ → „App installieren“ (oder „Zum Startbildschirm hinzufügen“ → „Installieren“) und vom Startbildschirm öffnen. Die installierte App läuft ohne Browserleiste; Vollbild lässt sich danach hier einschalten. ' +
       'Kommt eine Fehlermeldung: bitte Bildschirmfoto schicken; ⚙ → Diagnose → „Installieren“ zeigt, was Chrome sieht.</p>' +
       '<div class="actions">' +
         (installEvt ? '<button class="btn primary" type="button" data-a="install">📲 App installieren</button>' : '') +
@@ -1877,12 +1882,14 @@
   // ---------------------------------------------------------- UI events
   function bindUI() {
     $('btnLocate').addEventListener('click', locate);
+    $('btnList').addEventListener('click', function () { setListOff(!settings.listeAus); });
     $('btnHere').addEventListener('click', searchHere);
     $('zoomHint').addEventListener('click', function (e) {
       var b = e.target.closest && e.target.closest('[data-h]');
       if (!b) return;
       var h = b.getAttribute('data-h');
       if (h === 'cancel') dirCancel();
+      else if (h === 'stop') cancelSearch();
 
     });
     $('status').addEventListener('click', function (e) {

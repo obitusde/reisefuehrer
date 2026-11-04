@@ -360,3 +360,10 @@ details.why summary { min-height: 40px; display: flex; align-items: center; colo
 
 /* v0.8.2: messages centred with left:50% only got half the screen width and wrapped early – use the whole width */
 .toast, .zhint { width: max-content; }
+
+/* v0.8.3: round icon buttons at the bottom of the map; list can be switched off */
+.map-bottom .spacer { flex: 1; }
+.pill.icon { width: 44px; padding: 0; font-size: 20px; line-height: 44px; }
+.pill.icon.off { opacity: .7; }
+#app.nolist #mapWrap { flex: 1 1 auto !important; }
+#app.nolist #splitter, #app.nolist .filters, #app.nolist #scroller, #app.nolist #prep, #app.nolist #cprep { display: none !important; }

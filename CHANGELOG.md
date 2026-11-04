@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.8.3 – 04.11.2026 – Liste ausschaltbar, weniger Hinweise, kein automatisches Vollbild
+
+Wunsch Nutzer: Liste unter der Karte ein- und ausschalten; „Mein Standort“ nur als Symbol; Hinweise „„Hier suchen“: alle Ziele mit Kurzinfos“ und „Zoom 11 · 1 Ziele im Ausschnitt“ weg; Vollbild-Hinweis von Chrome kommt immer; „Echichens“ oben war unklar; „Schon geladen“ war unklar.
+
+- **☰ unten links neben ◎**: schaltet die Liste (mit Filtern und Statuszeile) aus und wieder an. Ohne Liste hat die Karte den ganzen Bildschirm. Wird gemerkt.
+- **„◎“** statt „◎ Mein Standort“.
+- **Zeile über „Hier suchen“ nur noch, wenn sie etwas sagt**: „Lade Gegend 3/8 …“ (✕ bricht ab), „„Hier suchen“ lädt die Gegend (ca. 40 s)“, „Zu weit draußen – näher heranzoomen“, „Suche läuft …“ (✕ bricht ab, wichtig wenn die Liste aus ist). Sonst keine Zeile.
+- **Ortsname oben links entfernt**: Er zeigte den Ort der letzten Suche (z. B. „Echichens“), auch wenn die Karte längst woanders war.
+- **Vollbild nicht mehr automatisch**: Der Hinweis „zum Beenden des Vollbildmodus …“ kommt von Chrome, sobald eine Seite auf Vollbild schaltet, und lässt sich nicht abstellen. Die installierte App läuft ohne Browserleiste; Vollbild lässt sich in ⚙ wieder einschalten.
+- **Nach „Hier suchen“ immer „Fertig: 12 Ziele im Ausschnitt“**, auch wenn die Gegend schon gespeichert war (vorher „Schon geladen“). Gespeichertes wird 30 Tage verwendet, danach neu geladen; frisch laden: ⚙ → „Verzeichnis löschen“.
+- Liste: Zweitname wird nicht mehr gezeigt, wenn er nur die Art wiederholt (z. B. zweimal „Gebäude“).
+
 ## v0.8.2 – 04.11.2026 – Bei jedem Zoom genug Ziele, klares Ende, Meldungen in einer Zeile
 
 Wunsch Nutzer: Bei jeder Zoomstufe eine angemessene Anzahl Sehenswürdigkeiten, außer wo es nichts gibt (im Sauerland bei Zoom 10 kamen nur Burg Altena und die Dechenhöhle). Nicht klar, ob die Suche vorbei ist. Besser auf Zeilenumbrüche in Meldungen achten.
