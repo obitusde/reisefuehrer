@@ -466,7 +466,7 @@ try {
   await menuClick(page, '#btnSettings');
   await page.waitForFunction(() => /Verzeichnis \(Ziele auf der Karte\)/.test(document.getElementById('sheetBody').textContent));
   const setTxt = await page.textContent('#sheetBody');
-  ok(!/KI-Assistent|Übergabe an|Neu berechnen/.test(setTxt) && !(await page.$('input[name="uebergabe"]')) && setTxt.includes('nur mit „Hier suchen“'), 'v0.8.1 settings: no assistant menu, no computing menu');
+  ok(!/KI-Assistent|Übergabe an|Neu berechnen/.test(setTxt) && !(await page.$('input[name="uebergabe"]')) && setTxt.includes('nur, wenn du „Laden“ tippst'), 'v0.8.1 settings: no assistant menu, no computing menu');
   if (OUT) await page.screenshot({ path: OUT + '/12-einstellungen-staedte.png' });
   await page.evaluate(() => history.back());
   await page.waitForSelector('#sheet', { state: 'hidden' });
