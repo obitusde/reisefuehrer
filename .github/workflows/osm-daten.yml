@@ -1,34 +1,51 @@
-# Test: OpenStreetMap-Sehenswürdigkeiten aus einem Geofabrik-Auszug statt über Overpass (die Server sind oft überlastet).
-# Misst Zeit, Anzahl und Größe; schreibt noch nichts nach docs/. Die Kacheln liegen 3 Tage als Artefakt bereit.
-name: OSM-Daten aufbereiten (Test)
+# OpenStreetMap-Sehenswürdigkeiten aus dem Geofabrik-Auszug aufbereiten (v0.11.0), statt sie im Handy über Overpass zu fragen
+# (die Server sind oft überlastet). Schreibt docs/osm/<code>/ (Kacheln + index.json mit dem Stand der Daten) nach main.
+# Automatisch jeden Monat; vom Handy: github.com → Actions → „OSM-Daten aufbereiten“ → „Run workflow“ (dauert etwa 2–3 Minuten).
+name: OSM-Daten aufbereiten
 on:
+  schedule:
+    - cron: '23 2 3 * *'
   workflow_dispatch:
     inputs:
       land:
-        description: 'Geofabrik-Gebiet, z. B. "europe/switzerland"'
+        description: 'Geofabrik-Gebiet'
         required: false
         default: 'europe/switzerland'
-      teil:
-        description: 'Teilgebiet extra zählen: "west,süd,ost,nord" (leer = keins; Waadt: 6.06,46.18,7.25,46.99)'
+      code:
+        description: 'Kürzel (Ordner docs/osm/<code>)'
         required: false
-        default: '6.06,46.18,7.25,46.99'
+        default: 'ch'
+      speichern:
+        description: 'Ergebnis nach main schreiben (sonst nur messen)'
+        type: boolean
+        default: true
+      teil:
+        description: 'Nur Bericht: Teilgebiet extra zählen "west,süd,ost,nord" (Waadt: 6.06,46.18,7.25,46.99)'
+        required: false
+        default: ''
 permissions:
-  contents: read
+  contents: write
+concurrency:
+  group: osm-daten
+  cancel-in-progress: false
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    env:
+      LAND: ${{ inputs.land || 'europe/switzerland' }}
+      CODE: ${{ inputs.code || 'ch' }}
+      TEIL: ${{ inputs.teil }}
+      SPEICHERN: ${{ github.event_name == 'schedule' || inputs.speichern }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
       - name: Eingaben prüfen
-        env:
-          LAND: ${{ inputs.land }}
-          TEIL: ${{ inputs.teil }}
         run: |
           if ! [[ "$LAND" =~ ^[a-z-]+(/[a-z-]+)*$ ]]; then echo "Ungültiges Gebiet"; exit 1; fi
+          if ! [[ "$CODE" =~ ^[a-z]{2,3}$ ]]; then echo "Ungültiges Kürzel"; exit 1; fi
           if [ -n "$TEIL" ] && ! [[ "$TEIL" =~ ^-?[0-9.]+,-?[0-9.]+,-?[0-9.]+,-?[0-9.]+$ ]]; then echo "Ungültiges Teilgebiet"; exit 1; fi
       - name: osmium installieren
         run: |
@@ -36,30 +53,35 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool > /dev/null
           osmium --version | head -1
           echo "Installieren: $(( $(date +%s) - s )) s"
-      - name: Auszug laden
-        env:
-          LAND: ${{ inputs.land }}
+      - name: Auszug und Grenze laden
         run: |
           s=$(date +%s)
           curl -sSfL -o land.osm.pbf "https://download.geofabrik.de/${LAND}-latest.osm.pbf"
-          echo "Datei: $(du -h land.osm.pbf | cut -f1), Laden: $(( $(date +%s) - s )) s"
+          curl -sSfL -o land.poly "https://download.geofabrik.de/${LAND}.poly"
+          STAND=$(osmium fileinfo -g header.option.osmosis_replication_timestamp land.osm.pbf || true)
+          echo "STAND=$STAND" >> "$GITHUB_ENV"
+          echo "Datei: $(du -h land.osm.pbf | cut -f1), Stand der Daten: ${STAND:-?}, Laden: $(( $(date +%s) - s )) s"
       - name: Sehenswürdigkeiten filtern
         run: |
           s=$(date +%s)
           FILTER=$(node tools/osm-extract.mjs --osmium)
-          echo "Filter: $FILTER"
           osmium tags-filter land.osm.pbf $FILTER -o poi.osm.pbf --overwrite
-          echo "Gefiltert: $(du -h poi.osm.pbf | cut -f1), $(( $(date +%s) - s )) s"
-          s=$(date +%s)
           osmium export poi.osm.pbf -f geojsonseq --add-unique-id=type_id -o poi.geojsonseq --overwrite
-          echo "Export: $(du -h poi.geojsonseq | cut -f1), $(( $(date +%s) - s )) s"
-      - name: Kacheln bauen und messen
-        env:
-          TEIL: ${{ inputs.teil }}
-        run: node tools/osm-extract.mjs poi.geojsonseq out "$TEIL"
-      - name: Kacheln als Artefakt
-        uses: actions/upload-artifact@v4
-        with:
-          name: osm-kacheln
-          path: out
-          retention-days: 3
+          echo "Gefiltert und exportiert: $(du -h poi.geojsonseq | cut -f1), $(( $(date +%s) - s )) s"
+      - name: Kacheln bauen
+        run: |
+          rm -rf "docs/osm/$CODE"
+          U=$(echo "$CODE" | tr a-z A-Z)
+          node tools/osm-extract.mjs poi.geojsonseq "docs/osm/$CODE" --poly=land.poly --stand="$STAND" --land="$U" --teil="$TEIL" \
+            --quelle="OpenStreetMap-Mitwirkende (ODbL), Auszug Geofabrik $LAND"
+          echo "Dateien: $(ls "docs/osm/$CODE" | wc -l), $(du -sh "docs/osm/$CODE" | cut -f1)"
+      - name: Speichern
+        if: ${{ env.SPEICHERN == 'true' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A "docs/osm/$CODE"
+          if git diff --cached --quiet; then echo "Keine Änderung"; exit 0; fi
+          git commit -q -m "OSM-Daten $CODE aufbereitet (Stand ${STAND:-?})"
+          for i in 1 2 3; do git pull -q --rebase origin main && git push -q origin HEAD:main && exit 0; sleep 5; done
+          exit 1

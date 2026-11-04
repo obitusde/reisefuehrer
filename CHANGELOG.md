@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.11.0 – 04.11.2026 – OSM für die Schweiz als Dateien (ohne Overpass), Menü „Daten“
+
+Wunsch Nutzer: Die OSM-Server sind ständig überlastet; erst nur die Schweiz; im Menü sehen, von wann die Daten sind, und aktualisieren können.
+
+- **OSM für die Schweiz aus Dateien**: Die GitHub Action „OSM-Daten aufbereiten“ (`.github/workflows/osm-daten.yml`) holt den Schweiz-Auszug von Geofabrik und filtert die Sehenswürdigkeiten mit denselben Filtern wie die App (`config.json` → `osm.filter`). Sie legt Kacheln wie im App-Speicher ab: `docs/osm/ch/<kachel>.json` plus `index.json` mit dem Stand der Daten.
+  - Im Messlauf dauerte das für die ganze Schweiz etwa 1 Minute: 25 528 Orte, 3,9 MB, gezippt 1,1 MB; Waadt 4176 Orte, 0,7 MB.
+  - Läuft automatisch jeden Monat (am 3.) und von Hand: github.com → Actions → „OSM-Daten aufbereiten“ → „Run workflow“.
+  - Nur Kacheln, die ganz in der Schweiz liegen (Grenze von Geofabrik), kommen aus Dateien. Kacheln über die Grenze (Genf–Frankreich, Basel) lädt die App wie bisher über Overpass.
+- **App**:
+  - Für die Schweiz fragt sie kein Overpass mehr. OSM ist nach Sekunden da, auch bei Zoom 12 (die Grenze `osm.max_kacheln` gilt nur noch für Kacheln ohne Datei).
+  - Gespeicherte Kacheln gelten, solange der Stand gleich ist. Kommen neue Daten, lädt sie die App beim nächsten Mal nach.
+  - Ob es neue Daten gibt, schaut die App höchstens einmal am Tag nach (`osm.dateien_pruefen_h`).
+- **Menü → „Daten“**:
+  - zeigt „Schweiz: Daten vom … · N Orte“ und wann das Handy zuletzt geprüft hat;
+  - „Jetzt prüfen“ holt den neuesten Stand;
+  - „Neu aufbereiten ↗“ öffnet die Action auf GitHub (dort „Run workflow“);
+  - darunter das Verzeichnis (Wikidata) mit Stand und „Verzeichnis löschen“.
+- Der Service Worker legt die OSM-Dateien nicht in seinen App-Speicher; die App speichert sie selbst (wie bisher die Overpass-Antworten).
+
+### Annahmen/Abweichungen
+
+- „Daten aktualisieren“ im Handy heißt: neuesten Stand von GitHub holen. Die Aufbereitung selbst läuft auf GitHub. Vom Handy aus geht das nur über den Link, weil die App keinen GitHub-Schlüssel haben darf.
+- Bis die Action zum ersten Mal gelaufen ist, gibt es noch keine Dateien; dann bleibt alles wie in v0.10.0 (Overpass).
+- Der Stand ist der Zeitstempel des Geofabrik-Auszugs (meist vom Vortag).
+- Außerhalb der Schweiz, auch in Grenzkacheln, bleibt Overpass mit seinen Wartezeiten.
+
 ## v0.10.0 – 04.11.2026 – Auf einen Blick: was lohnt; ein Knopf auf der Karte
 
 Wünsche Nutzer (Ingolstadt): Nach OSM ist alles ★ und das Wichtige geht unter; erkennen, was einen Wikipedia-Artikel hat; zu viele Knöpfe; „auf einen Blick will ich wissen, was lohnt und was nicht – nicht zu viel und nicht zu wenig“; Kurzinfo „Es wurde am 23.“.

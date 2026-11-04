@@ -1,8 +1,8 @@
-/* Reiseführer – app (v0.10.0). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.11.0). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.10.0';
+  var VERSION = '0.11.0';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
@@ -682,6 +682,77 @@
     var o = last && !ROUTE && last.src && last.src.osm;
     return !!(o && Date.now() - (last.time || 0) < 20 * 60000 && (o.state === 'timeout' || o.state === 'skip') && !o.lateMs && !(o.late && !o.late.ok));
   }
+  // ------------------------------------------------------ OSM files (v0.11.0)
+  // Prepared by the GitHub Action osm-daten.yml (Geofabrik extract, monthly). index.json: {land, stand, erstellt, orte, kacheln: {key: count}}.
+  var OSMF = { sets: [], ready: null };
+  function osmFilesLoad(force) {
+    var list = (cfg.osm && cfg.osm.dateien) || [], maxAge = ((cfg.osm && cfg.osm.dateien_pruefen_h) || 24) * 3600000;
+    var store = LS.get('rf.osmdateien', {}) || {};
+    OSMF.ready = Promise.all(list.map(function (d) {
+      var have = store[d.pfad];
+      if (!force && have && have.idx && Date.now() - have.t < maxAge) return Promise.resolve({ d: d, idx: have.idx, t: have.t });
+      return withTimeout(fetch(d.pfad + 'index.json?t=' + Date.now(), { cache: 'no-store' }).then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      }), 10000, null).then(function (idx) {
+        if (!idx || !idx.kacheln) throw new Error('keine Daten');
+        store[d.pfad] = { idx: idx, t: Date.now() };
+        return { d: d, idx: idx, t: Date.now(), neu: !have || !have.idx || have.idx.stand !== idx.stand };
+      }).catch(function (e) {
+        return have && have.idx ? { d: d, idx: have.idx, t: have.t, fehler: e.message } : { d: d, idx: null, fehler: e.message };
+      });
+    })).then(function (sets) {
+      OSMF.sets = sets;
+      LS.set('rf.osmdateien', store);
+      return sets;
+    });
+    return OSMF.ready;
+  }
+  function osmFileFor(key) {
+    for (var i = 0; i < OSMF.sets.length; i++) {
+      var s = OSMF.sets[i], n = s.idx && s.idx.kacheln[key];
+      if (n === undefined || !s.idx) continue;
+      return {
+        stand: s.idx.stand,
+        load: function (s, n) {
+          return function () {
+            if (!n) return Promise.resolve([]);
+            return fetch(s.d.pfad + key + '.json?s=' + encodeURIComponent(s.idx.stand)).then(function (r) {
+              if (!r.ok) throw new Error('OSM-Datei: HTTP ' + r.status);
+              return r.json();
+            });
+          };
+        }(s, n)
+      };
+    }
+    return null;
+  }
+  function osmFilesReady() { return OSMF.ready ? Promise.race([OSMF.ready, new Promise(function (r) { setTimeout(r, 4000); })]) : Promise.resolve(); }
+  function dataSheet() {
+    var sets = OSMF.sets || [];
+    var html = '<h3>🧭 OpenStreetMap</h3>' + (sets.length ? sets.map(function (s) {
+      if (!s.idx) return '<p><b>' + esc(s.d.name) + '</b>: noch keine Daten' + (s.fehler ? ' (' + esc(s.fehler) + ')' : '') + '. Dort fragt die App direkt bei OpenStreetMap (Overpass).</p>';
+      return '<p><b>' + esc(s.d.name) + '</b>: Daten vom <b>' + esc(dateText(s.idx.stand)) + '</b> · ' + (s.idx.orte || 0).toLocaleString('de-DE') + ' Orte.<br>' +
+        '<span class="small">Im Handy zuletzt geprüft: ' + esc(dateText(s.t)) + ', ' + esc(new Date(s.t).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })) +
+        (s.fehler ? ' · Prüfen ging nicht: ' + esc(s.fehler) : '') + '</span></p>';
+    }).join('') : '<p>Keine vorbereiteten OSM-Daten eingestellt.</p>') +
+      '<p class="small">Außerhalb dieser Länder fragt die App direkt bei OpenStreetMap (Overpass); das kann dauern. Neu aufbereitet wird automatisch jeden Monat.</p>' +
+      '<div class="actions"><button class="btn primary" type="button" data-a="osmcheck">Jetzt prüfen</button>' +
+      ((cfg.osm && cfg.osm.aufbereiten_url) ? '<a class="btn" href="' + esc(cfg.osm.aufbereiten_url) + '" target="_blank" rel="noopener">Neu aufbereiten ↗</a>' : '') + '</div>' +
+      '<p class="small">„Neu aufbereiten“ öffnet GitHub: dort „Run workflow“ tippen. Nach etwa 3 Minuten hier „Jetzt prüfen“.</p>' +
+      dirMetaHtml();
+    openSheet('Daten', html);
+    $('sheetBody').setAttribute('data-view', 'data');
+  }
+  function osmCheck() {
+    toast('Prüfe OSM-Daten …', 1500);
+    osmFilesLoad(true).then(function (sets) {
+      var s = sets.filter(function (x) { return x.idx; })[0];
+      var neu = sets.some(function (x) { return x.neu; });
+      toast(!s ? 'Keine OSM-Daten erreichbar' : neu ? 'Neue OSM-Daten vom ' + dateText(s.idx.stand) : 'OSM-Daten sind aktuell (vom ' + dateText(s.idx.stand) + ')', 3500);
+      if (!$('sheet').hidden && $('sheetBody').getAttribute('data-view') === 'data') dataSheet();
+    });
+  }
   function dirMetaHtml() {
     var d = DZ();
     if (!d.aktiv) return '';
@@ -689,7 +760,7 @@
     keys.forEach(function (k) { kb += DIR.index[k].kb || 0; oldest = Math.min(oldest, DIR.index[k].stand); });
     return '<h3>🗺 Verzeichnis (Ziele auf der Karte)</h3>' +
       '<p class="small">' + (keys.length ? keys.length + ' Stücke gespeichert (' + (kb >= 1024 ? (Math.round(kb / 102.4) / 10).toString().replace('.', ',') + ' MB' : kb + ' KB') + '), ältestes vom ' + esc(dateText(oldest)) + '.' : 'Noch nichts gespeichert.') +
-      ' Geladen wird nur mit „Hier suchen“: die Gegend im Kartenausschnitt, in Stücken von etwa 25 × 28 km (je etwa 5 Sekunden). Gespeichert ' + (d.cache_tage || 30) + ' Tage.</p>' +
+      ' Geladen wird nur, wenn du „Laden“ tippst: die Gegend im Kartenausschnitt, in Stücken von etwa 25 × 28 km (je etwa 5 Sekunden). Gespeichert ' + (d.cache_tage || 30) + ' Tage.</p>' +
       (DIR.job || DIR.queue.length ? '<p class="small">Lädt gerade: ' + Math.min(DIR.done + 1, DIR.total || 1) + ' von ' + (DIR.total || 1) + '.</p>' : '') +
       (DIR.lastErr ? '<p class="small">Letzter Fehler: ' + esc(DIR.lastErr) + '</p>' : '') +
       '<div class="actions"><button class="btn" type="button" data-a="dirclear">Verzeichnis löschen</button></div>';
@@ -1050,7 +1121,7 @@
     r.timer = setInterval(renderBusy, 1000);
     renderBusy();
     var ort = '';
-    getPlaceInfo(circle.lat, circle.lon).then(function (info) {
+    getPlaceInfo(circle.lat, circle.lon).then(function (info) { return osmFilesReady().then(function () { return info; }); }).then(function (info) {
       if (r.cancelled) return null;
       ort = info.name || '';
       return C.loadPlaces({
@@ -1829,6 +1900,7 @@
     }).join('') + '</ul>';
   }
   function refreshSettings() {
+    if (!$('sheet').hidden && $('sheetBody').getAttribute('data-view') === 'data') { dataSheet(); return; }
     if (!$('sheet').hidden && $('sheetBody').getAttribute('data-view') === 'settings') {
       var top = $('sheetBody').scrollTop;
       openSettings();
@@ -2138,6 +2210,9 @@
       if (inp && e.key === 'Enter') { e.preventDefault(); routeSearch(inp.getAttribute('data-rt')); }
     });
     $('btnHere').addEventListener('click', searchHere);
+    $('btnData').addEventListener('click', dataSheet);
+    C.setOsmStatic(osmFileFor);
+    osmFilesLoad(false);
     // v0.10.0: one button on the map opens the menu; a tap on an entry or beside it closes it
     var menuOpen = function (on) { $('menu').hidden = !on; $('btnMenu').setAttribute('aria-expanded', on ? 'true' : 'false'); };
     $('btnMenu').addEventListener('click', function (e) { e.stopPropagation(); menuOpen($('menu').hidden); });
@@ -2298,6 +2373,8 @@
         routeEnd();
       } else if (a === 'dirclear') {
         dirClear();
+      } else if (a === 'osmcheck') {
+        osmCheck();
       } else if (a === 'cityzoom' && cityCur) {
         cityZoom(cityCur.x.lat, cityCur.x.lon, cityCur.k === 'c' ? 14 : 15);
       } else if (a === 'citytop' && cityCur) {

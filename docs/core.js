@@ -1,5 +1,5 @@
 /*
- * Reiseführer – core logic (v0.10.0)
+ * Reiseführer – core logic (v0.11.0)
  * Shared by the app (index.html), the diagnostics page (diag.html) and Node tests.
  * No DOM access here. Network access only through the injected fetch function.
  */
@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var CORE_VERSION = '0.10.0';
+  var CORE_VERSION = '0.11.0';
 
   // ---------------------------------------------------------------- helpers
 
@@ -622,7 +622,8 @@
     var t0 = Date.now(), warnings = [], requests = 0;
     // v0.9.3: OSM only for small sections (max_kacheln tiles) – a big one took minutes and its OSM points are hardly shown
     var osmMax = cfg.osm && cfg.osm.max_kacheln, osmBig = false;
-    if (useOsm && osmMax && osmTileKeys(circles, cfg, opts.bbox).length > osmMax) { useOsm = false; osmBig = true; }
+    // v0.11.0: tiles from prepared files do not count (they come in seconds)
+    if (useOsm && osmMax && osmTileKeys(circles, cfg, opts.bbox).filter(function (k) { return !osmFile(k); }).length > osmMax) { useOsm = false; osmBig = true; }
     var src = { wiki: { ms: null }, osm: { state: osmBig ? 'gross' : useOsm ? 'wait' : 'off', ms: null } };
     var many = circles.length > 1;
     prog('Lade Wikipedia (' + langs.join(', ') + ')' + (useOsm ? ' und OSM' : '') + ' …', 'wiki');
@@ -1251,11 +1252,27 @@
    * One tile from Overpass (cache {get(key) -> Promise, set(key, value) -> Promise}, 30 days).
    * Tries the configured servers one after the other.
    */
+  // v0.11.0: OSM prepared as files (GitHub Action from a Geofabrik extract, e.g. Switzerland) – no Overpass where they exist.
+  // The app sets a function key -> null (no file for this tile) or {stand, load() -> Promise of compact elements}.
+  var osmStatic = null;
+  function setOsmStatic(fn) { osmStatic = typeof fn === 'function' ? fn : null; }
+  function osmFile(key) { try { return osmStatic ? osmStatic(key) : null; } catch (e) { return null; } }
+
   function loadOsmTile(key, cfg, f, cache, cacheOnly) {
     var ttl = (cfg.osm.cache_tage || 30) * 24 * 3600 * 1000;
     var ck = 'osm:' + (cfg.osm.version || 1) + ':' + key;
     var cached = cache ? Promise.race([Promise.resolve(cache.get(ck)), sleep(2000).then(function () { return null; })]) : Promise.resolve(null);
+    var file = osmFile(key);
     return cached.catch(function () { return null; }).then(function (hit) {
+      if (file) {
+        // the stored tile is good as long as it is of the same data state (stand)
+        if (hit && hit.s === file.stand) return { els: hit.els, cached: true, file: true };
+        return Promise.resolve(file.load()).then(function (els) {
+          els = (els || []).filter(Boolean);
+          if (cache) Promise.resolve(cache.set(ck, { t: Date.now(), s: file.stand, els: els })).catch(function () {});
+          return { els: els, cached: false, file: true, server: 'Datei' };
+        }).catch(function (e) { if (hit) return { els: hit.els, cached: true }; throw e; });
+      }
       if (hit && Date.now() - hit.t < ttl) return { els: hit.els, cached: true };
       if (cacheOnly) return { els: [], cached: true, missing: true }; // v0.6.1: do not compete with a running preparation
       var q = overpassQuery(key, cfg), servers = cfg.osm.server || ['https://overpass-api.de/api/interpreter'];
@@ -2189,7 +2206,7 @@
     buildPlaces: buildPlaces, sortPlaces: sortPlaces, loadPlaces: loadPlaces,
     reverseGeocode: reverseGeocode, languagesFor: languagesFor, localLanguage: localLanguage,
     searchPlaces: searchPlaces, isLatin: isLatin, pickNames: pickNames,
-    shortLabel: shortLabel, mapLabel: mapLabel, displayName: displayName, isDescriptiveName: isDescriptiveName, osmTileKeys: osmTileKeys, dropNationalPrefix: dropNationalPrefix, stripLocation: stripLocation, firstSentence: firstSentence,
+    shortLabel: shortLabel, mapLabel: mapLabel, setOsmStatic: setOsmStatic, displayName: displayName, isDescriptiveName: isDescriptiveName, osmTileKeys: osmTileKeys, dropNationalPrefix: dropNationalPrefix, stripLocation: stripLocation, firstSentence: firstSentence,
     dropLocation: dropLocation, shortInfo: shortInfo, splitSentences: splitSentences,
     articleFor: articleFor, loadIntros: loadIntros, translate: translate,
     cleanArticle: cleanArticle, cutAtSentence: cutAtSentence, loadArticle: loadArticle,

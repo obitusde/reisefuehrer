@@ -39,6 +39,8 @@ const SPARQL_LU = [
 let fakeVersion = null;
 const SPARQL_CALLS = [];
 let OFFLINE = false, OSM_DELAY = 0;
+// v0.11.0: prepared OSM files (docs/osm/ch/), here around the test position in Manchester
+let OSMFILES = false, OSMFILES_STAND = '2026-11-04T21:21:02Z', OSM_CALLS = 0;
 const server = http.createServer((req, res) => {
   const u = new URL(req.url, 'http://x');
   let p = decodeURIComponent(u.pathname);
@@ -102,8 +104,22 @@ async function mockApis(ctx) {
       if (/luxemburg/i.test(q)) return [{ place_id: 21, name: 'Luxemburg', addresstype: 'city', category: 'place', type: 'city', display_name: 'Luxemburg, Kanton Luxemburg, Luxemburg', lat: '49.6116', lon: '6.1319' }];
       if (/vianden/i.test(q)) return [{ place_id: 22, name: 'Vianden', addresstype: 'town', category: 'place', type: 'town', display_name: 'Vianden, Kanton Vianden, Luxemburg', lat: '49.9345', lon: '6.2070' }];
       return /imperial/i.test(q) ? fx.nominatimSearch.imperial : fx.nominatimSearch.default; })()) }));
+  await ctx.route(/\/osm\/ch\//, (route) => {
+    // without the test switch: an index without tiles (as if Switzerland were elsewhere) – the app asks Overpass as before
+    if (!OSMFILES) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ land: 'CH', stand: '2026-11-04T21:21:02Z', orte: 0, kacheln: {} }) });
+    const u = new URL(route.request().url()), size = 0.05, kacheln = {};
+    const key = (la, lo) => (Math.floor(la / size + 1e-9) * size).toFixed(3) + ',' + (Math.floor(lo / size + 1e-9) * size).toFixed(3);
+    for (let la = 53.401; la < 53.56; la += size) for (let lo = -2.349; lo < -2.10; lo += size) kacheln[key(la, lo)] = 0;
+    const home = key(53.4792, -2.2442);
+    kacheln[home] = 1;
+    if (u.pathname.endsWith('/index.json')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ land: 'CH', stand: OSMFILES_STAND, erstellt: OSMFILES_STAND, orte: 1, kachel: size, version: 4, kacheln }) });
+    if (decodeURIComponent(u.pathname).endsWith('/' + home + '.json')) return route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify([{ id: 'node/999', lat: 53.4795, lon: -2.2445, name: 'Testturm aus Datei', names: {}, wd: '', wp: '', k: 'tourism=attraction', x: {} }]) });
+    return route.fulfill({ status: 404, body: 'nf' });
+  });
   await ctx.route(/overpass-api\.de|overpass\.kumi\.systems|maps\.mail\.ru/, async (route) => {
     if (OFFLINE) return route.abort('internetdisconnected');
+    OSM_CALLS++;
     if (OSM_DELAY) await new Promise((r) => setTimeout(r, OSM_DELAY));
     route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(fx.overpass) }).catch(() => {});
   });
@@ -153,7 +169,7 @@ try {
   if (process.env.DEBUG) { page.on('request', (r) => { if (/extracts|mymemory/.test(r.url())) console.log('REQ', decodeURIComponent(r.url()).slice(0, 160)); }); page.on('requestfailed', (r) => console.log('FAILED', r.url().slice(0, 120), r.failure() && r.failure().errorText)); page.on('console', (m) => console.log('CONSOLE', m.text())); }
   await page.goto(BASE + 'index.html');
   await page.waitForSelector('.empty');
-  ok((await page.textContent('#version')) === 'v0.10.0', 'footer version');
+  ok((await page.textContent('#version')) === 'v0.11.0', 'footer version');
   if (OUT) await page.screenshot({ path: OUT + '/01-start.png' });
 
   await menuClick(page, '#btnLocate');
@@ -181,7 +197,7 @@ try {
   ok(await page.$$eval('.mk-lbl.top', (els) => els.length >= 1), 'v0.10.0 the best have a bold name');
   await page.click('#btnMenu');
   if (OUT) await page.screenshot({ path: OUT + '/17-menue.png' });
-  ok(await page.isVisible('#menu') && (await page.$$eval('#menu .mi', (els) => els.map((e) => e.textContent))).join(',') === 'Hier suchen,Ort suchen,Mein Standort,Merkliste,Strecke,Liste ausblenden,Einstellungen', 'v0.10.0 menu with all buttons');
+  ok(await page.isVisible('#menu') && (await page.$$eval('#menu .mi', (els) => els.map((e) => e.textContent))).join(',') === 'Hier suchen,Ort suchen,Mein Standort,Merkliste,Strecke,Liste ausblenden,Daten,Einstellungen', 'v0.10.0 menu with all buttons');
   await page.mouse.click(60, 300);
   await page.waitForTimeout(200);
   ok(!(await page.isVisible('#menu')), 'v0.10.0 a tap beside the menu closes it');
@@ -464,10 +480,10 @@ try {
   ok(splitNow && +splitNow > 12, 'split persisted: ' + splitNow);
 
   // update banner (fake newer version, then ?testupdate=1)
-  fakeVersion = '0.10.1';
+  fakeVersion = '0.11.1';
   await page.reload();
   await page.waitForSelector('#banner:not([hidden])');
-  ok((await page.textContent('#bannerText')).includes('v0.10.1'), 'banner shows remote version');
+  ok((await page.textContent('#bannerText')).includes('v0.11.1'), 'banner shows remote version');
   if (OUT) await page.screenshot({ path: OUT + '/05-banner.png' });
   fakeVersion = null;
   await page.click('#bannerBtn');
@@ -600,9 +616,9 @@ try {
   const swOk = await p3.evaluate(() => navigator.serviceWorker.ready.then((r) => !!r.active)).catch(() => false);
   ok(swOk, 'service worker active');
   const cacheKeys = await p3.evaluate(async () => { await new Promise((r) => setTimeout(r, 800)); return caches.keys(); });
-  ok(cacheKeys.includes('rf-app-0.10.0'), 'app cache with version: ' + cacheKeys.join(','));
-  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.10.0')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
-  ok(cached.some((u) => u.includes('app.js?v=0.10.0')), 'shell precached');
+  ok(cacheKeys.includes('rf-app-0.11.0'), 'app cache with version: ' + cacheKeys.join(','));
+  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.11.0')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
+  ok(cached.some((u) => u.includes('app.js?v=0.11.0')), 'shell precached');
   ok(errs3.length === 0, 'sw: no JS errors ' + errs3.join(' | '));
   await ctx3.close();
 
@@ -630,6 +646,35 @@ try {
   if (OUT) await p4.screenshot({ path: OUT + '/07-diag.png', fullPage: true });
   ok(errs4.length === 0, 'diag: no JS errors ' + errs4.join(' | '));
   await ctx4.close();
+  // ---------------- v0.11.0: OSM from prepared files – no Overpass where they exist; "Daten" shows the state
+  {
+    OSMFILES = true; OSM_CALLS = 0;
+    const c11 = await newCtx(browser);
+    const p11 = await c11.newPage(); const e11 = []; watch(p11, e11);
+    await p11.goto(BASE + 'index.html');
+    await menuClick(p11, '#btnLocate'); await p11.waitForTimeout(400);
+    await menuClick(p11, '#btnHere');
+    await p11.waitForSelector('.item', { timeout: 15000 });
+    await p11.waitForFunction(() => !document.getElementById('btnHere').disabled, null, { timeout: 15000 });
+    const n11 = await p11.$$eval('.item .it-name', (els) => els.map((e) => e.textContent));
+    ok(n11.includes('Testturm aus Datei') && OSM_CALLS === 0, 'v0.11.0 OSM from the prepared file, no Overpass request (' + OSM_CALLS + '): ' + n11.length + ' places');
+    ok(/OSM ✓/.test(await p11.textContent('#status .src-line')), 'v0.11.0 status: OSM ✓');
+    await menuClick(p11, '#btnData');
+    await p11.waitForSelector('#sheetBody [data-a="osmcheck"]');
+    const d11 = await p11.textContent('#sheetBody');
+    ok(/Schweiz: Daten vom 4\.11\.26 · 1 Orte/.test(d11) && /Neu aufbereiten/.test(d11) && /Verzeichnis/.test(d11), 'v0.11.0 "Daten": state of the OSM data, update, directory: ' + d11.slice(0, 160));
+    if (OUT) await p11.screenshot({ path: OUT + '/18-daten.png' });
+    OSMFILES_STAND = '2026-12-01T03:00:00Z';
+    await p11.click('#sheetBody [data-a="osmcheck"]');
+    await p11.waitForFunction(() => /Neue OSM-Daten vom 1\.12\.26/.test(document.getElementById('toast').textContent), null, { timeout: 8000 }).catch(() => {});
+    ok(/Neue OSM-Daten vom 1\.12\.26/.test(await p11.textContent('#toast')) && /Daten vom 1\.12\.26/.test(await p11.textContent('#sheetBody')), 'v0.11.0 "Jetzt prüfen" finds new data: ' + await p11.textContent('#toast'));
+    await p11.click('#sheetBody [data-a="osmcheck"]');
+    await p11.waitForFunction(() => /aktuell/.test(document.getElementById('toast').textContent), null, { timeout: 8000 }).catch(() => {});
+    ok(/OSM-Daten sind aktuell \(vom 1\.12\.26\)/.test(await p11.textContent('#toast')), 'v0.11.0 second check: up to date');
+    ok(e11.length === 0, 'v0.11.0 no JS errors ' + e11.join(' | '));
+    OSMFILES = false; OSMFILES_STAND = '2026-11-04T21:21:02Z';
+    await c11.close();
+  }
   // ---------------- v0.8: directory – loaded with "Hier suchen" only (v0.8.1), three zoom levels, hint line
   {
     const c8 = await newCtx(browser, { vz: true });

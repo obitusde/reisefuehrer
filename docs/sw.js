@@ -1,8 +1,8 @@
-/* Reiseführer – service worker (v0.10.0)
+/* Reiseführer – service worker (v0.11.0)
  * App files: network first (always fresh after a push), cache only as fallback.
  * Map tiles: cache first (own cache, trimmed). version.json and APIs: never cached here.
  */
-const VERSION = '0.10.0';
+const VERSION = '0.11.0';
 const APP_CACHE = 'rf-app-' + VERSION;
 const TILE_CACHE = 'rf-tiles';
 const TILE_MAX = 2000;
@@ -69,6 +69,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.origin === self.location.origin) {
     if (url.pathname.endsWith('/version.json')) return; // always straight to the network
+    if (url.pathname.includes('/osm/')) return; // v0.11.0: ~2000 OSM files; the app stores them itself
     event.respondWith(networkFirst(req));
   } else if (url.hostname === 'tile.openstreetmap.org') {
     event.respondWith(tile(req));

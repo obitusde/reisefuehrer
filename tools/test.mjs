@@ -634,6 +634,23 @@ eq(core.classify(['Q4830453'], ['company', 'museum'], [''], ['Firma X'], cfg), '
   eq(core.shortInfo('Das Museum Reinhard Ernst, abgekürzt mre, ist ein Museum für abstrakte Kunst. Es wurde am 23. Juni 2024 eröffnet. Es zeigt viel.'),
     'Das Museum Reinhard Ernst, abgekürzt mre, ist ein Museum für abstrakte Kunst. Es wurde am 23. Juni 2024 eröffnet.', 'short info: "am 23. Juni" is no sentence end');
   ok(!/exsentences/.test(fs.readFileSync(path.join(ROOT, 'docs/core.js'), 'utf8').replace(/\/\/.*$/gm, '')), 'no exsentences in Wikipedia requests (Wikipedia ended at "am 23.")');
+  // v0.11.0: prepared OSM files before Overpass
+  {
+    const fcalls = [];
+    const fF = async (u) => { fcalls.push(u); if (/overpass|kumi|mail\.ru/.test(u)) throw new Error('should not ask OSM');
+      if (/list=geosearch/.test(u)) return { ok: true, json: async () => ({ query: { geosearch: [] } }) };
+      return { ok: true, json: async () => ({ entities: {}, query: { pages: {} } }) }; };
+    const bF = { south: 46.505, north: 46.545, west: 6.605, east: 6.655 };
+    core.setOsmStatic((key) => ({ stand: '2026-11-04', load: () => Promise.resolve(key === '46.500,6.600' ? [{ id: 'node/1', lat: 46.52, lon: 6.63, name: 'Musée Datei', names: {}, wd: '', wp: '', k: 'tourism=museum', x: {} }] : []) }));
+    const cF = core.circleFor(bF);
+    const rF = await core.loadPlaces({ lat: cF.lat, lon: cF.lon, radius: cF.radius, bbox: bF, cfg, fetch: fF, langs: ['de'] });
+    ok(!fcalls.some((u) => /overpass/.test(u)) && rF.places.some((p) => p.name === 'Musée Datei') && rF.stats.src.osm.state === 'ok', 'OSM from files: no Overpass, place found: ' + rF.stats.src.osm.state);
+    const bBig = { south: 46.40, north: 46.60, west: 6.50, east: 6.64 };
+    const cB = core.circleFor(bBig);
+    const rBig = await core.loadPlaces({ lat: cB.lat, lon: cB.lon, radius: cB.radius, bbox: bBig, cfg, fetch: fF, langs: ['de'] });
+    ok(rBig.stats.src.osm.state !== 'gross', 'file tiles do not count against max_kacheln: ' + rBig.stats.src.osm.state);
+    core.setOsmStatic(null);
+  }
   // v0.9.4: descriptions instead of names (monument lists)
   eq(core.displayName('Bodendenkmal in Geisenfeld, #D-1-7336-0006'), 'Bodendenkmal Geisenfeld', 'monument number never shown');
   eq(core.displayName('Pfarrhof, um einen geschlossenen Hof geordnete Anlage'), 'Pfarrhof', 'description after the comma dropped');
