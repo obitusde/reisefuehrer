@@ -42,7 +42,7 @@
   "dauer_min": { "3": 90, "2": 60, "1": 30, "0": 0 },
   "dauer_text": { "3": "ab 1,5 Std.", "2": "ca. 1 Std.", "1": "ca. 30 Min.", "0": "" },
 
-  "marker": { "stern1_ab_zoom": 16, "beschriftung_max_zeichen": 18 },
+  "marker": { "_hinweis": "v0.7.2: im sichtbaren Ausschnitt höchstens max_sichtbar Punkte, die wichtigsten zuerst; wo wenig ist, alle.", "max_sichtbar": 30, "beschriftung_max_zeichen": 18 },
 
   "uebersetzung": {
     "_hinweis": "Kurzinfo in der Liste: erster Satz des Wikipedia-Artikels, ins Deutsche übersetzt. chrome = Übersetzer im Browser (auf dem Gerät), mymemory = kostenloser Webdienst ohne Schlüssel (Tageslimit).",
@@ -119,6 +119,8 @@
       "qids": ["Q6501349"], "woerter": ["car park", "parking", "parkhaus", "parkplatz"] },
     { "id": "platz", "label": "Platz", "gewicht": 0, "kategorie": "sonstiges",
       "qids": ["Q174782"], "woerter": ["square", "plaza", "piazza", "platz", "*platz"] },
+    { "id": "freizeit", "label": "Freizeitpark/Zoo", "gewicht": 2.5, "kategorie": "natur", "qids": [],
+      "woerter": ["amusement park", "theme park", "water park", "zoo", "wildlife park", "safari park", "aquarium", "public aquarium", "freizeitpark", "erlebnispark", "tierpark", "wildpark", "vergnügungspark", "parc d'attractions"] },
     { "id": "park", "label": "Park/Garten", "gewicht": 0, "kategorie": "natur",
       "qids": ["Q22698", "Q1107656", "Q167346"], "woerter": ["park", "garden", "gardens", "botanical garden", "garten", "*garten", "*park"] },
     { "id": "natur", "label": "Natur", "gewicht": 1, "kategorie": "natur",
@@ -160,16 +162,17 @@
   "osm": {
     "_hinweis": "OpenStreetMap über Overpass (PROJEKT.md 5d). Kacheln 0,05°, 30 Tage zwischengespeichert, höchstens 2 Anfragen gleichzeitig. max_wartezeit_s = so lange wartet die Suche höchstens (Knopf „Ohne OSM weiter“ geht immer), server_timeout_s = Zeit je Server. filter = Overpass-Bedingungen (nur Objekte mit Namen). typen = OSM-Tag → Typ aus „typen“ unten. Bei Änderungen an filter: version um 1 erhöhen (leert den Zwischenspeicher).",
     "aktiv": true,
-    "version": 3,
+    "version": 4,
     "server": ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter"],
     "kachel_grad": 0.05,
-    "max_wartezeit_s": 120,
+    "max_wartezeit_s": 60,
     "vorbereiten_wartezeit_s": 600,
-    "server_timeout_s": 40,
+    "server_timeout_s": 25,
     "cache_tage": 30,
     "parallel": 2,
     "filter": [
-      "[\"tourism\"~\"^(attraction|museum|gallery|viewpoint|artwork)$\"]",
+      "[\"tourism\"~\"^(attraction|museum|gallery|viewpoint|artwork|theme_park|zoo|aquarium)$\"]",
+      "[\"leisure\"=\"water_park\"]",
       "[\"historic\"~\"^(castle|monument|memorial|ruins|archaeological_site|church|manor|city_gate|fort|tower|monastery|palace|bridge|ship|aircraft|locomotive|aqueduct|citywalls|mill|tomb|wreck)$\"][\"memorial\"!=\"plaque\"]",
       "[\"amenity\"~\"^(theatre|library|arts_centre)$\"]",
       "[\"leisure\"~\"^(park|garden)$\"]",
@@ -177,7 +180,7 @@
     ],
     "typen": {
       "tourism=museum": "museum", "tourism=gallery": "museum", "tourism=viewpoint": "aussicht", "tourism=artwork": "kunst",
-      "tourism=attraction": "attraktion", "historic=castle": "burg", "historic=fort": "burg", "historic=palace": "palast",
+      "tourism=attraction": "attraktion", "tourism=theme_park": "freizeit", "tourism=zoo": "freizeit", "tourism=aquarium": "freizeit", "leisure=water_park": "freizeit", "historic=castle": "burg", "historic=fort": "burg", "historic=palace": "palast",
       "historic=manor": "herrenhaus", "historic=monument": "denkmal", "historic=memorial": "denkmal", "historic=ruins": "archaeologie",
       "historic=archaeological_site": "archaeologie", "historic=church": "kirche", "historic=monastery": "kloster",
       "historic=city_gate": "denkmal", "historic=citywalls": "denkmal", "historic=tower": "turm", "historic=bridge": "bruecke",
@@ -336,6 +339,7 @@
     "ausflug_sterne": {"3": 9, "2": 7.5, "1": 6.5},
     "zoom": {"nur_grosse_bis": 8, "staedte_bis": 11},
     "max_marker": 160,
+    "max_sichtbar": 40,
     "stadt_woerter": ["city", "city status", "big city", "town", "village", "municipality", "commune", "comune", "hamlet", "human settlement", "metropolis", "market town", "spa town", "stadt", "gemeinde"],
     "ausschluss_woerter": ["district", "region", "province", "department", "state", "canton", "country", "county", "arrondissement", "metropolitan area", "urban area", "agglomeration", "borough", "quarter", "neighbourhood", "neighborhood", "locality", "constituency", "diocese", "archdiocese", "parish", "deanery", "mountain range", "river", "stream", "railway", "railway line", "station", "railway station", "metro station", "airport", "airfield", "stadium", "arena", "university", "college", "school", "hospital", "company", "business", "enterprise", "organization", "road", "street", "motorway", "highway", "power station", "nuclear power plant", "military base", "barracks", "prison", "army", "football club", "sports club", "hotel"],
     "stadt_sicher_woerter": ["city", "city status", "big city", "capital city", "national capital", "town", "village", "market town", "spa town", "metropolis", "hamlet"],

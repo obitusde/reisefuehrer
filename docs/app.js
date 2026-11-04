@@ -1,8 +1,8 @@
-/* Reiseführer – app (v0.7.1). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.7.2). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.7.1';
+  var VERSION = '0.7.2';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
@@ -166,6 +166,7 @@
     if (['kurz', 'normal', 'ausfuehrlich'].indexOf(settings.level) < 0) settings.level = (cfg.erzaehlen && cfg.erzaehlen.standard_ausfuehrlichkeit) || 'kurz';
     if (settings.focus == null) settings.focus = '';
     if (!settings.uebergabe) settings.uebergabe = cfg.claude_uebergabe || 'claude-new';
+    if (['claude', 'gemini'].indexOf(settings.assistent) < 0) settings.assistent = 'claude'; // v0.7.2
     if (settings.hideHeard == null) settings.hideHeard = false;
     if (settings.osm == null) settings.osm = true;
     saveSettings();
@@ -206,6 +207,7 @@
     map.on('zoomend', function () { renderMarkers(); scheduleCities(); });
     map.on('moveend', function () {
       scheduleCities();
+      scheduleMarkers();
       var c = map.getCenter();
       LS.set(K.view, { lat: c.lat, lon: c.lng, z: map.getZoom() });
     });
@@ -287,13 +289,16 @@
     if (!map) return;
     markerLayer.clearLayers();
     if (cityMode()) return; // zoomed out: city stars instead of single places (v0.7.0)
-    var z = map.getZoom(), minZoomSmall = (cfg.marker && cfg.marker.stern1_ab_zoom) || 16;
-    var maxChars = (cfg.marker && cfg.marker.beschriftung_max_zeichen) || 18;
+    var mc = cfg.marker || {}, maxChars = mc.beschriftung_max_zeichen || 18;
+    // v0.7.2: not too many at once – in the visible section only the most important ones (max_sichtbar);
+    // where there is little (Le Brassus), everything. Same rule at every zoom.
+    var vb = viewBbox(), dy = (vb.north - vb.south) * 0.05, dx = (vb.east - vb.west) * 0.05;
+    var pad = { south: vb.south - dy, north: vb.north + dy, west: vb.west - dx, east: vb.east + dx };
     var shown = visiblePlaces().filter(function (p) {
-      return p.geprueft && (p.sterne >= 2 || z >= minZoomSmall || p.id === selectedId); // never pin unverified places
+      return (p.geprueft || p.id === selectedId) && C.inBbox(p, pad); // never pin unverified places
     }).sort(function (a, b) {
       return ((b.id === selectedId) - (a.id === selectedId)) || (b.sterne - a.sterne) || (b.score - a.score);
-    });
+    }).slice(0, mc.max_sichtbar || 30);
     var boxes = [];
     function free(bx) {
       return !boxes.some(function (o) { return bx.x1 < o.x2 && bx.x2 > o.x1 && bx.y1 < o.y2 && bx.y2 > o.y1; });
@@ -302,6 +307,8 @@
       var sel = p.id === selectedId;
       var pt = map.latLngToContainerPoint([p.lat, p.lon]);
       var r = dotR(p), px = LBL_PX[p.sterne] || 11;
+      // crowded: a less important dot on top of a more important one is left out
+      if (!sel && p.sterne < 3 && !free({ x1: pt.x - r, y1: pt.y - r, x2: pt.x + r, y2: pt.y + r })) return;
       var label = C.shortLabel(p.name, last && last.ort, maxChars);
       var w = textWidth(label, px) + 3;
       var right = { x1: pt.x + r + 2, y1: pt.y - px * 0.75, x2: pt.x + r + 2 + w, y2: pt.y + px * 0.75 };
@@ -320,6 +327,9 @@
       markerLayer.addLayer(m);
     });
   }
+
+  var markerTimer = null;
+  function scheduleMarkers() { clearTimeout(markerTimer); markerTimer = setTimeout(renderMarkers, 120); }
 
   // ------------------------------------------------------ city stars (v0.7.0)
   // Zoomed out: cities with stars and big sights outside cities instead of single places (PROJEKT.md 6c).
@@ -374,7 +384,9 @@
       if (!big) (d.orte || []).forEach(function (x) { if (C.inBbox(x, pad) && !seen[x.q]) { seen[x.q] = 1; list.push({ k: 'o', x: x, s: C.ortStars(x.score, cfg) }); } });
     });
     list.sort(function (a, b2) { return (b2.s - a.s) || ((a.k === 'c') ? -1 : 0) - ((b2.k === 'c') ? -1 : 0) || (b2.x.score - a.x.score); });
-    list = list.slice(0, c.max_marker || 160);
+    // v0.7.2: in the visible section at most max_sichtbar markers, the most important first
+    var nIn = 0, maxIn = c.max_sichtbar || 40;
+    list = list.slice(0, c.max_marker || 160).filter(function (it) { if (!C.inBbox(it.x, b)) return true; return nIn++ < maxIn; });
     var boxes = [];
     function free(bx) { return !boxes.some(function (o) { return bx.x1 < o.x2 && bx.x2 > o.x1 && bx.y1 < o.y2 && bx.y2 > o.y1; }); }
     list.forEach(function (it) {
@@ -1180,20 +1192,43 @@
     handOver(C.buildReviewPrompt(p, cfg), '', Date.now());
   }
 
-  // Copies the prompt and opens Claude (method from the settings)
+  // v0.7.2: Claude or Gemini (⚙). Claude can be opened with the text; for Gemini no such link is known,
+  // so the text is copied and Gemini opened (or handed over with Android "Teilen").
+  var AI = {
+    claude: { name: 'Claude', app: 'claude://claude.ai/new', direkt: function (t) { return C.claudeNewUrl(t); } },
+    gemini: { name: 'Gemini', app: 'https://gemini.google.com/app', direkt: null }
+  };
+  function aiNow() { return AI[settings.assistent] || AI.claude; }
+  function aiMethod() {
+    var m = settings.uebergabe, ai = aiNow();
+    if (m === 'teilen' && !navigator.share) m = 'kopieren-app';
+    if (m === 'claude-new' && !ai.direkt) m = 'kopieren-app';
+    return m;
+  }
+  // Copies the prompt and opens the assistant (method from the settings)
   function handOver(pr, extra, t0) {
     narr.prompt = pr.text;
+    var ai = aiNow(), method = aiMethod();
     return copyText(pr.text).then(function (copied) {
-      var method = settings.uebergabe;
-      narr.url = method === 'kopieren' ? '' : method === 'kopieren-app' ? 'claude://claude.ai/new' : C.claudeNewUrl(pr.text);
+      narr.url = method === 'kopieren' || method === 'teilen' ? '' : method === 'kopieren-app' ? ai.app : ai.direkt(pr.text);
       var info = (copied ? 'Prompt kopiert' : 'Kopieren nicht möglich') + ' (' + pr.length.toLocaleString('de-DE') + ' Zeichen' + (extra || '') + ').';
-      var hint = method === 'claude-new' ? ' Claude öffnet sich mit dem Text.' : method === 'kopieren-app' ? ' In Claude lange ins Eingabefeld tippen → Einfügen.' : ' In Claude einfügen.';
+      var hint = method === 'claude-new' ? ' ' + ai.name + ' öffnet sich mit dem Text.'
+        : method === 'kopieren-app' ? ' In ' + ai.name + ' lange ins Eingabefeld tippen → Einfügen.'
+        : method === 'teilen' ? ' Im Teilen-Menü ' + ai.name + ' wählen.' : ' In ' + ai.name + ' einfügen.';
       setTellStatus('<p>' + esc(info + hint) + '</p><div class="actions">' +
         '<button class="btn" type="button" data-a="recopy">Nochmal kopieren</button>' +
-        (narr.url ? '<a class="btn primary" href="' + esc(narr.url) + '">Claude öffnen</a>' : '') + '</div>');
-      // open Claude directly if the tap is still "fresh"; otherwise the user taps "Claude öffnen"
-      if (narr.url && Date.now() - t0 < 4000) window.location.href = narr.url;
+        (method === 'teilen' ? '<button class="btn primary" type="button" data-a="aishare">Teilen …</button>' : '') +
+        (narr.url ? '<a class="btn primary" href="' + esc(narr.url) + '">' + esc(ai.name) + ' öffnen</a>' : '') + '</div>');
+      // open directly if the tap is still "fresh"; otherwise the user taps the button
+      if (Date.now() - t0 < 4000) {
+        if (narr.url) window.location.href = narr.url;
+        else if (method === 'teilen') aiShare();
+      }
     });
+  }
+  function aiShare() {
+    if (!narr || !narr.prompt || !navigator.share) return;
+    navigator.share({ text: narr.prompt }).catch(function () { /* cancelled */ });
   }
 
   function markHeard(id, on) {
@@ -1268,10 +1303,16 @@
       [['google', 'Google Maps (Web-Link, empfohlen)'], ['geo', 'Android-Karten-App (geo:-Link, Auswahl möglich)'], ['osmand', 'OsmAnd (öffnet OsmAnd+; „Pin“ per geo:-Link)']].map(function (o) {
         return '<label class="opt"><input type="radio" name="kapp" value="' + o[0] + '"' + (settings.kartenApp === o[0] ? ' checked' : '') + '> ' + o[1] + '</label>';
       }).join('') +
-      '<h3>„Erzähl mir davon“: Übergabe an Claude</h3>' +
-      [['claude-new', 'Claude-App mit fertigem Text öffnen (empfohlen)'], ['kopieren-app', 'Text kopieren und Claude-App öffnen'], ['kopieren', 'Nur kopieren']].map(function (o) {
-        return '<label class="opt"><input type="radio" name="uebergabe" value="' + o[0] + '"' + (settings.uebergabe === o[0] ? ' checked' : '') + '> ' + o[1] + '</label>';
+      '<h3>KI-Assistent für „Erzähl mir davon“ und „Übersicht“</h3>' +
+      [['claude', 'Claude'], ['gemini', 'Gemini']].map(function (o) {
+        return '<label class="opt"><input type="radio" name="assistent" value="' + o[0] + '"' + (settings.assistent === o[0] ? ' checked' : '') + '> ' + o[1] + '</label>';
       }).join('') +
+      '<h3>Übergabe an ' + esc(aiNow().name) + '</h3>' +
+      (aiNow().direkt ? [['claude-new', 'App mit fertigem Text öffnen (empfohlen)']] : []).concat(
+        [['kopieren-app', 'Text kopieren und App öffnen' + (aiNow().direkt ? '' : ' (empfohlen)')], ['teilen', 'Über Android „Teilen“ (App im Menü wählen)'], ['kopieren', 'Nur kopieren']]).map(function (o) {
+        return '<label class="opt"><input type="radio" name="uebergabe" value="' + o[0] + '"' + (aiMethod() === o[0] ? ' checked' : '') + '> ' + o[1] + '</label>';
+      }).join('') +
+      (aiNow().direkt ? '' : '<p class="small">Für Gemini ist kein Link bekannt, der den Text gleich einfügt. Testknöpfe dafür: <a href="diag.html#v072">Diagnose</a>.</p>') +
       '<h3>Schon gehört</h3>' +
       '<label class="opt"><input type="checkbox" id="hideHeard"' + (settings.hideHeard ? ' checked' : '') + '> Schon gehörte Orte in Liste und Karte ausblenden</label>' +
       '<div class="actions"><button class="btn wide" type="button" data-a="clearheard">Liste „Schon gehört“ leeren (' + Object.keys(heard).length + ')</button></div>' +
@@ -1745,6 +1786,8 @@
         Array.prototype.forEach.call(document.querySelectorAll('[data-a="level"]'), function (b) { b.classList.toggle('on', b === el); });
         setTellStatus('');
         if (narr) articleFor(settings.level).catch(function () {});
+      } else if (a === 'aishare') {
+        aiShare();
       } else if (a === 'recopy') {
         if (narr && narr.prompt) copyText(narr.prompt).then(function (ok) { toast(ok ? 'Prompt nochmal kopiert' : 'Kopieren nicht möglich'); });
       } else if (a === 'heard' && p) {
@@ -1797,6 +1840,7 @@
     $('sheetBody').addEventListener('change', function (e) {
       if (e.target.id === 'focusSel') { settings.focus = e.target.value; saveSettings(); setTellStatus(''); return; }
       if (e.target.name === 'uebergabe') { settings.uebergabe = e.target.value; saveSettings(); toast('Übergabe gespeichert'); return; }
+      if (e.target.name === 'assistent') { settings.assistent = e.target.value; saveSettings(); refreshSettings(); toast(aiNow().name + ' gewählt'); return; }
       if (e.target.id === 'useOsm') { settings.osm = e.target.checked; saveSettings(); toast('Gilt ab der nächsten Suche'); return; }
       if (e.target.id === 'autoFs') { settings.vollbild = e.target.checked; saveSettings(); return; }
       if (e.target.id === 'showCities') { settings.staedte = e.target.checked; saveSettings(); renderMarkers(); scheduleCities(); return; }

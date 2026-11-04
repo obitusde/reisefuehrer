@@ -219,7 +219,7 @@ eq(core.tileKeys(53.4792, -2.2442, 10000, 0.1).length, 12, 'tiles for 10 km with
 const tk = core.tileKeys(53.4792, -2.2442, 1000, 0.05);
 ok(tk.length === 2 && new Set(tk).size === 2 && tk.includes('53.450,-2.300') && tk.includes('53.450,-2.250'), 'v0.5: 0.05° tiles have distinct keys: ' + tk.join(' '));
 const bq = core.overpassQuery('53.450,-2.250', cfg);
-ok(bq.includes('(53.4500,-2.2500,53.5000,-2.2000)') && bq.includes('[timeout:40]'), 'overpass bbox from key');
+ok(bq.includes('(53.4500,-2.2500,53.5000,-2.2000)') && bq.includes('[timeout:25]'), 'overpass bbox from key');
 // v0.5: map section
 const vb = { south: 53.47, west: -2.26, north: 53.49, east: -2.23 };
 const vs = core.bboxSize(vb);
@@ -508,6 +508,12 @@ eq(core.iconFor('sonstiges', cfg), '', 'other: plain dot');
   const lr4 = await core.loadCityTiles(core.cityTiles(core.bboxOf([47, 5, 55, 15]), 1), cfgT, fSplit, { control: ctl });
   ok(lr4.queries === 0, 'cancel stops before the next tile');
 }
+
+// ---- v0.7.2: leisure parks and zoos
+eq(core.classify([], ['amusement park'], [''], ['Fort Fun Abenteuerland'], cfg), 'freizeit', 'amusement park is a leisure park');
+eq(core.classify([], ['zoo'], [''], ['Zoo Zürich'], cfg), 'freizeit', 'zoo');
+eq(core.classify([], ['park'], [''], ['Stadtpark'], cfg), 'park', 'plain park stays park');
+eq(core.classify([], ['car park'], [''], ['P1'], cfg), 'parkplatz', 'car park stays car park');
 
 // ---- version consistency across files
 const v = JSON.parse(fs.readFileSync(path.join(ROOT, 'docs/version.json'), 'utf8')).version;

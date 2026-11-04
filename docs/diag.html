@@ -105,6 +105,21 @@
 <p><a class="btn secondary" href="index.html">Zur App</a></p>
 
 <!-- ======================= v0.7 ======================= -->
+<section class="card" id="v072">
+  <h2>v0.7.2 – Gemini</h2>
+  <p class="muted">Drei Arten, Gemini mit einem Text zu öffnen. Jeden Knopf antippen, zurück in den Browser wechseln und ankreuzen, was passiert ist.</p>
+  <div id="gemTests"></div>
+  <label for="v72note">Notiz</label>
+  <input type="text" id="v72note" placeholder="z. B. „B öffnet Gemini, Text steht aber nicht drin“" autocomplete="off">
+  <h2 style="margin-top:16px">Zusammenfassung v0.7.2</h2>
+  <textarea id="v72summary" readonly rows="8"></textarea>
+  <div class="row">
+    <button id="v72copy" type="button">Kopieren</button>
+    <button id="v72share" type="button" class="secondary">Teilen</button>
+  </div>
+  <div class="status" id="v72status"></div>
+</section>
+
 <section class="card" id="v07">
   <h2>v0.7 – Installieren, Symbole, Stadt-Sterne</h2>
   <h2 style="margin-top:12px">1. Installieren</h2>
@@ -304,7 +319,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '0.7.1';
+  var VERSION = '0.7.2';
   var KEY = 'rf.diag.v1';
 
   var TESTS = [
@@ -615,14 +630,14 @@
   init();
 })();
 </script>
-<script src="core.js?v=0.7.1"></script>
+<script src="core.js?v=0.7.2"></script>
 <script>
 /* v0.2 diagnostics: API checks, gold list, manual checklist, summary */
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
   var KEY = 'rf.diag.v2';
-  var DV = '0.7.1';
+  var DV = '0.7.2';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function load() { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { return {}; } }
@@ -897,7 +912,7 @@
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
-  var KEY = 'rf.diag.v3', DV = '0.7.1';
+  var KEY = 'rf.diag.v3', DV = '0.7.2';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -974,7 +989,7 @@
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
-  var KEY = 'rf.diag.v6', DV = '0.7.1';
+  var KEY = 'rf.diag.v6', DV = '0.7.2';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -1075,7 +1090,7 @@
 /* v0.7 diagnostics: installability, checklist (symbols, city stars) */
 (function () {
   'use strict';
-  var KEY = 'rf.diag.v7', DV = '0.7.1';
+  var KEY = 'rf.diag.v7', DV = '0.7.2';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -1157,6 +1172,62 @@
   });
   if (!navigator.share) $('v7share').style.display = 'none';
   $('v7share').addEventListener('click', function () { render(); navigator.share({ title: 'Reiseführer Diagnose v0.7', text: $('v7summary').value }).catch(function () {}); });
+})();
+</script>
+<script>
+/* v0.7.2: how can Gemini be opened with a text? */
+(function () {
+  var KEY = 'rf.diag.v72', DV = '0.7.2';
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
+  st.r = st.r || {};
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) { /* ignore */ } }
+  var TXT = 'Testtext vom Reiseführer: Erzähl mir in drei Sätzen etwas über das Schloss Chillon.';
+  var TESTS = [
+    ['a', 'A: Gemini öffnen (so macht es die App: Text vorher kopiert)', 'https://gemini.google.com/app'],
+    ['b', 'B: Gemini-Link mit Text (?q=, nicht offiziell)', 'https://gemini.google.com/app?q=' + encodeURIComponent(TXT)],
+    ['c', 'C: Android „Teilen“ → Gemini wählen', '']
+  ];
+  var RES = [['text', 'Gemini offen, Text steht drin'], ['leer', 'Gemini offen, ohne Text'], ['browser', 'Nur im Browser'], ['nichts', 'Nichts / Fehler'], ['fehlt', 'Gemini nicht im Menü']];
+  $('gemTests').innerHTML = TESTS.map(function (t) {
+    return '<div style="margin:10px 0"><button type="button" class="secondary" data-g="' + t[0] + '">' + esc(t[1]) + '</button><div class="results">' +
+      RES.filter(function (r) { return t[0] === 'c' || r[0] !== 'fehlt'; }).map(function (r) {
+        return '<label><input type="radio" name="g' + t[0] + '" value="' + r[0] + '"' + (st.r[t[0]] === r[0] ? ' checked' : '') + '> ' + esc(r[1]) + '</label>';
+      }).join('') + '</div></div>';
+  }).join('');
+  $('v72note').value = st.note || '';
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('[data-g]');
+    if (!b) return;
+    var t = TESTS.filter(function (x) { return x[0] === b.getAttribute('data-g'); })[0];
+    try { navigator.clipboard.writeText(TXT); } catch (err) { /* ignore */ }
+    if (t[2]) window.location.href = t[2];
+    else if (navigator.share) navigator.share({ text: TXT }).catch(function () {});
+    else alert('Teilen wird von diesem Browser nicht unterstützt.');
+  });
+  document.addEventListener('change', function (e) {
+    var m = /^g([abc])$/.exec(e.target.name || '');
+    if (m) { st.r[m[1]] = e.target.value; save(); render(); }
+    if (e.target.id === 'v72note') { st.note = e.target.value; save(); render(); }
+  });
+  $('v72note').addEventListener('input', function () { st.note = this.value; save(); render(); });
+  function render() {
+    var L = ['Reiseführer Diagnose v' + DV + ' – Gemini', 'Datum: ' + new Date().toLocaleString('de-DE'), 'Gerät: ' + navigator.userAgent, ''];
+    TESTS.forEach(function (t) {
+      var r = RES.filter(function (x) { return x[0] === st.r[t[0]]; })[0];
+      L.push(t[1] + ': ' + (r ? r[1] : 'nicht getestet'));
+    });
+    if (st.note) L.push('', 'Notiz: ' + st.note);
+    $('v72summary').value = L.join('\n');
+  }
+  $('v72copy').addEventListener('click', function () {
+    navigator.clipboard.writeText($('v72summary').value).then(function () { $('v72status').textContent = 'Kopiert.'; }, function () { $('v72status').textContent = 'Kopieren nicht möglich.'; });
+  });
+  $('v72share').addEventListener('click', function () {
+    if (navigator.share) navigator.share({ text: $('v72summary').value }).catch(function () {});
+  });
+  render();
 })();
 </script>
 </body>

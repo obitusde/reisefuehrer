@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.7.2 – 04.11.2026 – Nicht zu viele Punkte, Freizeitparks, Gemini
+
+Wunsch Nutzer: Auf der Karte nicht zu viele Elemente; wenn viel da ist, nur die wichtigen, wenn wenig da ist (Le Brassus), alles. Freizeitparks wie Fort Fun als Ausflugsziele. In den Einstellungen zwischen Claude und Gemini wählen.
+
+- **Karte**: Im sichtbaren Ausschnitt stehen höchstens 30 Orte, die wichtigsten zuerst (Sterne, dann Punkte). Ist wenig da, stehen alle da, auch ohne Stern. Bisher kamen ★-Orte und Orte ohne Stern erst ab Zoom 16. Liegen zwei Punkte aufeinander, fällt der unwichtigere weg. Beim Verschieben wird neu ausgewählt. Gilt auch für die Stadt-Sterne beim Herauszoomen (höchstens 40).
+- **Freizeitparks, Zoos, Tierparks, Aquarien, Spaßbäder**: eigene Art „Freizeitpark/Zoo“ (Wikipedia/Wikidata), und OpenStreetMap liefert sie jetzt mit (`tourism=theme_park|zoo|aquarium`, `leisure=water_park`). Der OSM-Zwischenspeicher wird dafür einmal geleert.
+- **OpenStreetMap wartet kürzer**: höchstens 25 s je Server (vorher 40 s), die Liste wartet höchstens 60 s (vorher 120 s). In Le Brassus kam nach 214 s keine Antwort.
+- **⚙ → KI-Assistent: Claude oder Gemini**. Bei Gemini: Text kopieren und Gemini öffnen (lange ins Eingabefeld tippen → Einfügen), oder über Android „Teilen“, oder nur kopieren. Der Knopf heißt dann „Gemini öffnen“.
+- **Diagnose**: neuer Abschnitt v0.7.2 mit drei Testknöpfen für Gemini.
+
+### Annahmen/Abweichungen
+
+- **Kein Gemini-Link mit fertigem Text**: Einen offiziellen Weg, Gemini mit einem Text zu öffnen, kenne ich nicht. Der Testknopf B in der Diagnose probiert `gemini.google.com/app?q=…` aus; klappt das, wird es die Voreinstellung.
+- **Stadt-Sterne im Sauerland**: Daran ändert v0.7.2 nichts. Dafür kommt v0.8 (Verzeichnis mit allen Orten).
+
 ## v0.7.1 – 03.11.2026 – Suche springt nur noch
 
 Wunsch Nutzer: Nach dem Springen zu einem Suchtreffer nicht gleich suchen, sondern erst die Karte einstellen und dann im gewählten Ausschnitt suchen.
