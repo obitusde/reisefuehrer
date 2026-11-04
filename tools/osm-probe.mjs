@@ -23,14 +23,22 @@ async function overpass(q) {
   throw new Error('kein Overpass-Server erreichbar');
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const all = await overpass('[out:json][timeout:60];nwr["name"~"' + pat.replace(/"/g, '') + '",i](' + bbox + ');out tags center;');
-console.log('Alle Objekte mit Namen /' + pat + '/ in ' + bbox + ' (' + all.url + '): ' + all.els.length);
-const app = await overpass('[out:json][timeout:60];(' + cfg.osm.filter.map((f) => 'nwr["name"]' + f + '(' + bbox + ');').join('') + ');out ids;');
-const inApp = new Set(app.els.map((x) => x.type + '/' + x.id));
-console.log('Der App-Filter (config.json osm.filter) findet im Bereich ' + app.els.length + ' Objekte.\n');
-const KEYS = ['tourism', 'leisure', 'zoo', 'historic', 'amenity', 'natural', 'boundary', 'landuse', 'wikidata', 'wikipedia'];
+console.log('Alle Objekte mit Namen /' + pat + '/ in ' + bbox + ' (' + all.url + '): ' + all.els.length + '\n');
+const KEYS = ['tourism', 'leisure', 'zoo', 'historic', 'amenity', 'natural', 'boundary', 'landuse', 'building', 'wikidata', 'wikipedia'];
 for (const x of all.els) {
-  const t = x.tags || {};
+  const t = x.tags || {}, c = x.center || x;
   const tags = KEYS.filter((k) => t[k]).map((k) => k + '=' + t[k]).join(', ');
-  console.log((inApp.has(x.type + '/' + x.id) ? '  ✓ App findet es: ' : '  ✗ App findet es nicht: ') + t.name + ' (' + x.type + ' ' + x.id + ') – ' + (tags || 'keine passenden Tags'));
+  // does the app's OSM query (config.json osm.filter) find it? Same query as the app, in a small box around the object
+  let mark = '?';
+  for (let tries = 0; tries < 3 && mark === '?'; tries++) {
+    try {
+      const b = [c.lat - 0.003, c.lon - 0.003, c.lat + 0.003, c.lon + 0.003].map((v) => v.toFixed(4)).join(',');
+      const r = await overpass('[out:json][timeout:25];(' + cfg.osm.filter.map((f) => 'nwr["name"]' + f + '(' + b + ');').join('') + ');out ids;');
+      mark = r.els.some((y) => y.type === x.type && y.id === x.id) ? '✓ App findet es' : '✗ App findet es nicht';
+    } catch (err) { await sleep(5000); }
+  }
+  console.log('  ' + mark + ': ' + t.name + ' (' + x.type + ' ' + x.id + ', ' + (+c.lat).toFixed(4) + ',' + (+c.lon).toFixed(4) + ') – ' + (tags || 'keine passenden Tags'));
+  await sleep(1000);
 }
