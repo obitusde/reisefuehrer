@@ -630,6 +630,21 @@ eq(core.classify(['Q4830453'], ['company', 'museum'], [''], ['Firma X'], cfg), '
   eq(core.firstSentence('Die Moschee wurde in der Manisa Straße am 18. Oktober 2009 eröffnet. Sie ist groß.'),
     'Die Moschee wurde in der Manisa Straße am 18. Oktober 2009 eröffnet.', 'ordinal "18. Oktober" is no sentence end');
   eq(core.firstSentence('Das Haus wurde 2009 gebaut. Danach mehr.'), 'Das Haus wurde 2009 gebaut.', 'normal sentence end still works');
+  // v0.9.4: descriptions instead of names (monument lists)
+  eq(core.displayName('Bodendenkmal in Geisenfeld, #D-1-7336-0006'), 'Bodendenkmal Geisenfeld', 'monument number never shown');
+  eq(core.displayName('Pfarrhof, um einen geschlossenen Hof geordnete Anlage'), 'Pfarrhof', 'description after the comma dropped');
+  eq(core.displayName('Ehemalige Klosterkirche, jetzt katholische Filialkirche St. Antonius'), 'Ehemalige Klosterkirche', 'long title shortened');
+  eq(core.displayName('Kloster Ettal, Benediktinerabtei'), 'Kloster Ettal, Benediktinerabtei', 'capital after the comma is part of the name');
+  eq(core.displayName('Köln, Dom'), 'Köln, Dom', 'short names stay');
+  ok(core.isDescriptiveName('Bodendenkmal in Rohrbach (Ilm), #D-1-7335-0110') && !core.isDescriptiveName('Neues Schloss'), 'descriptive names recognised');
+  eq(JSON.stringify(core.mapLabel('Bodendenkmal in Geisenfeld, #D-1-7336-0006', '', 16, 2)), '["Bodendenkmal","Geisenfeld"]', 'map label without number');
+  {
+    const dcx = core.directoryConfig(cfg);
+    const its = [{ q: 'Qa', name: 'Pfarrhof, um einen geschlossenen Hof geordnete Anlage', lat: 48.7, lon: 11.4, sl: 3, land: [], _c: false, _s: { score: 5.5, typ: 'denkmal' } },
+      { q: 'Qb', name: 'Burg Marching', lat: 48.71, lon: 11.4, sl: 3, land: [], _c: false, _s: { score: 5.5, typ: 'burg' } }];
+    const rr = core.computeDirectory(its, dcx, null, { copy: true });
+    ok(rr.orte.find((o) => o.q === 'Qa').low && !rr.orte.find((o) => o.q === 'Qb').low, 'descriptive monument names only from zoom.alle');
+  }
   const b13 = { south: 48.725, north: 48.795, west: 11.365, east: 11.435 }, b12 = { south: 48.66, north: 48.86, west: 11.33, east: 11.47 };
   const k13 = core.osmTileKeys([core.circleFor(b13)], cfg, b13), k13c = core.osmTileKeys([core.circleFor(b13)], cfg);
   ok(k13.length <= cfg.osm.max_kacheln && k13.length < k13c.length, 'zoom-13 section: OSM tiles only where the section is (' + k13.length + ' instead of ' + k13c.length + ')');

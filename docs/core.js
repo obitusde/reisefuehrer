@@ -1,5 +1,5 @@
 /*
- * Reiseführer – core logic (v0.9.3)
+ * Reiseführer – core logic (v0.9.4)
  * Shared by the app (index.html), the diagnostics page (diag.html) and Node tests.
  * No DOM access here. Network access only through the injected fetch function.
  */
@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var CORE_VERSION = '0.9.3';
+  var CORE_VERSION = '0.9.4';
 
   // ---------------------------------------------------------------- helpers
 
@@ -823,6 +823,26 @@
     return t && rest.length > t[1].length + 2 ? rest : name;
   }
 
+  // v0.9.4: names from Wikidata/Wikipedia that are really descriptions ("Bodendenkmal in Geisenfeld, #D-1-7336-0006",
+  // "Pfarrhof, um einen geschlossenen Hof geordnete Anlage"): monument numbers never, the clause after the comma only
+  // when it starts in lower case (a description, not part of the name) or the name is very long.
+  function displayName(name) {
+    var raw = String(name || '').trim();
+    var s = raw.replace(/\s*[,;(–-]*\s*#\s*[\w-]*\d[\w-]*\)?/g, '').replace(/\s*[,;(]*\s*\b[A-Z]-\d-\d{3,}(?:-\d+)*\)?/g, '')
+      .replace(/^(Bodendenkmal|Baudenkmal)\s+in\s+/i, '$1 ').replace(/\s+/g, ' ').replace(/[\s,;–-]+$/, '').trim();
+    var i = s.indexOf(',');
+    if (i > 0) {
+      var head = s.slice(0, i).trim(), tail = s.slice(i + 1).trim();
+      if (head.length >= 5 && (/^[a-zäöüß]/.test(tail) || (s.length > 45 && head.length >= 10))) s = head;
+    }
+    return s || raw;
+  }
+  /** A name that is a description (monument lists): such a sight only counts from the closest zoom. */
+  function isDescriptiveName(name) {
+    var n = String(name || '').trim();
+    return displayName(n) !== n || /^(Bodendenkmal|Baudenkmal)\b/i.test(n);
+  }
+
   /**
    * Label of a map point in up to `lines` lines of about `max` characters (v0.9.3, before: one line, 18 characters).
    * Without the town ("Manchester Cathedral" -> "Cathedral", see shortLabel), without a bracket at the end
@@ -830,7 +850,7 @@
    */
   function mapLabel(name, ort, max, lines) {
     max = max || 16; lines = lines || 2;
-    var s = shortLabel(name, ort, 1000).replace(/\s*\([^()]*\)\s*$/, '').trim() || String(name || '').trim();
+    var s = shortLabel(displayName(name), ort, 1000).replace(/\s*\([^()]*\)\s*$/, '').trim() || String(name || '').trim();
     s = dropNationalPrefix(s);
     var words = s.split(/\s+/).filter(Boolean), out = [], cur = '';
     var longWord = max + 6; // long German compounds stay whole
@@ -1991,7 +2011,7 @@
     // v0.9.3: below nah_ab points only when zoomed in very close (zoom.alle): then everything with an article
     var za = (v.zoom && v.zoom.alle) || 15;
     var orte = sights.filter(function (s) { return inLand(s.x); }).map(function (s) {
-      var inStar = s.city && s.city.st > 0, low = s.score < (v.nah_ab || 0);
+      var inStar = s.city && s.city.st > 0, low = s.score < (v.nah_ab || 0) || (s.st < 2 && isDescriptiveName(s.x.name));
       var z = low ? za : s.st >= 3 ? 0 : s.st === 2 ? zr : s.st === 1 && !inStar ? zr : zn;
       return { name: s.x.name, q: s.x.q, lat: +s.x.lat.toFixed(4), lon: +s.x.lon.toFixed(4), score: s.score, st: s.st, z: z, typ: s.typ,
         natur: s.natur || undefined, unesco: s.x.u || undefined, stadt: s.city ? s.city.name : undefined, low: low || undefined };
@@ -2166,7 +2186,7 @@
     buildPlaces: buildPlaces, sortPlaces: sortPlaces, loadPlaces: loadPlaces,
     reverseGeocode: reverseGeocode, languagesFor: languagesFor, localLanguage: localLanguage,
     searchPlaces: searchPlaces, isLatin: isLatin, pickNames: pickNames,
-    shortLabel: shortLabel, mapLabel: mapLabel, osmTileKeys: osmTileKeys, dropNationalPrefix: dropNationalPrefix, stripLocation: stripLocation, firstSentence: firstSentence,
+    shortLabel: shortLabel, mapLabel: mapLabel, displayName: displayName, isDescriptiveName: isDescriptiveName, osmTileKeys: osmTileKeys, dropNationalPrefix: dropNationalPrefix, stripLocation: stripLocation, firstSentence: firstSentence,
     dropLocation: dropLocation, shortInfo: shortInfo, splitSentences: splitSentences,
     articleFor: articleFor, loadIntros: loadIntros, translate: translate,
     cleanArticle: cleanArticle, cutAtSentence: cutAtSentence, loadArticle: loadArticle,

@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.9.4 – 04.11.2026 – Keine Denkmal-Nummern, kurze Namen, „Details laden?“
+
+Wünsche Nutzer (Ingolstadt/Kelheim, Zoom 11): „Bodendenkmal in Geisenfeld, #D-1-7336-0006“ und „Pfarrhof, um einen geschlossenen Hof geordnete Anlage“ auf der Karte, zu langer Titel „Ehemalige Klosterkirche, jetzt katholische Filialkirche St. Antonius“, Frage nach Details beim Hineinzoomen.
+
+- **Ursache**: Diese Einträge kommen aus der bayerischen Denkmalliste in Wikidata, ihr „Name“ ist eine Beschreibung. Die kursiven Namen der Ausflugsziele bei weiter Sicht nutzten die Zwei-Zeilen-Namen aus v0.9.3 noch nicht.
+- **Denkmal-Nummern nie anzeigen** (`#D-…`, auch „D-1-7336-0006“): Karte, Liste, Strecke, Merkliste, Fensterüberschrift.
+- **Lange Namen kürzen** (`core.displayName`, überall gleich):
+  - „Bodendenkmal in Geisenfeld, #D-…“ → „Bodendenkmal Geisenfeld“.
+  - Beginnt der Teil nach dem ersten Komma mit einem Kleinbuchstaben (eine Beschreibung, kein Namensteil), fällt er weg: „Pfarrhof, um einen …“ → „Pfarrhof“; „Ehemalige Klosterkirche, jetzt katholische …“ → „Ehemalige Klosterkirche“.
+  - Sehr lange Namen (über 45 Zeichen) werden auch bei großem Anfangsbuchstaben am Komma gekürzt, wenn davor mindestens 10 Zeichen stehen.
+  - „Kloster Ettal, Benediktinerabtei“ und „Köln, Dom“ bleiben.
+  - Im Fenster steht der gekürzte Name groß, der volle klein darunter („Voller Name: …“).
+- **Kursive Namen bei weiter Sicht** auch in bis zu 2 Zeilen (16 Zeichen), mit denselben Regeln wie bei den Punkten.
+- **Beschreibungen als Namen erst ab Zoom 15**: Wer einen solchen Namen trägt und unter ★★ liegt, erscheint wie die Ziele unter 4 Punkten erst ab Zoom 15 (und nur mit „Alle Orte“), nicht mehr schon bei Zoom 11–12. Sie sind keine Halte auf Strecken.
+- **„Details laden?“**: Ab dem Zoom, bei dem „Hier suchen“ möglich ist (Halbdiagonale höchstens 10 km, auf dem Pixel 8 etwa Zoom 12), steht über der Karte eine Zeile mit „Laden“ und ✕.
+  - „Laden“ macht dasselbe wie „Hier suchen“. ✕ schließt die Zeile, bis du wieder weiter heraus- und neu hineinzoomst.
+  - Sie kommt nur, wenn die Mitte des Ausschnitts noch nicht gesucht wurde; nicht bei Strecken und nicht während einer Suche. Abschaltbar mit `suche.frage_details: false`.
+
+### Annahmen/Abweichungen
+
+- Die Kürzung nach dem Komma ist eine Faustregel; sie kennt keine Ausnahmen für Namen, die nach dem Komma klein weitergehen und trotzdem dazugehören. Ein solcher Name würde gekürzt (voller Name im Fenster).
+- Die Denkmal-Nummer wird nur erkannt, wenn sie mit `#` beginnt oder die Form `D-1-7336-0006` hat.
+- Auf dem Handy noch nicht gesehen: wie die Frage „Details laden?“ neben der OSM-Zeile und der Ladeanzeige wirkt (es steht immer nur eine Zeile da; Laden und Suchen gehen vor, dann OSM, dann „Details laden?“).
+
 ## v0.9.3 – 04.11.2026 – Namen in 2 Zeilen, einheitliche Sterne, OSM nur bei kleinem Ausschnitt
 
 Wünsche Nutzer (Ingolstadt): „Deutsches…“ abgeschnitten, Museum des Ersten Weltkriegs fehlt, Text der Kocatepe-Moschee bricht ab, „OSM 735 s??“, Hinweis über „Hier suchen“ weg, Ziele außerhalb des Rechtecks.

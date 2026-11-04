@@ -1,8 +1,8 @@
-/* Reiseführer – app (v0.9.3). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.9.4). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.9.3';
+  var VERSION = '0.9.4';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
@@ -289,7 +289,7 @@
   function markerIcon(p, sel, label, side) {
     var ic = C.iconFor(p.typ, cfg);
     var html = '<span class="mk mk' + p.sterne + (ic ? ' ic' : '') + (sel ? ' sel' : '') + '">' + iconSvg(ic) + '</span>';
-    // label: array of up to two lines (v0.9.3)
+    // label: array of up to two lines (v0.9.4)
     if (label && label.length) html += '<span class="mk-lbl l' + p.sterne + (ic ? ' lic' : '') + (side === 'left' ? ' left' : '') + '">' + label.map(esc).join('<br>') + '</span>';
     return L.divIcon({ className: 'mk-wrap', html: html, iconSize: [36, 36], iconAnchor: [18, 18] });
   }
@@ -593,7 +593,7 @@
       vis.map(function (it, i) {
         var x = it.x, typ = it.k === 'c' ? 'Ort' : C.typeInfo(x.typ, cfg).label;
         return '<li class="vz-item" data-vz="' + i + '"><span class="it-stars s' + it.s + '">' + (it.s ? C.starsText(it.s) : '·') + '</span>' +
-          '<span class="vz-main"><b>' + esc(x.name) + '</b><span class="small">km ' + Math.round(it.along) + ' · Umweg ca. ' + (it.umweg < 1 ? '<1' : Math.round(it.umweg)) + ' km · ' + esc(typ) + '</span></span></li>';
+          '<span class="vz-main"><b>' + esc(C.displayName(x.name)) + '</b><span class="small">km ' + Math.round(it.along) + ' · Umweg ca. ' + (it.umweg < 1 ? '<1' : Math.round(it.umweg)) + ' km · ' + esc(typ) + '</span></span></li>';
       }).join('');
   }
 
@@ -602,7 +602,7 @@
   function openDirPlace(it) {
     var x = it.x, id = 'wd:' + x.q, known = findPlace(id);
     if (known) { selectedId = id; renderMarkers(); openPlace(known); return; }
-    openSheet(x.name, '<p class="small">Lade Wikipedia …</p>');
+    openSheet(C.displayName(x.name), '<p class="small">Lade Wikipedia …</p>');
     var langs = ['de', 'en', 'fr', 'it', 'es', 'nl'];
     var url = 'https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&origin=*&props=sitelinks&ids=' + x.q +
       '&sitefilter=' + langs.map(function (l) { return l + 'wiki'; }).join('|');
@@ -619,7 +619,7 @@
         beschreibung: '', klassen: [], sprachversionen: 0, laenge: 0, denkmal: [], unesco: !!x.unesco, ort: x.stadt || '', teile: {}
       };
       DIR.places[id] = p;
-      if ($('sheet').hidden || $('sheetTitle').textContent !== x.name) return; // closed in between
+      if ($('sheet').hidden || $('sheetTitle').textContent !== C.displayName(x.name)) return; // closed in between
       selectedId = id; renderMarkers();
       openPlace(p);
     });
@@ -633,6 +633,15 @@
   function estText(n) { var s = n * 6; return s < 90 ? 'ca. ' + Math.max(10, Math.round(s / 10) * 10) + ' s' : 'ca. ' + Math.round(s / 60) + ' min'; }
   // The line above "Hier suchen": what the map shows at this zoom and what "Hier suchen" will do (v0.8.1)
   function detailOk(b) { return C.circleFor(b).radius <= (cfg.suche.max_halbdiagonale_m || 10000); }
+  // v0.9.4: zoomed in so far that "Hier suchen" works: ask whether to load the details (Laden / ✕ until zoomed out again)
+  var DETAIL = { dismissed: false };
+  function detailAsk(b) {
+    if (ROUTE || busy || (cfg.suche && cfg.suche.frage_details === false)) return false;
+    if (!detailOk(b)) { DETAIL.dismissed = false; return false; }
+    if (DETAIL.dismissed) return false;
+    var c = { lat: (b.south + b.north) / 2, lon: (b.west + b.east) / 2 };
+    return !(last && last.bbox && C.inBbox(c, last.bbox));
+  }
   function renderHint() {
     var el = $('zoomHint');
     if (!el || !map) return;
@@ -646,6 +655,7 @@
       btn = '<button type="button" data-h="cancel" aria-label="Abbrechen">✕</button>';
     } else if (tooMany && !small) txt = 'Zu weit draußen – näher heranzoomen';
     else if (osmPending()) txt = 'OSM lädt noch – es kommt mehr';
+    else if (detailAsk(b)) { txt = 'Details laden?'; btn = '<button type="button" data-h="detail">Laden</button><button type="button" data-h="detailx" aria-label="Nicht laden">✕</button>'; }
     // v0.8.3: otherwise no hint (wish of the user); v0.9.3: also no „Hier suchen lädt die Gegend“
     el.innerHTML = txt ? '<span>' + esc(txt) + '</span>' + btn : '';
     el.hidden = !txt;
@@ -746,13 +756,15 @@
       var hw = it.k === 'c' ? (7 + 5 * it.s) : DOT_R_IC[it.s], hh = it.k === 'c' ? 9 : DOT_R_IC[it.s];
       var dot = { x1: pt.x - hw, y1: pt.y - hh, x2: pt.x + hw, y2: pt.y + hh };
       if (!free(dot) && (it.s < 3 || it.k === 'o')) return;  // crowded: drop smaller ones entirely (and sights on top of a town)
-      var px = it.k === 'c' && it.s >= 2 ? 13 : 12, w = textWidth(x.name, px) + 4;
-      var right = { x1: pt.x + hw + 2, y1: pt.y - px * 0.75, x2: pt.x + hw + 2 + w, y2: pt.y + px * 0.75 };
+      var px = it.k === 'c' && it.s >= 2 ? 13 : 12;
+      var ml = it.k === 'o' ? C.mapLabel(x.name, '', (cfg.marker && cfg.marker.beschriftung_max_zeichen) || 16, (cfg.marker && cfg.marker.beschriftung_zeilen) || 2) : [C.displayName(x.name)];
+      var w = Math.max.apply(null, ml.map(function (l) { return textWidth(l, px); })) + 4, lh = px * 0.6 * ml.length + px * 0.15;
+      var right = { x1: pt.x + hw + 2, y1: pt.y - lh, x2: pt.x + hw + 2 + w, y2: pt.y + lh };
       var left = { x1: pt.x - hw - 2 - w, y1: right.y1, x2: pt.x - hw - 2, y2: right.y2 };
       var side = free(right) ? 'right' : free(left) ? 'left' : '';
       boxes.push(dot);
       if (side) boxes.push(side === 'right' ? right : left);
-      var lbl = side ? '<span class="ct-lbl ' + (it.k === 'o' ? 'o' : 'c' + it.s) + '" style="' + (side === 'right' ? 'left:' : 'right:') + 'calc(50% + ' + (hw + 2) + 'px)">' + esc(x.name) + '</span>' : '';
+      var lbl = side ? '<span class="ct-lbl ' + (it.k === 'o' ? 'o' : 'c' + it.s) + (side === 'left' ? ' left' : '') + '" style="' + (side === 'right' ? 'left:' : 'right:') + 'calc(50% + ' + (hw + 2) + 'px)">' + ml.map(esc).join('<br>') + '</span>' : '';
       var html = it.k === 'c'
         ? '<span class="ct ct' + it.s + '">' + C.starsText(it.s) + '</span>' + lbl
         : '<span class="mk mk' + it.s + ' ic">' + (iconSvg(C.iconFor(x.typ, cfg)) || iconSvg('denkmal')) + '</span>' + lbl;
@@ -1199,7 +1211,7 @@
         DIR.listed.map(function (it, i) {
           var x = it.x, typ = it.k === 'c' ? 'Ort' : C.typeInfo(x.typ, cfg).label;
           return '<li class="vz-item" data-vz="' + i + '"><span class="it-stars s' + it.s + '">' + (it.s ? C.starsText(it.s) : '·') + '</span>' +
-            '<span class="vz-main"><b>' + esc(x.name) + '</b><span class="small">' + esc(typ) + (x.stadt ? ' · ' + esc(x.stadt) : '') + '</span></span></li>';
+            '<span class="vz-main"><b>' + esc(C.displayName(x.name)) + '</b><span class="small">' + esc(typ) + (x.stadt ? ' · ' + esc(x.stadt) : '') + '</span></span></li>';
         }).join('');
       if (!run) setStatus('');
       return;
@@ -1235,7 +1247,7 @@
       return '<li class="item' + (p.id === selectedId ? ' sel' : '') + (p.sterne ? '' : ' zero') + (heard[p.id] ? ' heard' : '') + '" data-id="' + esc(p.id) + '">' +
         '<div class="it-main">' +
           '<span class="it-stars s' + p.sterne + '">' + (p.sterne ? C.starsText(p.sterne) : '·') + '</span>' +
-          '<span class="it-text"><span class="it-name">' + esc(p.name) + '</span>' +
+          '<span class="it-text"><span class="it-name">' + esc(C.displayName(p.name)) + '</span>' +
           (p.name2 && [p.name, p.typ_label].every(function (t) { return String(t || '').toLowerCase() !== String(p.name2).toLowerCase(); }) ? '<span class="it-name2">' + esc(p.name2) + '</span>' : '') +
           '<span class="it-meta">' + esc(meta) + ' <span class="it-src src-' + (tag === 'W' ? 'w' : tag === 'OSM' ? 'o' : 'wo') + '">' + tag + '</span></span>' +
           '<span class="it-desc">' + esc(kurzText(p)) + '</span>' +
@@ -1483,6 +1495,7 @@
     var html =
       '<div id="plImg" class="pl-img" hidden></div>' +
       (p.name2 ? '<p class="pl-name2">Deutsch: ' + esc(p.name2) + '</p>' : '') +
+      (C.displayName(p.name) !== String(p.name).trim() ? '<p class="pl-name2">Voller Name: ' + esc(p.name) + '</p>' : '') +
       '<div class="pl-stars s' + p.sterne + '">' + (p.sterne ? C.starsText(p.sterne) : '–') +
         '<span>' + esc(st[String(p.sterne)] || '') + '</span></div>' +
       '<p class="pl-meta">' + esc(meta) + '</p>' +
@@ -1514,7 +1527,7 @@
       '</table><p class="small">Faustregel aus Wikipedia/Wikidata. Gewichte und Schwellen stehen in config.json.</p></details>' +
       '<details class="why" id="plIntro" hidden><summary>Wikipedia-Einleitung</summary><p class="intro" id="plIntroText"></p></details>' +
       '';
-    openSheet(p.name, html);
+    openSheet(C.displayName(p.name), html);
     $('sheetBody').setAttribute('data-place', p.id);
     if (kurzNeeded(p.id)) { kurzQueue[p.id] = 1; scheduleKurz(); }
     prepareNarration(p);
@@ -1650,7 +1663,7 @@
       html = '<ul class="merk-list">' + merk.map(function (p) {
         var ml = mapsLinks(p);
         return '<li data-id="' + esc(p.id) + '">' +
-          '<div class="m-main" data-a="show"><span class="s' + p.sterne + '">' + (p.sterne ? C.starsText(p.sterne) : '·') + '</span> <b>' + esc(p.name) + '</b>' +
+          '<div class="m-main" data-a="show"><span class="s' + p.sterne + '">' + (p.sterne ? C.starsText(p.sterne) : '·') + '</span> <b>' + esc(C.displayName(p.name)) + '</b>' +
           '<span class="m-meta">' + esc([p.typ_label, p.ort].filter(Boolean).join(' · ')) + '</span></div>' +
           '<a class="round" href="' + esc(ml.name) + '"' + ml.target + ' aria-label="Karte">🗺</a>' +
           '<button class="round" type="button" data-a="remove" aria-label="Entfernen">✕</button></li>';
@@ -2095,6 +2108,8 @@
       if (h === 'cancel') dirCancel();
       else if (h === 'stop') cancelSearch();
       else if (h === 'rtcancel') routeCancel();
+      else if (h === 'detail') searchHere();
+      else if (h === 'detailx') { DETAIL.dismissed = true; renderHint(); }
 
     });
     $('status').addEventListener('click', function (e) {
