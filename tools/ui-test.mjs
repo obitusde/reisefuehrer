@@ -53,6 +53,11 @@ const BASE = 'http://localhost:' + server.address().port + '/';
 
 let fails = 0, passes = 0;
 function ok(c, m) { if (c) passes++; else { fails++; console.log('FAIL', m); } }
+// v0.10.0: one button on the map; the other buttons are in the menu
+async function menuClick(page, sel) {
+  if (await page.$eval('#menu', (m) => m.hidden)) await page.click('#btnMenu');
+  await page.click(sel);
+}
 
 async function mockApis(ctx) {
   await ctx.route(/wikipedia\.org\/w\/api\.php/, (route) => {
@@ -148,21 +153,38 @@ try {
   if (process.env.DEBUG) { page.on('request', (r) => { if (/extracts|mymemory/.test(r.url())) console.log('REQ', decodeURIComponent(r.url()).slice(0, 160)); }); page.on('requestfailed', (r) => console.log('FAILED', r.url().slice(0, 120), r.failure() && r.failure().errorText)); page.on('console', (m) => console.log('CONSOLE', m.text())); }
   await page.goto(BASE + 'index.html');
   await page.waitForSelector('.empty');
-  ok((await page.textContent('#version')) === 'v0.9.4', 'footer version');
+  ok((await page.textContent('#version')) === 'v0.10.0', 'footer version');
   if (OUT) await page.screenshot({ path: OUT + '/01-start.png' });
 
-  await page.click('#btnLocate');
+  await menuClick(page, '#btnLocate');
   // v0.8: "Mein Standort" only moves the map, the search starts with "Hier suchen"
-  await page.waitForFunction(() => /Standort – jetzt „Hier suchen“/.test(document.getElementById('toast').textContent), null, { timeout: 8000 });
+  await page.waitForFunction(() => /Standort gefunden/.test(document.getElementById('toast').textContent), null, { timeout: 8000 });
   ok(!(await page.$('.item')), 'v0.8 location: map moved, no search yet');
-  await page.click('#btnHere');
+  await menuClick(page, '#btnHere');
   await page.waitForSelector('.item', { timeout: 10000 });
   const items = await page.$$eval('.item', (els) => els.map((e) => ({ s: e.querySelector('.it-stars').textContent, n: e.querySelector('.it-name').textContent })));
   ok(items.length >= 8, 'list has items: ' + items.length);
   ok(items[0].s === '★★★', 'first item 3 stars');
   const th = await page.$eval('.item:has(.it-name2)', (e) => e.querySelector('.it-name').textContent + '|' + e.querySelector('.it-name2').textContent).catch(() => '');
   ok(th.includes('|'), 'list shows local and German name: ' + th);
-  ok(!items.some((i) => i.n === 'River Tib'), 'River Tib hidden at ★+ filter');
+  ok(items.some((i) => i.n === 'River Tib' && i.s === '·'), 'v0.10.0 default "Alle Orte": River Tib shown, without star');
+  // v0.10.0: what is worth it stands out; OSM only never with stars, at the end, grey ring on the map
+  const secs = await page.$$eval('.list-sec', (els) => els.map((e) => e.textContent));
+  ok(secs[0] === 'Lohnt am meisten' && (secs.length < 2 || secs[1] === 'Weitere'), 'v0.10.0 list sections: ' + secs.join(' | '));
+  const order = await page.$$eval('#list > li', (els) => els.map((e) => e.classList.contains('list-sec') ? 'S' : e.classList.contains('osm') ? 'O' : 'W').join(''));
+  ok(!/O.*W/.test(order), 'v0.10.0 OSM only after all Wikipedia places: ' + order);
+  ok(await page.$$eval('.item.osm .it-stars', (els) => els.every((e) => e.textContent === '·')), 'v0.10.0 OSM only without stars');
+  if (order.includes('O')) ok(/Weitere \(nur OpenStreetMap/.test(secs[secs.length - 1]), 'v0.10.0 OSM section at the end');
+  const tiers = await page.$$eval('.mk-wrap', (els) => els.map((e) => { const m = e.querySelector('.mk'); return m ? (m.className.match(/t-(\w+)/) || [0, ''])[1] + (e.querySelector('.mk-lbl') ? '+' : '') : ''; }).filter(Boolean));
+  ok(tiers.filter((t) => t.startsWith('top')).length <= 5 && tiers.filter((t) => t.startsWith('top') || t.startsWith('name')).length <= 15 && tiers.every((t) => !/^(dot|osm)\+/.test(t)),
+    'v0.10.0 map: at most 5 big, 15 with a name, dots and OSM rings without a name: ' + tiers.join(' '));
+  ok(await page.$$eval('.mk-lbl.top', (els) => els.length >= 1), 'v0.10.0 the best have a bold name');
+  await page.click('#btnMenu');
+  if (OUT) await page.screenshot({ path: OUT + '/17-menue.png' });
+  ok(await page.isVisible('#menu') && (await page.$$eval('#menu .mi', (els) => els.map((e) => e.textContent))).join(',') === 'Hier suchen,Ort suchen,Mein Standort,Merkliste,Strecke,Liste ausblenden,Einstellungen', 'v0.10.0 menu with all buttons');
+  await page.mouse.click(60, 300);
+  await page.waitForTimeout(200);
+  ok(!(await page.isVisible('#menu')), 'v0.10.0 a tap beside the menu closes it');
   ok((await page.$$('.mk3')).length >= 4, '3-star markers on map');
   const lblCount = await page.$$eval('.mk-lbl', (els) => els.length);
   const dotCount = await page.$$eval('.mk', (els) => els.length);
@@ -247,7 +269,7 @@ try {
   ok(true, 'back closes sheet');
 
   // merkliste
-  await page.click('#btnMerk');
+  await menuClick(page, '#btnMerk');
   await page.waitForSelector('.merk-list li');
   await page.click('[data-a=mcopy]');
   await page.waitForTimeout(200);
@@ -281,14 +303,14 @@ try {
   await page.selectOption('#fStars', '1');
 
   // settings + geo links
-  await page.click('#btnSettings');
+  await menuClick(page, '#btnSettings');
   await page.check('input[name=kapp][value=geo]');
   await page.click('#sheetClose');
   await page.click('.item >> nth=0');
   ok((await page.getAttribute('#sheetBody a.btn.primary', 'href')).startsWith('geo:0,0?q='), 'geo link setting');
   await page.evaluate(() => history.back());
   await page.waitForSelector('#sheet', { state: 'hidden' });
-  await page.click('#btnSettings');
+  await menuClick(page, '#btnSettings');
   await page.check('input[name=kapp][value=osmand]');
   await page.click('#sheetClose');
   await page.click('.item >> nth=0');
@@ -296,7 +318,7 @@ try {
   ok(osmHref.startsWith('intent://osmand.net/map?pin=') && osmHref.includes('package=net.osmand.plus') && (await page.textContent('#sheetBody a.btn.primary')) === 'In OsmAnd', 'v0.5 OsmAnd link: ' + osmHref.slice(0, 60));
   await page.evaluate(() => history.back());
   await page.waitForSelector('#sheet', { state: 'hidden' });
-  await page.click('#btnSettings');
+  await menuClick(page, '#btnSettings');
   await page.check('input[name=kapp][value=google]');
   await page.click('#sheetClose');
 
@@ -321,7 +343,7 @@ try {
 
   // place search: jump to a place and search there
   await page.evaluate(() => { localStorage.removeItem('rf.last'); });
-  await page.click('#btnSearch');
+  await menuClick(page, '#btnSearch');
   await page.waitForSelector('#searchInput');
   await page.fill('#searchInput', 'Manchester');
   await page.press('#searchInput', 'Enter');
@@ -336,11 +358,11 @@ try {
   await page.waitForTimeout(400);
   ok(!(await page.evaluate(() => localStorage.getItem('rf.last'))) && (await page.textContent('#btnHere')) === 'Hier suchen' && Math.abs((await page.evaluate(() => window.__rfMap.getCenter().lat)) - 53.4795) < 0.01,
     'v0.7.1 search hit moves the map without searching');
-  await page.click('#btnHere');
+  await menuClick(page, '#btnHere');
   await page.waitForFunction(() => localStorage.getItem('rf.last') && !document.getElementById('btnHere').disabled);
   const cen = await page.evaluate(() => JSON.parse(localStorage.getItem('rf.last')));
   ok(cen && Math.abs(cen.lat - 53.4795) < 0.001 && cen.places.length > 5, 'search jumped and loaded places');
-  await page.click('#btnSearch');
+  await menuClick(page, '#btnSearch');
   ok((await page.textContent('#searchHits')).includes('Zuletzt gesucht'), 'recent searches remembered');
   // search a sight that is in the loaded list
   await page.fill('#searchInput', 'Chetham');
@@ -382,7 +404,7 @@ try {
   await page.evaluate(() => history.back());
   await page.waitForSelector('#sheet', { state: 'hidden' });
   ok(await page.$eval('.item.heard', (e) => e.textContent.includes('✓ gehört')).catch(() => false), 'heard row greyed in list');
-  await page.click('#btnSearch');
+  await menuClick(page, '#btnSearch');
   // search a sight via Nominatim: jumps there and opens the nearest place
   await page.fill('#searchInput', 'Imperial War Museum');
   await page.press('#searchInput', 'Enter');
@@ -391,7 +413,7 @@ try {
   await page.click('#searchHits .hits button >> nth=0');
   await page.waitForSelector('#sheet', { state: 'hidden' });
   ok(await page.isVisible('.hit-pin'), 'v0.7.1 searched sight marked on the map');
-  await page.click('#btnHere');
+  await menuClick(page, '#btnHere');
   await page.waitForFunction(() => !document.getElementById('sheet').hidden && !document.getElementById('sheetTitle').textContent.includes('suchen'), null, { timeout: 10000 });
   ok(!(await page.$('.hit-pin')), 'v0.7.1 mark removed after the search');
   ok(true, 'POI search opens a place sheet: ' + await page.textContent('#sheetTitle'));
@@ -405,7 +427,7 @@ try {
   const cts = await page.$$eval('.ct', (els) => els.map((e) => e.textContent));
   ok(cts.includes('★★★') && cts.includes('★★') && cts.includes('★') && cts.length === 3, 'v0.7 cities with stars at zoom 9 (Stockport without star hidden): ' + cts.join(' '));
   ok((await page.$$('.mk-lbl')).length === 0, 'v0.7 single places hidden when zoomed out');
-  ok((await page.$$eval('.ct-lbl', (els) => els.map((e) => e.textContent))).includes('Peak District'), 'v0.7 excursion outside cities shown');
+  ok((await page.$$eval('.ct-lbl', (els) => els.map((e) => e.textContent))).includes('Peak District'), 'v0.7 excursion outside cities shown: ' + (await page.$$eval('.ct-lbl', (els) => els.map((e) => e.textContent))).join(', ') + ' / ' + (await page.$$eval('.mk-wrap', (els) => els.map((e) => e.title + ':' + (e.querySelector('.mk, .ct') || {}).className).join(', '))));
   if (OUT) await page.screenshot({ path: OUT + '/10-stadt-sterne.png' });
   await page.evaluate(() => window.__rfMap.setView([53.35, -2.45], 7, { animate: false }));
   await page.waitForFunction(() => document.querySelectorAll('.ct').length === 2, null, { timeout: 5000 }).catch(() => {});
@@ -420,12 +442,12 @@ try {
   if (OUT) await page.screenshot({ path: OUT + '/11-stadt.png' });
   await page.click('[data-a="cityzoom"]');
   await page.waitForFunction(() => window.__rfMap.getZoom() === 14);
-  await page.click('#btnHere');
+  await menuClick(page, '#btnHere');
   await page.waitForFunction(() => window.__rfMap.getZoom() === 14 && document.querySelectorAll('.mk').length > 0, null, { timeout: 10000 });
   ok((await page.$$('.ct')).length === 0, 'v0.7 zoom in: city markers gone, places back');
   await page.waitForSelector('.item', { timeout: 10000 });
   // ⚙: v0.8.1 no assistant choice, no per-country computing; only the directory (nothing loads by itself)
-  await page.click('#btnSettings');
+  await menuClick(page, '#btnSettings');
   await page.waitForFunction(() => /Verzeichnis \(Ziele auf der Karte\)/.test(document.getElementById('sheetBody').textContent));
   const setTxt = await page.textContent('#sheetBody');
   ok(!/KI-Assistent|Übergabe an|Neu berechnen/.test(setTxt) && !(await page.$('input[name="uebergabe"]')) && setTxt.includes('nur mit „Hier suchen“'), 'v0.8.1 settings: no assistant menu, no computing menu');
@@ -442,10 +464,10 @@ try {
   ok(splitNow && +splitNow > 12, 'split persisted: ' + splitNow);
 
   // update banner (fake newer version, then ?testupdate=1)
-  fakeVersion = '0.9.5';
+  fakeVersion = '0.10.1';
   await page.reload();
   await page.waitForSelector('#banner:not([hidden])');
-  ok((await page.textContent('#bannerText')).includes('v0.9.5'), 'banner shows remote version');
+  ok((await page.textContent('#bannerText')).includes('v0.10.1'), 'banner shows remote version');
   if (OUT) await page.screenshot({ path: OUT + '/05-banner.png' });
   fakeVersion = null;
   await page.click('#bannerBtn');
@@ -467,14 +489,14 @@ try {
     await p5.evaluate(() => { localStorage.setItem('rf.view', JSON.stringify({ lat: 53.4792, lon: -2.2442, z: 15 })); });
     await p5.reload(); await p5.waitForSelector('.empty');
     OSM_DELAY = 60000;
-    await p5.click('#btnHere');
+    await menuClick(p5, '#btnHere');
     await p5.waitForSelector('#status [data-a=cancel]', { timeout: 8000 });
     ok(/\d+ s/.test(await p5.textContent('#status .secs')), 'v0.5 seconds counter while searching');
     await p5.click('#status [data-a=cancel]');
     await p5.waitForFunction(() => !document.getElementById('btnHere').disabled);
     ok((await p5.textContent('#toast')).includes('abgebrochen') && !(await p5.$('.item')), 'v0.5 cancel stops the search');
     OSM_DELAY = 7000;
-    await p5.click('#btnHere');
+    await menuClick(p5, '#btnHere');
     await p5.waitForSelector('#status [data-a=skiposm]', { timeout: 8000 });
     if (OUT) await p5.screenshot({ path: OUT + '/12-warte-osm.png' });
     await p5.click('#status [data-a=skiposm]');
@@ -489,7 +511,7 @@ try {
     ok(/OSM ✓ ergänzt/.test(sl5b) && await p5.$eval('#zoomHint', (e) => e.hidden) && (await p5.$$eval('.it-src', (els) => els.some((e) => e.textContent !== 'W'))), 'v0.6.1 late OSM merged automatically: ' + sl5b + ' / ' + await p5.textContent('#toast'));
     OSM_DELAY = 0;
     await p5.evaluate(() => window.__rfMap && window.__rfMap.setZoom(10, { animate: false }));
-    await p5.click('#btnHere');
+    await menuClick(p5, '#btnHere');
     await p5.waitForFunction(() => /Zu groß/.test(document.getElementById('toast').textContent), null, { timeout: 4000 }).catch(() => {});
     ok((await p5.textContent('#toast')).includes('Zu groß – näher heranzoomen') && await p5.$eval('#toast', (el) => el.getBoundingClientRect().height < 50), 'v0.5 too big section: hint to zoom in: ' + await p5.textContent('#toast') + ' ' + await p5.$eval('#toast', (el) => el.getBoundingClientRect().height));
     ok(e5.length === 0, 'v0.5: no JS errors ' + e5.join(' | '));
@@ -504,7 +526,7 @@ try {
     await p6.waitForSelector('.empty');
     await p6.evaluate(() => { localStorage.setItem('rf.view', JSON.stringify({ lat: 53.4792, lon: -2.2442, z: 15 })); });
     await p6.reload(); await p6.waitForSelector('.empty');
-    await p6.click('#btnSettings');
+    await menuClick(p6, '#btnSettings');
     ok((await p6.textContent('#sheetBody')).includes('Gebiet vorbereiten'), 'v0.6 settings: prepare section');
     await p6.click('[data-a=prep]');
     await p6.waitForSelector('#prep:not([hidden])');
@@ -518,7 +540,7 @@ try {
     await p6.click('#sheetClose');
     // offline now
     OFFLINE = true; await c6.setOffline(true);
-    await p6.click('#btnHere');
+    await menuClick(p6, '#btnHere');
     await p6.waitForSelector('.item', { timeout: 5000 });
     const sl6 = await p6.textContent('#status .src-line');
     ok(sl6.includes('📥 Offline: Gebiet „Manchester“'), 'v0.6 offline search uses the area: ' + sl6);
@@ -541,11 +563,11 @@ try {
   const ctxS = await newCtx(browser, { height: 626, width: 329 });
   const pS = await ctxS.newPage(); const errsS = []; watch(pS, errsS);
   await pS.goto(BASE + 'index.html');
-  await pS.click('#btnLocate'); await pS.waitForTimeout(300); await pS.click('#btnHere'); await pS.waitForSelector('.item');
+  await menuClick(pS, '#btnLocate'); await pS.waitForTimeout(300); await menuClick(pS, '#btnHere'); await pS.waitForSelector('.item');
   const layS = await pS.evaluate(() => {
     const r = (s) => document.querySelector(s).getBoundingClientRect();
     const sel = [...document.querySelectorAll('.filters select')].map((x) => x.scrollWidth <= x.clientWidth + 1);
-    const pillsOk = (() => { const a = r('#btnLocate'), b = r('#btnHere'); return a.right < b.left; })();
+    const pillsOk = (() => { const m = r('#btnMenu'); return m.right <= innerWidth && m.top >= 0 && document.querySelectorAll('.map-top .round').length === 1 && !document.querySelector('.map-bottom'); })();
     return { scrollW: document.documentElement.scrollWidth, w: innerWidth, h: innerHeight, list: r('#scroller').height, foot: r('#scroller').bottom, pillsOk, sel };
   });
   ok(layS.scrollW <= layS.w, 'small: no horizontal scroll');
@@ -566,7 +588,7 @@ try {
   const ctx2 = await newCtx(browser, { height: 870, dark: true, dpr: OUT ? 2.625 : 1 });
   const p2 = await ctx2.newPage(); const errs2 = []; watch(p2, errs2);
   await p2.goto(BASE + 'index.html');
-  await p2.click('#btnLocate'); await p2.waitForTimeout(300); await p2.click('#btnHere'); await p2.waitForSelector('.item');
+  await menuClick(p2, '#btnLocate'); await p2.waitForTimeout(300); await menuClick(p2, '#btnHere'); await p2.waitForSelector('.item');
   if (OUT) await p2.screenshot({ path: OUT + '/06-dunkel.png' });
   ok(errs2.length === 0, 'dark: no JS errors ' + errs2.join(' | '));
   await ctx2.close();
@@ -578,9 +600,9 @@ try {
   const swOk = await p3.evaluate(() => navigator.serviceWorker.ready.then((r) => !!r.active)).catch(() => false);
   ok(swOk, 'service worker active');
   const cacheKeys = await p3.evaluate(async () => { await new Promise((r) => setTimeout(r, 800)); return caches.keys(); });
-  ok(cacheKeys.includes('rf-app-0.9.4'), 'app cache with version: ' + cacheKeys.join(','));
-  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.9.4')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
-  ok(cached.some((u) => u.includes('app.js?v=0.9.4')), 'shell precached');
+  ok(cacheKeys.includes('rf-app-0.10.0'), 'app cache with version: ' + cacheKeys.join(','));
+  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.10.0')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
+  ok(cached.some((u) => u.includes('app.js?v=0.10.0')), 'shell precached');
   ok(errs3.length === 0, 'sw: no JS errors ' + errs3.join(' | '));
   await ctx3.close();
 
@@ -619,10 +641,12 @@ try {
     ok(await p8.$eval('#btnHere', (b) => b.classList.contains('dim')), 'v0.8 "Hier suchen" greyed when too far out');
     const n0 = SPARQL_CALLS.length;
     await p8.evaluate(() => window.__rfMap.setView([49.61, 6.13], 10, { animate: false }));
-    await p8.waitForFunction(() => document.getElementById('zoomHint').hidden, null, { timeout: 8000 });
+    await p8.waitForFunction(() => /^Gegend laden\?Laden✕$/.test(document.getElementById('zoomHint').textContent), null, { timeout: 8000 });
     await p8.waitForTimeout(1500);
-    ok(SPARQL_CALLS.length === n0 && !(await p8.$eval('#btnHere', (b) => b.classList.contains('dim'))) && await p8.$eval('#zoomHint', (e) => e.hidden), 'v0.8.1 nothing loads by itself; v0.9.3 no hint about it');
-    await p8.click('#btnHere');
+    ok(SPARQL_CALLS.length === n0 && !(await p8.$eval('#btnHere', (b) => b.classList.contains('dim'))), 'v0.8.1 nothing loads by itself; v0.10.0 the line asks "Gegend laden?"');
+    await p8.click('#zoomHint [data-h="regionx"]');
+    ok(await p8.$eval('#zoomHint', (e) => e.hidden), 'v0.10.0 ✕ closes "Gegend laden?"');
+    await menuClick(p8, '#btnHere');
     await p8.waitForFunction(() => /Lade Gegend/.test(document.getElementById('zoomHint').textContent), null, { timeout: 8000 }).catch(() => {});
     await p8.waitForFunction(() => /Lade \d+\/\d+ …/.test(document.getElementById('btnHere').textContent), null, { timeout: 5000 }).catch(() => {});
     await p8.waitForFunction(() => document.getElementById('zoomHint').hidden && /^Fertig: /.test(document.getElementById('toast').textContent), null, { timeout: 30000 });
@@ -682,7 +706,7 @@ try {
     ok((await p8.evaluate(() => (window.__shared || []).length)) >= 1, 'v0.8.4 "Erzähl mir davon" from a directory sight');
     await p8.evaluate(() => history.back());
     await p8.waitForSelector('#sheet', { state: 'hidden' });
-    await p8.click('#btnHere');
+    await menuClick(p8, '#btnHere');
     await p8.waitForFunction(() => localStorage.getItem('rf.last') && !document.getElementById('btnHere').disabled, null, { timeout: 15000 });
     ok(true, 'v0.8 "Hier suchen" searches when zoomed in');
     ok(await p8.$eval('#zoomHint', (e) => e.hidden || !/Details laden/.test(e.textContent)), 'v0.9.4 no question once the section is searched');
@@ -701,20 +725,20 @@ try {
     const sl8 = await p8.textContent('#status .src-line');
     ok(/OSM ✓/.test(sl8) && !/735|\d+ s/.test(sl8), 'v0.9.3 status line without seconds: ' + sl8);
     await p8.evaluate(() => localStorage.setItem('rf.last', 'null'));
-    await p8.reload(); await p8.waitForSelector('#btnList');
+    await p8.reload(); await p8.waitForSelector('#btnMenu');
     // v0.8.3: list on/off, no place chip, location button with symbol only
-    ok(await p8.$eval('#ortLabel', (el) => el.hidden) && (await p8.textContent('#btnLocate')).trim() === '◎', 'v0.8.3 no place name chip; location button only ◎');
+    ok(await p8.$eval('#ortLabel', (el) => el.hidden) && (await p8.textContent('#btnLocate')).trim() === 'Mein Standort' && (await p8.$$('.map-top .round')).length === 1, 'v0.10.0 no place name chip; one button on the map, location in the menu');
     const h0 = await p8.$eval('#mapWrap', (el) => el.getBoundingClientRect().height);
-    await p8.click('#btnList');
+    await menuClick(p8, '#btnList');
     await p8.waitForTimeout(200);
     const h1 = await p8.$eval('#mapWrap', (el) => el.getBoundingClientRect().height);
     ok(h1 > h0 + 150 && !(await p8.isVisible('#scroller')), 'v0.8.3 list off: map on the whole screen ' + h0 + ' -> ' + h1);
-    await p8.reload(); await p8.waitForSelector('#btnList');
+    await p8.reload(); await p8.waitForSelector('#btnMenu');
     ok(!(await p8.isVisible('#scroller')), 'v0.8.3 list off is remembered');
-    await p8.click('#btnList'); await p8.waitForTimeout(200);
+    await menuClick(p8, '#btnList'); await p8.waitForTimeout(200);
     ok(await p8.isVisible('#scroller'), 'v0.8.3 list on again');
     // ---- v0.9: route Luxemburg → Vianden by car
-    await p8.click('#btnRoute');
+    await menuClick(p8, '#btnRoute');
     await p8.waitForSelector('.rt-in[data-rt="ziel"]');
     await p8.fill('.rt-in[data-rt="start"]', 'Luxemburg'); await p8.press('.rt-in[data-rt="start"]', 'Enter');
     await p8.waitForSelector('[data-a="rtpick"][data-f="start"]'); await p8.click('[data-a="rtpick"][data-f="start"]');
@@ -742,7 +766,7 @@ try {
     await p8.waitForFunction(() => !document.querySelector('.rt-head'));
     ok(true, 'v0.9 route ended');
     // settings
-    await p8.click('#btnSettings');
+    await menuClick(p8, '#btnSettings');
     await p8.waitForFunction(() => /Stücke gespeichert/.test(document.getElementById('sheetBody').textContent));
     ok((await p8.textContent('#sheetBody')).includes('Verzeichnis (Ziele auf der Karte)'), 'v0.8 settings section');
     ok(e8.filter((e) => !/Failed to load resource/.test(e)).length === 0, 'v0.8: no JS errors ' + e8.join(' | '));

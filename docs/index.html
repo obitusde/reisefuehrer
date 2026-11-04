@@ -11,7 +11,7 @@
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="stylesheet" href="lib/leaflet/leaflet.css">
-<link rel="stylesheet" href="style.css?v=0.9.4">
+<link rel="stylesheet" href="style.css?v=0.10.0">
 </head>
 <body>
 <div id="app">
@@ -25,18 +25,19 @@
     <div class="map-top">
       <span id="ortLabel" class="chip" hidden></span>
       <span class="spacer"></span>
-      <button id="btnSearch" class="round" type="button" aria-label="Ort suchen">🔍</button>
-      <button id="btnMerk" class="round" type="button" aria-label="Merkliste">★<span id="merkCount" class="badge" hidden>0</span></button>
-      <button id="btnSettings" class="round" type="button" aria-label="Einstellungen">⚙</button>
+      <button id="btnMenu" class="round" type="button" aria-label="Menü" aria-expanded="false" aria-controls="menu">☰<span id="merkCount" class="badge" hidden>0</span></button>
+    </div>
+    <!-- v0.10.0: one button on the map, everything else in the menu -->
+    <div id="menu" class="menu" role="menu" hidden>
+      <button id="btnHere" class="mi" data-ic="🔎" type="button" role="menuitem">Hier suchen</button>
+      <button id="btnSearch" class="mi" data-ic="🔍" type="button" role="menuitem">Ort suchen</button>
+      <button id="btnLocate" class="mi" data-ic="◎" type="button" role="menuitem">Mein Standort</button>
+      <button id="btnMerk" class="mi" data-ic="★" type="button" role="menuitem">Merkliste</button>
+      <button id="btnRoute" class="mi" data-ic="⇢" type="button" role="menuitem">Strecke</button>
+      <button id="btnList" class="mi" data-ic="☰" type="button" role="menuitem" aria-pressed="true">Liste ausblenden</button>
+      <button id="btnSettings" class="mi" data-ic="⚙" type="button" role="menuitem">Einstellungen</button>
     </div>
     <div id="zoomHint" class="zhint" hidden></div>
-    <div class="map-bottom">
-      <button id="btnLocate" class="pill icon" type="button" aria-label="Mein Standort" title="Mein Standort">◎</button>
-      <button id="btnList" class="pill icon" type="button" aria-label="Liste ein/aus" title="Liste ein/aus" aria-pressed="true">☰</button>
-      <button id="btnRoute" class="pill icon" type="button" aria-label="Strecke" title="Strecke">⇢</button>
-      <span class="spacer"></span>
-      <button id="btnHere" class="pill primary" type="button">Hier suchen</button>
-    </div>
   </div>
 
   <div id="splitter" class="splitter" role="separator" aria-label="Antippen: Liste groß oder Karte groß. Ziehen: Größe frei einstellen"><span></span></div>
@@ -55,7 +56,7 @@
 
   <div id="scroller" class="scroller">
     <div class="foot">
-      <span>Reiseführer <b id="version">v0.9.4</b></span>
+      <span>Reiseführer <b id="version">v0.10.0</b></span>
       <span>Sterne = Faustregel</span>
     </div>
     <div id="status" class="status" aria-live="polite"></div>
@@ -74,7 +75,7 @@
 <div id="toast" class="toast" hidden></div>
 
 <script src="lib/leaflet/leaflet.js"></script>
-<script src="core.js?v=0.9.4"></script>
-<script src="app.js?v=0.9.4"></script>
+<script src="core.js?v=0.10.0"></script>
+<script src="app.js?v=0.10.0"></script>
 </body>
 </html>

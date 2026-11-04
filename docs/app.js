@@ -1,14 +1,14 @@
-/* Reiseführer – app (v0.9.4). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.10.0). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.9.4';
+  var VERSION = '0.10.0';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
   var K = {
     settings: 'rf.settings', last: 'rf.last', merk: 'rf.merk', wd: 'rf.wdcache',
-    ort: 'rf.ortcache2', view: 'rf.view', split: 'rf.split', recent: 'rf.recent', kurz: 'rf.kurz2', heard: 'rf.gehoert'
+    ort: 'rf.ortcache2', view: 'rf.view', split: 'rf.split', recent: 'rf.recent', kurz: 'rf.kurz3', heard: 'rf.gehoert'
   };
   var LS = {
     get: function (k, d) {
@@ -161,7 +161,7 @@
     delete settings.radius; // v0.5: no radius any more, the search uses the visible map section
     cfg.suche = cfg.suche || {};
     cfg.gebiet = cfg.gebiet || {};
-    if (typeof settings.minStars !== 'number') settings.minStars = 1;
+    if (typeof settings.minStars !== 'number') settings.minStars = 0; // v0.10.0: all, the map emphasis shows what is worth it
     if (['google', 'geo', 'osmand'].indexOf(settings.kartenApp) < 0) settings.kartenApp = cfg.karten_app_standard || 'google';
     if (settings.kat == null) settings.kat = '';
     if (['kurz', 'normal', 'ausfuehrlich'].indexOf(settings.level) < 0) settings.level = (cfg.erzaehlen && cfg.erzaehlen.standard_ausfuehrlichkeit) || 'kurz';
@@ -196,6 +196,7 @@
     $('app').classList.toggle('nolist', !!off);
     $('btnList').setAttribute('aria-pressed', off ? 'false' : 'true');
     $('btnList').classList.toggle('off', !!off);
+    $('btnList').textContent = off ? 'Liste einblenden' : 'Liste ausblenden';
     if (map) setTimeout(function () { map.invalidateSize(); scheduleMarkers(); scheduleCities(); }, 50);
     if (!quiet) toast(off ? 'Liste aus' : 'Liste an', 1200);
   }
@@ -286,11 +287,11 @@
   function iconSvg(k) { return ICONS[k] ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="' + ICONS[k] + '"/></svg>' : ''; }
   function dotR(p) { return (C.iconFor(p.typ, cfg) ? DOT_R_IC : DOT_R)[p.sterne] || 5; }
 
-  function markerIcon(p, sel, label, side) {
+  function markerIcon(p, sel, label, side, tier) {
     var ic = C.iconFor(p.typ, cfg);
-    var html = '<span class="mk mk' + p.sterne + (ic ? ' ic' : '') + (sel ? ' sel' : '') + '">' + iconSvg(ic) + '</span>';
-    // label: array of up to two lines (v0.9.4)
-    if (label && label.length) html += '<span class="mk-lbl l' + p.sterne + (ic ? ' lic' : '') + (side === 'left' ? ' left' : '') + '">' + label.map(esc).join('<br>') + '</span>';
+    var html = '<span class="mk mk' + p.sterne + (ic ? ' ic' : '') + (sel ? ' sel' : '') + (tier ? ' t-' + tier : '') + '">' + iconSvg(ic) + '</span>';
+    // label: array of up to two lines (v0.9.3)
+    if (label && label.length) html += '<span class="mk-lbl l' + p.sterne + (ic ? ' lic' : '') + (side === 'left' ? ' left' : '') + (tier === 'top' ? ' top' : '') + '">' + label.map(esc).join('<br>') + '</span>';
     return L.divIcon({ className: 'mk-wrap', html: html, iconSize: [36, 36], iconAnchor: [18, 18] });
   }
 
@@ -316,32 +317,39 @@
       dr.orte.forEach(function (x) {
         if (have[x.q] || !C.inBbox(x, pad) || x.st < settings.minStars || (x.low && zNow < zAll)) return;
         if (settings.kat && C.typeInfo(x.typ, cfg).kategorie !== settings.kat) return;
-        shown.push({ id: 'vz:' + x.q, name: x.name, lat: x.lat, lon: x.lon, sterne: x.st, score: x.score, typ: x.typ, vz: x });
+        shown.push({ id: 'vz:' + x.q, name: x.name, lat: x.lat, lon: x.lon, sterne: x.st, score: x.score, vzScore: x.score, typ: x.typ, vz: x });
       });
     }
     shown = shown.sort(function (a, b) {
-      return ((b.id === selectedId) - (a.id === selectedId)) || (b.sterne - a.sterne) || (b.score - a.score);
+      return ((b.id === selectedId) - (a.id === selectedId)) || placeRank(a, b);
     }).slice(0, mc.max_sichtbar || 30);
+    // v0.10.0: at a glance what is worth it in this section: the best `top` big with a bold name, up to `mit_name` named,
+    // the rest only as a small dot; OSM only (no Wikipedia article): grey ring without a name
+    var nTop = mc.top || 5, nNamed = mc.mit_name || 15, nDrawn = 0;
     var boxes = [];
     function free(bx) {
       return !boxes.some(function (o) { return bx.x1 < o.x2 && bx.x2 > o.x1 && bx.y1 < o.y2 && bx.y2 > o.y1; });
     }
     shown.forEach(function (p) {
-      var sel = p.id === selectedId;
+      var sel = p.id === selectedId, osm = isOsmOnly(p);
+      var tier = sel ? 'top' : osm ? 'osm' : nDrawn < nTop ? 'top' : nDrawn < nNamed ? 'name' : 'dot';
       var pt = map.latLngToContainerPoint([p.lat, p.lon]);
-      var r = dotR(p), px = LBL_PX[p.sterne] || 11;
+      var r = dotR(p) * ({ top: 1.3, dot: 0.7, osm: 0.6 }[tier] || 1), px = (LBL_PX[p.sterne] || 11) + (tier === 'top' ? 2 : 0);
       // crowded: a less important dot on top of a more important one is left out
       if (!sel && p.sterne < 3 && !free({ x1: pt.x - r, y1: pt.y - r, x2: pt.x + r, y2: pt.y + r })) return;
-      var label = C.mapLabel(p.name, last && last.ort, maxChars, lines);
-      var w = Math.max.apply(null, label.map(function (l) { return textWidth(l, px); })) + 3, hh = px * 0.6 * label.length + px * 0.15;
-      var right = { x1: pt.x + r + 2, y1: pt.y - hh, x2: pt.x + r + 2 + w, y2: pt.y + hh };
-      var left = { x1: pt.x - r - 2 - w, y1: right.y1, x2: pt.x - r - 2, y2: right.y2 };
-      var side = free(right) ? 'right' : free(left) ? 'left' : '';  // right of the dot, else left, else none
-      if (side) boxes.push(side === 'right' ? right : left);
+      if (!osm) nDrawn++;
+      var label = tier === 'top' || tier === 'name' ? C.mapLabel(p.name, last && last.ort, maxChars, lines) : null, side = '';
+      if (label) {
+        var w = Math.max.apply(null, label.map(function (l) { return textWidth(l, px); })) + 3, hh = px * 0.6 * label.length + px * 0.15;
+        var right = { x1: pt.x + r + 2, y1: pt.y - hh, x2: pt.x + r + 2 + w, y2: pt.y + hh };
+        var left = { x1: pt.x - r - 2 - w, y1: right.y1, x2: pt.x - r - 2, y2: right.y2 };
+        side = free(right) ? 'right' : free(left) ? 'left' : '';  // right of the dot, else left, else none
+        if (side) boxes.push(side === 'right' ? right : left);
+      }
       boxes.push({ x1: pt.x - r, y1: pt.y - r, x2: pt.x + r, y2: pt.y + r });
       var m = L.marker([p.lat, p.lon], {
-        icon: markerIcon(p, sel, side ? label : null, side), keyboard: false, title: p.name,
-        zIndexOffset: sel ? 2500 : p.sterne * 400
+        icon: markerIcon(p, sel, side ? label : null, side, tier), keyboard: false, title: C.displayName(p.name),
+        zIndexOffset: sel ? 2500 : (tier === 'top' ? 1200 : 0) + p.sterne * 400 - (osm ? 300 : 0)
       });
       m.on('click', function (e) {
         if (e.originalEvent) L.DomEvent.stopPropagation(e);
@@ -634,7 +642,13 @@
   // The line above "Hier suchen": what the map shows at this zoom and what "Hier suchen" will do (v0.8.1)
   function detailOk(b) { return C.circleFor(b).radius <= (cfg.suche.max_halbdiagonale_m || 10000); }
   // v0.9.4: zoomed in so far that "Hier suchen" works: ask whether to load the details (Laden / ✕ until zoomed out again)
-  var DETAIL = { dismissed: false };
+  var DETAIL = { dismissed: false }, REGION = { dismissed: '' };
+  // v0.10.0: the region (directory) is not loaded yet: ask too (Laden / ✕ until the missing part changes)
+  function regionAsk() {
+    if (ROUTE || busy || !dirOn() || !DIR.missing.length) return '';
+    var k = DIR.missing.map(C.tileKey).join(';');
+    return REGION.dismissed === k ? '' : k;
+  }
   function detailAsk(b) {
     if (ROUTE || busy || (cfg.suche && cfg.suche.frage_details === false)) return false;
     if (!detailOk(b)) { DETAIL.dismissed = false; return false; }
@@ -656,6 +670,7 @@
     } else if (tooMany && !small) txt = 'Zu weit draußen – näher heranzoomen';
     else if (osmPending()) txt = 'OSM lädt noch – es kommt mehr';
     else if (detailAsk(b)) { txt = 'Details laden?'; btn = '<button type="button" data-h="detail">Laden</button><button type="button" data-h="detailx" aria-label="Nicht laden">✕</button>'; }
+    else if (regionAsk()) { txt = 'Gegend laden?'; btn = '<button type="button" data-h="detail">Laden</button><button type="button" data-h="regionx" aria-label="Nicht laden">✕</button>'; }
     // v0.8.3: otherwise no hint (wish of the user); v0.9.3: also no „Hier suchen lädt die Gegend“
     el.innerHTML = txt ? '<span>' + esc(txt) + '</span>' + btn : '';
     el.hidden = !txt;
@@ -747,7 +762,7 @@
     var rank = function (it) { return it.vz ? 0 : 1; };
     list = list.map(function (it, i) { it.i = i; return it; }).sort(function (a, b2) { return (rank(a) - rank(b2)) || (a.vz ? a.i - b2.i : (b2.s - a.s) || (b2.x.score - a.x.score)); });
     // v0.7.2: in the visible section at most max_sichtbar markers, the most important first
-    var nIn = 0, maxIn = c.max_sichtbar || 40;
+    var mcfg = cfg.marker || {}, nIn = 0, maxIn = mcfg.max_sichtbar || c.max_sichtbar || 30, cTop = mcfg.top || 5, cNamed = mcfg.mit_name || 15, cDrawn = 0;
     list = list.slice(0, c.max_marker || 160).filter(function (it) { if (!C.inBbox(it.x, b)) return true; return nIn++ < maxIn; });
     var boxes = [];
     function free(bx) { return !boxes.some(function (o) { return bx.x1 < o.x2 && bx.x2 > o.x1 && bx.y1 < o.y2 && bx.y2 > o.y1; }); }
@@ -756,21 +771,24 @@
       var hw = it.k === 'c' ? (7 + 5 * it.s) : DOT_R_IC[it.s], hh = it.k === 'c' ? 9 : DOT_R_IC[it.s];
       var dot = { x1: pt.x - hw, y1: pt.y - hh, x2: pt.x + hw, y2: pt.y + hh };
       if (!free(dot) && (it.s < 3 || it.k === 'o')) return;  // crowded: drop smaller ones entirely (and sights on top of a town)
-      var px = it.k === 'c' && it.s >= 2 ? 13 : 12;
+      // v0.10.0: in the section the best `top` stand out, up to `mit_name` with a name, the rest without
+      var inView = C.inBbox(x, b), tier = !inView ? 'name' : cDrawn < cTop ? 'top' : cDrawn < cNamed ? 'name' : 'dot';
+      if (inView) cDrawn++;
+      var px = (it.k === 'c' && it.s >= 2 ? 13 : 12) + (tier === 'top' ? 2 : 0);
       var ml = it.k === 'o' ? C.mapLabel(x.name, '', (cfg.marker && cfg.marker.beschriftung_max_zeichen) || 16, (cfg.marker && cfg.marker.beschriftung_zeilen) || 2) : [C.displayName(x.name)];
       var w = Math.max.apply(null, ml.map(function (l) { return textWidth(l, px); })) + 4, lh = px * 0.6 * ml.length + px * 0.15;
       var right = { x1: pt.x + hw + 2, y1: pt.y - lh, x2: pt.x + hw + 2 + w, y2: pt.y + lh };
       var left = { x1: pt.x - hw - 2 - w, y1: right.y1, x2: pt.x - hw - 2, y2: right.y2 };
-      var side = free(right) ? 'right' : free(left) ? 'left' : '';
+      var side = tier === 'dot' ? '' : free(right) ? 'right' : free(left) ? 'left' : '';
       boxes.push(dot);
       if (side) boxes.push(side === 'right' ? right : left);
-      var lbl = side ? '<span class="ct-lbl ' + (it.k === 'o' ? 'o' : 'c' + it.s) + (side === 'left' ? ' left' : '') + '" style="' + (side === 'right' ? 'left:' : 'right:') + 'calc(50% + ' + (hw + 2) + 'px)">' + ml.map(esc).join('<br>') + '</span>' : '';
+      var lbl = side ? '<span class="ct-lbl ' + (it.k === 'o' ? 'o' : 'c' + it.s) + (side === 'left' ? ' left' : '') + (tier === 'top' ? ' top' : '') + '" style="' + (side === 'right' ? 'left:' : 'right:') + 'calc(50% + ' + (hw + 2) + 'px)">' + ml.map(esc).join('<br>') + '</span>' : '';
       var html = it.k === 'c'
         ? '<span class="ct ct' + it.s + '">' + C.starsText(it.s) + '</span>' + lbl
-        : '<span class="mk mk' + it.s + ' ic">' + (iconSvg(C.iconFor(x.typ, cfg)) || iconSvg('denkmal')) + '</span>' + lbl;
+        : '<span class="mk mk' + it.s + ' ic t-' + tier + '">' + (iconSvg(C.iconFor(x.typ, cfg)) || iconSvg('denkmal')) + '</span>' + lbl;
       var m = L.marker([x.lat, x.lon], {
         icon: L.divIcon({ className: 'mk-wrap', html: html, iconSize: [36, 36], iconAnchor: [18, 18] }),
-        keyboard: false, title: x.name, zIndexOffset: it.s * 400 + (it.k === 'c' ? 1500 : 0)
+        keyboard: false, title: C.displayName(x.name), zIndexOffset: it.s * 400 + (it.k === 'c' ? 1500 : 0) + (tier === 'top' ? 800 : 0)
       });
       m.on('click', function (e) { if (e.originalEvent) L.DomEvent.stopPropagation(e); if (it.vz && it.k === 'o') openDirPlace(it); else openCity(it); });
       cityLayer.addLayer(m);
@@ -812,7 +830,7 @@
   function cityZoom(lat, lon, z) {
     closeSheet();
     map.setView([lat, lon], z, { animate: false });
-    toast('Jetzt „Hier suchen“ tippen', 3000);
+    toast('Jetzt „Laden“ tippen', 3000);
   }
 
   // ---- (re)compute in the phone, one country after the other
@@ -1141,7 +1159,7 @@
       drawUser();
       map.setView([userPos.lat, userPos.lon], cfg.suche.standort_zoom || 14, { animate: false });
       // v0.8: only move the map; the search starts with "Hier suchen"
-      toast('Standort – jetzt „Hier suchen“', 3000);
+      toast('Standort gefunden', 2500);
     }, function (err) {
       $('btnLocate').disabled = false;
       var msg = err.code === 1 ? 'Standortzugriff verweigert. Bitte in den Browser-Einstellungen für diese Seite erlauben.'
@@ -1177,6 +1195,12 @@
 
   // v0.9.3: one star scale. "Hier suchen" places get the stars of the directory (the same as on the map and on routes);
   // where the directory is loaded but does not have the place (too few points), at most ★. Without the directory: as before.
+  function isOsmOnly(p) { return C.sourceTag(p) === 'OSM'; }
+  // v0.10.0: one order for map and list: Wikipedia before OSM only, then stars, then in the directory, then points
+  function placeRank(a, b) {
+    var sa = a.vzScore != null ? a.vzScore : a.score || 0, sb = b.vzScore != null ? b.vzScore : b.score || 0;
+    return (isOsmOnly(a) - isOsmOnly(b)) || (b.sterne - a.sterne) || ((b.vzScore != null) - (a.vzScore != null)) || (sb - sa) || ((a.dist || 0) - (b.dist || 0));
+  }
   function dirStars() {
     if (!last || !last.places) return false;
     var dr = dirOn() && last.bbox ? dirResult(last.bbox) : null;
@@ -1188,11 +1212,12 @@
       var x = p.wikidata && byQ[p.wikidata], st;
       p.vzScore = x ? x.score : undefined;
       p.vzCap = !x && dr && dirCovers(p) ? true : undefined;
-      st = x ? x.st : p.vzCap ? Math.min(p._own, 1) : p._own;
+      st = isOsmOnly(p) ? 0 : x ? x.st : p.vzCap ? Math.min(p._own, 1) : p._own; // v0.10.0: OSM only never with stars
       if (st !== p.sterne) { p.sterne = st; p.dauer_min = (cfg.dauer_min && cfg.dauer_min[String(st)]) || 0; changed = true; }
     });
-    if (changed) C.sortPlaces(last.places);
-    return changed;
+    var before = last.places.map(function (p) { return p.id; }).join();
+    last.places.sort(placeRank);
+    return changed || before !== last.places.map(function (p) { return p.id; }).join();
   }
   function renderAll() {
     dirStars();
@@ -1217,7 +1242,7 @@
       return;
     }
     if (!last || !last.places) {
-      ul.innerHTML = '<li class="empty">Schiebe und zoome die Karte an die Gegend, die dich interessiert (oder <b>◎ Mein Standort</b> oder 🔍), dann tippe auf <b>Hier suchen</b>.<br>' +
+      ul.innerHTML = '<li class="empty">Schiebe und zoome die Karte an die Gegend, die dich interessiert (oder <b>☰ → Mein Standort</b> / <b>Ort suchen</b>), dann tippe in der Zeile über der Karte auf <b>Laden</b>.<br>' +
         'Geladen wird nur der sichtbare Kartenausschnitt, und erst, wenn du tippst.</li>';
       if (!run) setStatus('');
       return;
@@ -1238,13 +1263,26 @@
       ul.innerHTML = '<li class="empty">Keine Orte mit diesen Filtern. Stelle oben „Alle Orte“ oder eine andere Kategorie ein.</li>';
       return;
     }
-    var dt = cfg.dauer_text || {};
+    var dt = cfg.dauer_text || {}, nW = 0, osmHead = false, topN = (cfg.marker && cfg.marker.top) || 5;
+    // v0.10.0: the best first ("Lohnt am meisten"), then the rest, OSM only at the end
+    var sec = function (p) {
+      if (isOsmOnly(p)) { if (osmHead) return ''; osmHead = true; return '<li class="list-sec">Weitere (nur OpenStreetMap, ohne Wikipedia)</li>'; }
+      nW++;
+      return nW === 1 ? '<li class="list-sec">Lohnt am meisten</li>' : nW === topN + 1 ? '<li class="list-sec">Weitere</li>' : '';
+    };
     ul.innerHTML = vis.map(function (p) {
+      return sec(p) + itemHtml(p);
+    }).join('');
+    observeRows();
+  }
+  function itemHtml(p) {
+    var dt = cfg.dauer_text || {};
+    return (function () {
       var d = distOf(p);
       var meta = [heard[p.id] ? '✓ gehört' : '', p.typ_label, d != null ? C.formatDistance(d) : '', dt[String(p.sterne)] || ''].filter(Boolean).join(' · ');
       var on = isMerk(p.id);
       var tag = C.sourceTag(p);
-      return '<li class="item' + (p.id === selectedId ? ' sel' : '') + (p.sterne ? '' : ' zero') + (heard[p.id] ? ' heard' : '') + '" data-id="' + esc(p.id) + '">' +
+      return '<li class="item' + (p.id === selectedId ? ' sel' : '') + (p.sterne ? '' : ' zero') + (isOsmOnly(p) ? ' osm' : '') + (heard[p.id] ? ' heard' : '') + '" data-id="' + esc(p.id) + '">' +
         '<div class="it-main">' +
           '<span class="it-stars s' + p.sterne + '">' + (p.sterne ? C.starsText(p.sterne) : '·') + '</span>' +
           '<span class="it-text"><span class="it-name">' + esc(C.displayName(p.name)) + '</span>' +
@@ -1254,8 +1292,7 @@
           '</span></div>' +
         '<button class="it-merk' + (on ? ' on' : '') + '" type="button" aria-label="Merken">' + (on ? '★' : '☆') + '</button>' +
         '</li>';
-    }).join('');
-    observeRows();
+    })();
   }
 
   function dateText(t) { try { return new Date(t).toLocaleDateString('de-DE', { day: 'numeric', month: 'numeric', year: '2-digit' }); } catch (e) { return ''; } }
@@ -2057,7 +2094,7 @@
         interactive: false, keyboard: false, zIndexOffset: 2500
       }).addTo(map);
     }
-    toast('Jetzt Ausschnitt wählen, dann „Hier suchen“', 4000);
+    toast('Jetzt Ausschnitt wählen, dann „Laden“', 4000);
   }
   /** "Hier suchen": search the visible section; after a sight was searched, open it if it is in the list. */
   function searchHere() {
@@ -2101,6 +2138,11 @@
       if (inp && e.key === 'Enter') { e.preventDefault(); routeSearch(inp.getAttribute('data-rt')); }
     });
     $('btnHere').addEventListener('click', searchHere);
+    // v0.10.0: one button on the map opens the menu; a tap on an entry or beside it closes it
+    var menuOpen = function (on) { $('menu').hidden = !on; $('btnMenu').setAttribute('aria-expanded', on ? 'true' : 'false'); };
+    $('btnMenu').addEventListener('click', function (e) { e.stopPropagation(); menuOpen($('menu').hidden); });
+    $('menu').addEventListener('click', function () { setTimeout(function () { menuOpen(false); }, 0); });
+    document.addEventListener('click', function (e) { if (!$('menu').hidden && !(e.target.closest && e.target.closest('#menu, #btnMenu'))) menuOpen(false); }, true);
     $('zoomHint').addEventListener('click', function (e) {
       var b = e.target.closest && e.target.closest('[data-h]');
       if (!b) return;
@@ -2110,6 +2152,7 @@
       else if (h === 'rtcancel') routeCancel();
       else if (h === 'detail') searchHere();
       else if (h === 'detailx') { DETAIL.dismissed = true; renderHint(); }
+      else if (h === 'regionx') { REGION.dismissed = regionAsk(); renderHint(); }
 
     });
     $('status').addEventListener('click', function (e) {

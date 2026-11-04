@@ -630,6 +630,10 @@ eq(core.classify(['Q4830453'], ['company', 'museum'], [''], ['Firma X'], cfg), '
   eq(core.firstSentence('Die Moschee wurde in der Manisa Straße am 18. Oktober 2009 eröffnet. Sie ist groß.'),
     'Die Moschee wurde in der Manisa Straße am 18. Oktober 2009 eröffnet.', 'ordinal "18. Oktober" is no sentence end');
   eq(core.firstSentence('Das Haus wurde 2009 gebaut. Danach mehr.'), 'Das Haus wurde 2009 gebaut.', 'normal sentence end still works');
+  // v0.10.0: the list short info has the same rule; Wikipedia no longer cuts the intro after 3 "sentences"
+  eq(core.shortInfo('Das Museum Reinhard Ernst, abgekürzt mre, ist ein Museum für abstrakte Kunst. Es wurde am 23. Juni 2024 eröffnet. Es zeigt viel.'),
+    'Das Museum Reinhard Ernst, abgekürzt mre, ist ein Museum für abstrakte Kunst. Es wurde am 23. Juni 2024 eröffnet.', 'short info: "am 23. Juni" is no sentence end');
+  ok(!/exsentences/.test(fs.readFileSync(path.join(ROOT, 'docs/core.js'), 'utf8').replace(/\/\/.*$/gm, '')), 'no exsentences in Wikipedia requests (Wikipedia ended at "am 23.")');
   // v0.9.4: descriptions instead of names (monument lists)
   eq(core.displayName('Bodendenkmal in Geisenfeld, #D-1-7336-0006'), 'Bodendenkmal Geisenfeld', 'monument number never shown');
   eq(core.displayName('Pfarrhof, um einen geschlossenen Hof geordnete Anlage'), 'Pfarrhof', 'description after the comma dropped');

@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.10.0 – 04.11.2026 – Auf einen Blick: was lohnt; ein Knopf auf der Karte
+
+Wünsche Nutzer (Ingolstadt): Nach OSM ist alles ★ und das Wichtige geht unter; erkennen, was einen Wikipedia-Artikel hat; zu viele Knöpfe; „auf einen Blick will ich wissen, was lohnt und was nicht – nicht zu viel und nicht zu wenig“; Kurzinfo „Es wurde am 23.“.
+
+- **Fehler aus v0.9.3 behoben**: Wikipedia-Ziele bekamen die strengen Verzeichnis-Sterne (meist keinen), reine OSM-Einträge aber weiter bis ★. Jetzt bekommen **OSM-Einträge ohne Wikipedia-Artikel nie Sterne** und stehen **immer hinter** den Wikipedia-Zielen (Karte und Liste).
+- **Hervorhebung nach Ausschnitt** (die Sterne bleiben ein Maßstab für ganz Europa):
+  - die besten 5 im Ausschnitt: größerer Punkt, fetter Name;
+  - die nächsten bis 15: normaler Punkt mit Name;
+  - der Rest bis 30: kleiner Punkt ohne Namen (antippen geht);
+  - OSM ohne Wikipedia: kleiner grauer Ring ohne Namen.
+  - Gilt auch weiter draußen (Orte und Ausflugsziele). Einstellbar: `marker.top`, `marker.mit_name`, `marker.max_sichtbar`.
+- **Wikipedia ja/nein erkennen**: gefüllter Punkt mit Symbol = Wikipedia-Artikel; grauer Ring = nur OpenStreetMap. In der Liste sind OSM-Einträge grau, das Kästchen W / OSM / W+OSM bleibt.
+- **Liste in Abschnitten**: „Lohnt am meisten“ (die ersten 5), „Weitere“, am Ende „Weitere (nur OpenStreetMap, ohne Wikipedia)“.
+- **Filter am Anfang „Alle Orte“** (vorher „ab ★“), weil die Hervorhebung zeigt, was lohnt. Wer schon einen Filter gewählt hat, behält ihn.
+- **Ein Knopf auf der Karte** (☰ oben rechts). Das Menü enthält: Hier suchen, Ort suchen, Mein Standort, Merkliste, Strecke, Liste aus-/einblenden, Einstellungen. Die Zahl der gemerkten Orte steht am Menüknopf.
+- **Die Zeile über der Karte fragt**: weit draußen „Gegend laden?“, nah dran „Details laden?“, jeweils mit „Laden“ und ✕. ✕ bei „Gegend laden?“ gilt, bis ein anderer Teil fehlt.
+- **Kurzinfo**: Wikipedia schnitt die Einleitung selbst nach „3 Sätzen“ ab und hielt „23.“ für ein Satzende. Jetzt holt die App die ganze Einleitung und schneidet selbst. Beide Satz-Zerleger kennen die Regel „nach 1–2-stelliger Zahl mit Punkt kein Satzende“. Gespeicherte Kurzinfos werden einmal neu geladen.
+
+### Annahmen/Abweichungen
+
+- „Mein Standort“ ist jetzt im Menü (dein Wunsch: nur ein Knopf). Das kostet unterwegs einen Tipp mehr.
+- Die Zahlen 5 / 15 / 30 sind Startwerte, auf dem Handy noch nicht gesehen.
+- Vorbereitete Offline-Gebiete behalten ihre alten Kurzinfos, bis sie neu vorbereitet werden.
+- Die Reihenfolge innerhalb gleicher Sterne: erst was im Verzeichnis steht (nach Verzeichnis-Punkten), dann der Rest nach den Punkten der Suche.
+
 ## v0.9.4 – 04.11.2026 – Keine Denkmal-Nummern, kurze Namen, „Details laden?“
 
 Wünsche Nutzer (Ingolstadt/Kelheim, Zoom 11): „Bodendenkmal in Geisenfeld, #D-1-7336-0006“ und „Pfarrhof, um einen geschlossenen Hof geordnete Anlage“ auf der Karte, zu langer Titel „Ehemalige Klosterkirche, jetzt katholische Filialkirche St. Antonius“, Frage nach Details beim Hineinzoomen.

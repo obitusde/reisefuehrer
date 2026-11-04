@@ -106,7 +106,7 @@
 
 <!-- ======================= v0.7 ======================= -->
 <section class="card" id="v08">
-  <h2>v0.8/v0.9 – Verzeichnis, Zoom-Stufen, Strecke, Namen (v0.9.4)</h2>
+  <h2>v0.8/v0.9 – Verzeichnis, Zoom-Stufen, Strecke, Namen (v0.10.0)</h2>
   <a class="btn secondary" href="index.html">App öffnen</a>
   <div id="checklist8"></div>
   <h2 style="margin-top:16px">Installieren (neue App-Kennung)</h2>
@@ -324,7 +324,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '0.9.4';
+  var VERSION = '0.10.0';
   var KEY = 'rf.diag.v1';
 
   var TESTS = [
@@ -635,14 +635,14 @@
   init();
 })();
 </script>
-<script src="core.js?v=0.9.4"></script>
+<script src="core.js?v=0.10.0"></script>
 <script>
 /* v0.2 diagnostics: API checks, gold list, manual checklist, summary */
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
   var KEY = 'rf.diag.v2';
-  var DV = '0.9.4';
+  var DV = '0.10.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function load() { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { return {}; } }
@@ -917,7 +917,7 @@
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
-  var KEY = 'rf.diag.v3', DV = '0.9.4';
+  var KEY = 'rf.diag.v3', DV = '0.10.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -994,7 +994,7 @@
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
-  var KEY = 'rf.diag.v6', DV = '0.9.4';
+  var KEY = 'rf.diag.v6', DV = '0.10.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -1095,7 +1095,7 @@
 /* v0.7 diagnostics: installability, checklist (symbols, city stars) */
 (function () {
   'use strict';
-  var KEY = 'rf.diag.v7', DV = '0.9.4';
+  var KEY = 'rf.diag.v7', DV = '0.10.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -1182,7 +1182,7 @@
 <script>
 /* v0.8: acceptance of the directory */
 (function () {
-  var KEY = 'rf.diag.v8', DV = '0.9.4';
+  var KEY = 'rf.diag.v8', DV = '0.10.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -1213,7 +1213,13 @@
     ['d1', 'v0.9.4 Keine Denkmal-Nummern (#D-…) mehr, nirgends'],
     ['d2', 'v0.9.4 Lange Namen kurz, auch bei Zoom 11 (Ingolstadt/Kelheim): „Pfarrhof“, „Ehemalige Klosterkirche“, voller Name klein im Fenster'],
     ['d3', 'v0.9.4 Bodendenkmäler und ähnliche Beschreibungen erst ab Zoom 15 (mit „Alle Orte“)'],
-    ['d4', 'v0.9.4 Ab etwa Zoom 12 fragt eine Zeile „Details laden?“ – „Laden“ sucht, ✕ schließt sie bis zum nächsten Hinein-/Herauszoomen']
+    ['d4', 'v0.9.4 Ab etwa Zoom 12 fragt eine Zeile „Details laden?“ – „Laden“ sucht, ✕ schließt sie bis zum nächsten Hinein-/Herauszoomen'],
+    ['m1', 'v0.10.0 Auf der Karte nur ein Knopf ☰; das Menü hat Hier suchen, Ort suchen, Mein Standort, Merkliste, Strecke, Liste, Einstellungen'],
+    ['m2', 'v0.10.0 Weiter draußen fragt die Zeile „Gegend laden?“, nah dran „Details laden?“'],
+    ['m3', 'v0.10.0 Auf einen Blick: höchstens 5 große Punkte mit fettem Namen, bis 15 mit Namen, der Rest nur kleine Punkte'],
+    ['m4', 'v0.10.0 Nach OSM: OSM-Einträge ohne Wikipedia als graue Ringe ohne Namen und ohne Stern; die Liste oben ändert sich nicht'],
+    ['m5', 'v0.10.0 Liste: „Lohnt am meisten“, „Weitere“, am Ende „Weitere (nur OpenStreetMap …)“ in Grau'],
+    ['m6', 'v0.10.0 Museum Reinhard Ernst (Wiesbaden): Kurzinfo endet nicht mehr bei „am 23.“']
   ];
   var RES = [['ok', 'Installiert, öffnet vom Startbildschirm'], ['fehler', 'Fehlermeldung'], ['schon', 'Wieder „bereits installiert“'], ['nein', 'Nicht versucht']];
   $('checklist8').innerHTML = CHECKS.map(function (c) {

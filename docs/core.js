@@ -1,5 +1,5 @@
 /*
- * Reiseführer – core logic (v0.9.4)
+ * Reiseführer – core logic (v0.10.0)
  * Shared by the app (index.html), the diagnostics page (diag.html) and Node tests.
  * No DOM access here. Network access only through the injected fetch function.
  */
@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var CORE_VERSION = '0.9.4';
+  var CORE_VERSION = '0.10.0';
 
   // ---------------------------------------------------------------- helpers
 
@@ -880,6 +880,9 @@
 
   var ABBR = /(?:\b(?:St|Dr|Nr|ca|bzw|vgl|z|B|u|a|d|h|e|g|i|Mr|Mrs|Jr|Sr|No|Mt|Ste|Sta|S|v|Chr|Jh|Jhd)|\b[A-Z])$/;
 
+  // v0.9.3/v0.10.0: "am 18. Oktober", "im 19. Jahrhundert": a short number with a dot is an ordinal, not the end
+  function ordinalEnd(s, i) { return s[i] === '.' && /(^|[^\d.])\d{1,2}$/.test(s.slice(0, i)); }
+
   /** First sentence of an extract, without bracketed asides and reference marks, at most ~220 chars. */
   function firstSentence(text, max) {
     max = max || 220;
@@ -889,8 +892,7 @@
     var re = /[.!?](?=\s+["„«(]?[A-ZÄÖÜÉÈÀ0-9])/g, m;
     while ((m = re.exec(s))) {
       var head = s.slice(0, m.index);
-      // v0.9.3: "am 18. Oktober", "im 19. Jahrhundert": a short number with a dot is an ordinal, not the end
-      if (s[m.index] === '.' && /(^|[^\d.])\d{1,2}$/.test(head)) continue;
+      if (ordinalEnd(s, m.index)) continue;
       if (!ABBR.test(head)) { s = s.slice(0, m.index + 1); break; }
     }
     if (s.length > max) {
@@ -929,7 +931,8 @@
     s = s.replace(/\s+([,.;:])/g, '$1');
     var out = [], re = /[.!?](?=\s+["„«(]?[A-ZÄÖÜÉÈÀ0-9])/g, m, start = 0;
     while ((m = re.exec(s))) {
-      if (ABBR.test(s.slice(0, m.index))) continue;
+      var head = s.slice(0, m.index);
+      if (ABBR.test(head) || ordinalEnd(s, m.index)) continue; // v0.10.0: "am 23. Juni" also here
       out.push(s.slice(start, m.index + 1).trim());
       start = m.index + 1;
     }
@@ -983,7 +986,7 @@
     return runLimited(jobs, 2, function (job) {
       var url = 'https://' + job.lang + '.wikipedia.org/w/api.php?' + qs({
         action: 'query', format: 'json', formatversion: 2, origin: '*', redirects: 1,
-        prop: 'extracts', exintro: 1, explaintext: 1, exsentences: 3, exlimit: 20,
+        prop: 'extracts', exintro: 1, explaintext: 1, exlimit: 20, // v0.10.0: no exsentences – Wikipedia ended at "am 23."
         titles: job.items.map(function (x) { return x.title; }).join('|')
       });
       return getJsonRetry(url, f, retryDelays).then(function (d) {
