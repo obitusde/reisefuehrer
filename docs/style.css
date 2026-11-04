@@ -340,3 +340,11 @@ details.why summary { min-height: 40px; display: flex; align-items: center; colo
 .zhint button[data-h="cancel"] { background: transparent; color: var(--text); font-size: 15px; padding: 2px 8px; }
 .pill.dim { opacity: .55; }
 @media (prefers-color-scheme: dark) { .zhint { background: rgba(32, 33, 36, .92); } }
+
+/* v0.8.1: the running search in one line (text shortened, seconds and buttons on the right) */
+.status.busy { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.status.busy::before { flex: none; margin-right: 0; }
+.status.busy > span:first-of-type { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.status.busy .secs { flex: none; }
+.status.busy .st-btns { flex: none; margin: 0 0 0 auto; gap: 6px; }
+.status.busy .st-btn { min-height: 34px; padding: 0 10px; font-size: 13px; }

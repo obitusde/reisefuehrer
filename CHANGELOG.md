@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.8.1 – 04.11.2026 – Nichts lädt von selbst, Teilen statt Auswahl
+
+Wunsch Nutzer: Nichts automatisch laden, immer erst Gegend und Zoom auf der Karte einstellen und erst suchen, wenn ich es sage. „Erzähl mir davon“ immer über Android „Teilen“, ohne Menü für Claude und Gemini. „Warte auf OpenStreetMap“ kürzer und ohne Zeilenumbruch. Unklar war, wann „Hier suchen“ und wann das Menü.
+
+- **Nur „Hier suchen“ lädt**, und zwar den sichtbaren Ausschnitt:
+  - Weit draußen (bis etwa Zoom 11): das Verzeichnis der Gegend, also Orte mit Sternen und Ausflugsziele (Stücke, die fehlen oder älter als 30 Tage sind).
+  - Nah dran (etwa ab Zoom 12): dazu die Suche mit Kurzinfos wie bisher.
+  - Zu weit draußen (mehr als 150 Stücke): „Hier suchen“ ist grau, die Zeile sagt „näher heranzoomen“.
+  - Die Zeile über „Hier suchen“ sagt, was es bei diesem Zoom lädt, z. B. „Zoom 9: „Hier suchen“ lädt Orte mit Sternen und Ausflugsziele (ca. 40 s)“. Der Knopf „Gegend laden“ ist weg.
+  - Schon Geladenes bleibt auf der Karte sichtbar (aus dem Handy, ohne Internet).
+- **⚙ aufgeräumt**: keine Auswahl Claude/Gemini, kein „Neu berechnen“ der Stadt-Sterne je Land, kein „Ausschnitt neu laden“. Im ⚙ lädt nur noch „Kartenausschnitt vorbereiten“ (für unterwegs ohne Internet, mit allen Texten).
+- **„Erzähl mir davon“ und „Übersicht“**: Text wird kopiert und das Android-Teilen-Menü geht auf; dort die App wählen (Claude, Gemini, …). Knopf „Teilen …“, falls das Menü nicht gleich aufgeht.
+- **Statuszeile beim Suchen in einer Zeile**: „Warte auf OSM …“, Sekunden, „Ohne OSM“, „Abbrechen“. Lädt OSM nach Ablauf der Wartezeit im Hintergrund weiter, steht dort „OSM ⏳ lädt noch im Hintergrund“ (vorher „OSM ✗ keine Antwort“, obwohl es noch lief).
+- Diagnose: Gemini-Testknöpfe entfernt, Checkliste v0.8 angepasst.
+
+### Annahmen/Abweichungen
+
+- **Die mitgelieferten Stadt-Sterne aus v0.7** (Dateien in der App selbst) erscheinen weiter beim Herauszoomen, dort wo noch nichts geladen ist. Das ist kein Download von Wikipedia oder Wikidata, sondern Teil der App, wie die Kartenbilder.
+- **Kurzinfos und Texte eines Ortes** werden wie bisher erst geladen, wenn man den Ort antippt.
+- Ein Screenshot zum Thema „läuft es noch?“ kam nicht an; die Änderungen an der Statuszeile sind deshalb nach Beschreibung gemacht.
+
 ## v0.8.0 – 04.11.2026 – Verzeichnis wie ein Reiseführer
 
 Wunsch Nutzer: Zu wenige Ziele (im ganzen Sauerland nichts); wie ein Reiseführer oder der Michelin auf der Karte: je nach Maßstab sehen, was es gibt und was sich lohnt, auch Ausflugsziele, Freizeitparks (Fort Fun) und lokale Museen. Nicht stundenlang rechnen, sondern bei Bedarf für die Gegend laden. „Mein Standort“ soll auch nicht gleich suchen. Installieren geht nicht.

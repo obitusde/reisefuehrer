@@ -1,5 +1,5 @@
 /*
- * Reiseführer – core logic (v0.8.0)
+ * Reiseführer – core logic (v0.8.1)
  * Shared by the app (index.html), the diagnostics page (diag.html) and Node tests.
  * No DOM access here. Network access only through the injected fetch function.
  */
@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var CORE_VERSION = '0.8.0';
+  var CORE_VERSION = '0.8.1';
 
   // ---------------------------------------------------------------- helpers
 
@@ -619,7 +619,7 @@
     var t0 = Date.now(), warnings = [], requests = 0;
     var src = { wiki: { ms: null }, osm: { state: useOsm ? 'wait' : 'off', ms: null } };
     var many = circles.length > 1;
-    prog('Lade Wikipedia (' + langs.join(', ') + ')' + (useOsm ? ' und OpenStreetMap' : '') + ' …', 'wiki');
+    prog('Lade Wikipedia (' + langs.join(', ') + ')' + (useOsm ? ' und OSM' : '') + ' …', 'wiki');
     // OpenStreetMap: wait at most osmWaitS (or until the user taps "Ohne OSM weiter"), then go on without it.
     // Loading continues in the background and fills the cache; onOsmLate reports when it is done.
     var osmDecided = false, skipFn = null;
@@ -663,7 +663,7 @@
       });
     })).then(function (r) {
       src.wiki.ms = Date.now() - t0;
-      if (useOsm && !osmDecided) prog('Wikipedia fertig – warte auf OpenStreetMap …', 'osm');
+      if (useOsm && !osmDecided) prog('Warte auf OSM …', 'osm');
       return r;
     });
     return Promise.all([wikiP, osmP]).then(function (both) {

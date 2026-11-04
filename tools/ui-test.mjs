@@ -124,6 +124,8 @@ async function newCtx(browser, opts = {}) {
   });
   await ctx.grantPermissions(['geolocation', 'clipboard-read', 'clipboard-write'], { origin: BASE.slice(0, -1) });
   await mockApis(ctx);
+  // Android "Teilen" (not in desktop Chromium): record what would be shared
+  await ctx.addInitScript(() => { navigator.share = (d) => { window.__shared = (window.__shared || []).concat([d.text]); return Promise.resolve(); }; });
   // the v0.8 directory loads tiles by itself; only its own test section has it on
   if (!opts.vz) await ctx.addInitScript(() => { try { const s = JSON.parse(localStorage.getItem('rf.settings') || '{}'); if (s.verzeichnis === undefined) { s.verzeichnis = false; localStorage.setItem('rf.settings', JSON.stringify(s)); } } catch (e) { /* ignore */ } });
   return ctx;
@@ -141,7 +143,7 @@ try {
   if (process.env.DEBUG) { page.on('request', (r) => { if (/extracts|mymemory/.test(r.url())) console.log('REQ', decodeURIComponent(r.url()).slice(0, 160)); }); page.on('requestfailed', (r) => console.log('FAILED', r.url().slice(0, 120), r.failure() && r.failure().errorText)); page.on('console', (m) => console.log('CONSOLE', m.text())); }
   await page.goto(BASE + 'index.html');
   await page.waitForSelector('.empty');
-  ok((await page.textContent('#version')) === 'v0.8.0', 'footer version');
+  ok((await page.textContent('#version')) === 'v0.8.1', 'footer version');
   if (OUT) await page.screenshot({ path: OUT + '/01-start.png' });
 
   await page.click('#btnLocate');
@@ -355,8 +357,9 @@ try {
   const prompt = await page.evaluate(() => navigator.clipboard.readText());
   ok(prompt.startsWith('Du bist mein Reiseführer.') && prompt.includes("Ort: Chetham's Library, Manchester") && prompt.includes('Schwerpunkt: Architektur'), 'prompt copied');
   ok(prompt.length <= 12000 && prompt.includes('fünf Minuten'), 'ausführlich prompt <= 12000: ' + prompt.length);
-  const claudeHref = await page.getAttribute('#tellStatus a.btn', 'href');
-  ok(claudeHref && claudeHref.startsWith('claude://claude.ai/new?q=Du%20bist%20mein%20Reisef'), 'Claude link with prompt');
+  // v0.8.1: always Android "Teilen" (the user picks the app), no Claude link
+  const shared = await page.evaluate(() => window.__shared || []);
+  ok(shared.length >= 1 && shared[shared.length - 1] === prompt && (await page.$('#tellStatus [data-a="aishare"]')) && !(await page.$('#tellStatus a[href^="claude:"]')), 'v0.8.1 prompt handed over with "Teilen": ' + JSON.stringify(shared.map((x) => x.length)) + ' ' + prompt.length + ' ' + (await page.textContent('#tellStatus')));
   ok((await page.textContent('[data-a=heard]')).includes('Schon gehört'), 'marked as heard');
   if (OUT) await page.screenshot({ path: OUT + '/10-erzaehlen.png' });
   ok(!(await page.$('[data-a=share]')) && !(await page.$('a[href*="tripadvisor"]')), 'no share button, no Tripadvisor link in place window');
@@ -364,7 +367,7 @@ try {
   await page.waitForFunction(() => /Prompt kopiert/.test(document.getElementById('tellStatus').textContent));
   const rprompt = await page.evaluate(() => navigator.clipboard.readText());
   ok(rprompt.startsWith('Gib mir eine Übersicht') && rprompt.includes('Tripadvisor') && rprompt.includes('## Auf einen Blick'), 'overview prompt copied');
-  ok((await page.getAttribute('#tellStatus a.btn', 'href')).startsWith('claude://claude.ai/new?q=Gib%20mir'), 'overview Claude link');
+  ok((await page.evaluate(() => window.__shared || [])).slice(-1)[0] === rprompt, 'v0.8.1 overview handed over with "Teilen"');
   ok((await page.textContent('[data-a=review]')).includes('Übersicht und Bewertung'), 'v0.5 button "Übersicht und Bewertung"');
   await page.click('[data-a=recopy]');
   await page.$eval('#sheetBody', (b) => { b.scrollTop = 400; });
@@ -416,26 +419,11 @@ try {
   await page.waitForFunction(() => window.__rfMap.getZoom() === 14 && document.querySelectorAll('.mk').length > 0, null, { timeout: 10000 });
   ok((await page.$$('.ct')).length === 0, 'v0.7 zoom in: city markers gone, places back');
   await page.waitForSelector('.item', { timeout: 10000 });
-  // ⚙ → Stadt-Sterne: compute Luxembourg in the browser (mocked Wikidata)
+  // ⚙: v0.8.1 no assistant choice, no per-country computing; only the directory (nothing loads by itself)
   await page.click('#btnSettings');
-  await page.waitForFunction(() => document.querySelector('[data-land="GB"]') && /Städte/.test(document.querySelector('[data-land="GB"]').textContent), null, { timeout: 8000 });
-  ok((await page.textContent('[data-land="GB"]')).includes('3 Städte'), 'v0.7 settings show shipped GB data: ' + (await page.textContent('[data-land="GB"]')));
-  // v0.7.2: Claude or Gemini
-  await page.click('input[name="assistent"][value="gemini"]');
-  await page.waitForFunction(() => /Übergabe an Gemini/.test(document.getElementById('sheetBody').textContent));
-  ok((await page.isChecked('input[name="uebergabe"][value="kopieren-app"]')) && !(await page.$('input[name="uebergabe"][value="claude-new"]')),
-    'v0.7.2 Gemini chosen: copy and open app, no direct link');
-  ok(await page.evaluate(() => JSON.parse(localStorage.getItem('rf.settings')).assistent === 'gemini'), 'v0.7.2 assistant saved');
-  await page.click('input[name="assistent"][value="claude"]');
-  await page.waitForFunction(() => /Übergabe an Claude/.test(document.getElementById('sheetBody').textContent));
-  ok(await page.isChecked('input[name="uebergabe"][value="claude-new"]'), 'v0.7.2 back to Claude with direct link');
-  await page.click('[data-land="LU"] [data-a="cityrun"]');
-  await page.waitForSelector('#cprep:not([hidden])');
-  await page.waitForFunction(() => /Stadt-Sterne neu berechnet/.test(document.getElementById('toast').textContent), null, { timeout: 20000 });
-  const luRow = await page.textContent('[data-land="LU"]');
-  ok(/1 Städte \(★★★ 1, ★★ 0\)/.test(luRow) && luRow.includes('1 Ausflugsziele') && luRow.includes('(im Handy)'), 'v0.7 Luxembourg computed in the phone: ' + luRow);
-  const luStored = await page.evaluate(() => new Promise((res) => { const r = indexedDB.open('reisefuehrer', 1); r.onsuccess = () => { const q = r.result.transaction('kv').objectStore('kv').get('staedte:LU'); q.onsuccess = () => res(q.result); }; }));
-  ok(luStored && luStored.staedte[0].name === 'Luxemburg' && luStored.orte[0].name === 'Burg Vianden' && !luStored.staedte.some((c) => /Kanton/.test(c.name)), 'v0.7 LU stored: ' + JSON.stringify(luStored && { s: luStored.staedte.map((c) => c.name + ' ' + c.score), o: luStored.orte.map((o) => o.name + ' ' + o.score) }));
+  await page.waitForFunction(() => /Verzeichnis \(Ziele auf der Karte\)/.test(document.getElementById('sheetBody').textContent));
+  const setTxt = await page.textContent('#sheetBody');
+  ok(!/KI-Assistent|Übergabe an|Neu berechnen/.test(setTxt) && !(await page.$('input[name="uebergabe"]')) && setTxt.includes('nur mit „Hier suchen“'), 'v0.8.1 settings: no assistant menu, no computing menu');
   if (OUT) await page.screenshot({ path: OUT + '/12-einstellungen-staedte.png' });
   await page.evaluate(() => history.back());
   await page.waitForSelector('#sheet', { state: 'hidden' });
@@ -449,10 +437,10 @@ try {
   ok(splitNow && +splitNow > 12, 'split persisted: ' + splitNow);
 
   // update banner (fake newer version, then ?testupdate=1)
-  fakeVersion = '0.8.1';
+  fakeVersion = '0.8.2';
   await page.reload();
   await page.waitForSelector('#banner:not([hidden])');
-  ok((await page.textContent('#bannerText')).includes('v0.8.1'), 'banner shows remote version');
+  ok((await page.textContent('#bannerText')).includes('v0.8.2'), 'banner shows remote version');
   if (OUT) await page.screenshot({ path: OUT + '/05-banner.png' });
   fakeVersion = null;
   await page.click('#bannerBtn');
@@ -583,9 +571,9 @@ try {
   const swOk = await p3.evaluate(() => navigator.serviceWorker.ready.then((r) => !!r.active)).catch(() => false);
   ok(swOk, 'service worker active');
   const cacheKeys = await p3.evaluate(async () => { await new Promise((r) => setTimeout(r, 800)); return caches.keys(); });
-  ok(cacheKeys.includes('rf-app-0.8.0'), 'app cache with version: ' + cacheKeys.join(','));
-  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.8.0')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
-  ok(cached.some((u) => u.includes('app.js?v=0.8.0')), 'shell precached');
+  ok(cacheKeys.includes('rf-app-0.8.1'), 'app cache with version: ' + cacheKeys.join(','));
+  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.8.1')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
+  ok(cached.some((u) => u.includes('app.js?v=0.8.1')), 'shell precached');
   ok(errs3.length === 0, 'sw: no JS errors ' + errs3.join(' | '));
   await ctx3.close();
 
@@ -613,22 +601,25 @@ try {
   if (OUT) await p4.screenshot({ path: OUT + '/07-diag.png', fullPage: true });
   ok(errs4.length === 0, 'diag: no JS errors ' + errs4.join(' | '));
   await ctx4.close();
-  // ---------------- v0.8: directory – loads the region by itself, three zoom levels, hint line
+  // ---------------- v0.8: directory – loaded with "Hier suchen" only (v0.8.1), three zoom levels, hint line
   {
     const c8 = await newCtx(browser, { vz: true });
     const p8 = await c8.newPage(); const e8 = []; watch(p8, e8);
     await p8.goto(BASE + 'index.html');
     await p8.waitForSelector('#zoomHint:not([hidden])');
-    await p8.evaluate(() => window.__rfMap.setView([49.61, 6.13], 8, { animate: false }));
-    await p8.waitForFunction(() => /Zoom 8: nur die großen Ziele/.test(document.getElementById('zoomHint').textContent) && /Gegend laden/.test(document.getElementById('zoomHint').textContent), null, { timeout: 8000 });
-    ok(true, 'v0.8 hint at zoom 8 with "Gegend laden"');
-    ok(await p8.$eval('#btnHere', (b) => b.classList.contains('dim')), 'v0.8 "Hier suchen" greyed when the section is too large');
+    await p8.evaluate(() => window.__rfMap.setView([49.61, 6.13], 6, { animate: false }));
+    await p8.waitForFunction(() => /Zoom 6: zu weit draußen zum Suchen/.test(document.getElementById('zoomHint').textContent), null, { timeout: 8000 });
+    ok(await p8.$eval('#btnHere', (b) => b.classList.contains('dim')), 'v0.8 "Hier suchen" greyed when too far out');
     const n0 = SPARQL_CALLS.length;
     await p8.evaluate(() => window.__rfMap.setView([49.61, 6.13], 10, { animate: false }));
+    await p8.waitForFunction(() => /Zoom 10: „Hier suchen“ lädt Orte mit Sternen und Ausflugsziele \(ca\./.test(document.getElementById('zoomHint').textContent), null, { timeout: 8000 });
+    await p8.waitForTimeout(1500);
+    ok(SPARQL_CALLS.length === n0 && !(await p8.$eval('#btnHere', (b) => b.classList.contains('dim'))), 'v0.8.1 nothing loads by itself; hint says what "Hier suchen" loads');
+    await p8.click('#btnHere');
     await p8.waitForFunction(() => /Lade Gegend/.test(document.getElementById('zoomHint').textContent), null, { timeout: 8000 }).catch(() => {});
-    await p8.waitForFunction(() => /Zoom 10: Orte mit Sternen/.test(document.getElementById('zoomHint').textContent), null, { timeout: 30000 });
+    await p8.waitForFunction(() => /Zoom 10: Orte mit Sternen und Ausflugsziele – ab Zoom 12 alle/.test(document.getElementById('zoomHint').textContent), null, { timeout: 30000 });
     ok(SPARQL_CALLS.length > n0 && SPARQL_CALLS.slice(n0).every((c) => { const [w, s, e, n] = c.split(',').map(Number); return Math.abs(e - w - 0.25) < 1e-6 && Math.abs(n - s - 0.25) < 1e-6; }),
-      'v0.8 zoom 10 loads 0.25° tiles by itself: ' + SPARQL_CALLS.slice(n0).length);
+      'v0.8 "Hier suchen" at zoom 10 loads 0.25° tiles: ' + SPARQL_CALLS.slice(n0).length);
     const ix = await p8.evaluate(() => new Promise((res) => { const r = indexedDB.open('reisefuehrer', 1); r.onsuccess = () => { const q = r.result.transaction('kv').objectStore('kv').get('vz:index'); q.onsuccess = () => res(q.result); }; }));
     ok(ix && Object.keys(ix).length >= 4 && Object.values(ix).some((e) => e.n >= 3), 'v0.8 tiles stored in the phone: ' + JSON.stringify(ix).slice(0, 200));
     await p8.waitForFunction(() => [...document.querySelectorAll('.ct-lbl')].some((e) => e.textContent === 'Luxemburg'), null, { timeout: 8000 }).catch(() => {});
@@ -637,10 +628,10 @@ try {
     if (OUT) await p8.screenshot({ path: OUT + '/13-verzeichnis-zoom10.png' });
     // zoom 14: all sights of the directory without "Hier suchen"
     await p8.evaluate(() => window.__rfMap.setView([49.6105, 6.1325], 15, { animate: false }));
-    await p8.waitForFunction(() => /Zoom 15: alle Ziele/.test(document.getElementById('zoomHint').textContent) && document.querySelectorAll('.mk-lbl').length >= 2, null, { timeout: 10000 })
+    await p8.waitForFunction(() => /Zoom 15: „Hier suchen“ lädt alle Ziele mit Kurzinfos/.test(document.getElementById('zoomHint').textContent) && document.querySelectorAll('.mk-lbl').length >= 2, null, { timeout: 10000 })
       .catch(() => {});
     const lbl15 = await p8.$$eval('.mk-lbl', (els) => els.map((e) => e.textContent));
-    ok(lbl15.some((t) => /Kathedrale/.test(t)) && !(await p8.$('.item')), 'v0.8 zoom 15: sights shown without searching: ' + lbl15.join(', '));
+    ok(lbl15.some((t) => /Kathedrale/.test(t)) && !(await p8.$('.item')), 'v0.8 zoom 15: loaded sights shown before the detail search: ' + lbl15.join(', '));
     ok(!(await p8.$eval('#btnHere', (b) => b.classList.contains('dim'))), 'v0.8 "Hier suchen" normal when zoomed in');
     await p8.click('.mk.mk1, .mk.mk2, .mk.mk3, .mk.mk0');
     await p8.waitForSelector('#sheet:not([hidden])');

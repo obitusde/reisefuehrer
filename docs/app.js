@@ -1,8 +1,8 @@
-/* Reiseführer – app (v0.8.0). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.8.1). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.8.0';
+  var VERSION = '0.8.1';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
@@ -165,8 +165,6 @@
     if (settings.kat == null) settings.kat = '';
     if (['kurz', 'normal', 'ausfuehrlich'].indexOf(settings.level) < 0) settings.level = (cfg.erzaehlen && cfg.erzaehlen.standard_ausfuehrlichkeit) || 'kurz';
     if (settings.focus == null) settings.focus = '';
-    if (!settings.uebergabe) settings.uebergabe = cfg.claude_uebergabe || 'claude-new';
-    if (['claude', 'gemini'].indexOf(settings.assistent) < 0) settings.assistent = 'claude'; // v0.7.2
     if (settings.hideHeard == null) settings.hideHeard = false;
     if (settings.osm == null) settings.osm = true;
     saveSettings();
@@ -349,7 +347,7 @@
   // ------------------------------------------------------ directory (v0.8)
   // Like a printed guide: the phone loads the region in tiles from Wikidata (core.prepareDirectoryTile; about 25 × 28 km,
   // 5 s each), keeps them cache_tage days (IndexedDB "vz:<tile>", list in "vz:index") and computes towns and sights
-  // with stars for the visible section (core.computeDirectory). Automatic from zoom laden_ab_zoom, further out by button.
+  // with stars for the visible section (core.computeDirectory). Loaded only with "Hier suchen" (v0.8.1).
   var DIR = { mem: {}, index: {}, reading: {}, queue: [], job: null, total: 0, done: 0, manual: false, res: null, resKey: '', err: {}, lastErr: '', ready: false, missing: [] };
   var dcfg = null, dirTimer = null;
   function DZ() { return cfg.verzeichnis || {}; }
@@ -386,22 +384,20 @@
         });
       })).then(function () { DIR.resKey = ''; scheduleCities(); scheduleMarkers(); });
     }
+    // v0.8.1: nothing is downloaded by itself – "Hier suchen" loads the missing tiles (wish of the user)
     DIR.missing = missing;
-    if (missing.length && z >= (d.laden_ab_zoom || 10) && missing.length <= (d.max_kacheln_auto || 24) && navigator.onLine !== false) dirQueue(missing, false);
     renderHint();
   }
-  function dirQueue(tiles, manual) {
-    if (DIR.manual && !manual) return; // a load by button is running: leave it alone
+  function dirQueue(tiles) {
     var c = map.getCenter(), running = DIR.job && DIR.job.k;
     var dist = function (t) { var a = (t.south + t.north) / 2 - c.lat, b = ((t.west + t.east) / 2 - c.lng) * 0.7; return a * a + b * b; };
     DIR.queue = tiles.filter(function (t) { return C.tileKey(t) !== running; }).sort(function (a, b) { return dist(a) - dist(b); });
-    DIR.manual = !!manual;
     DIR.total = DIR.queue.length + (DIR.job ? 1 : 0); DIR.done = 0;
     dirRun();
   }
   function dirRun() {
     if (DIR.job) { renderHint(); return; }
-    if (!DIR.queue.length) { DIR.manual = false; DIR.total = 0; renderHint(); return; }
+    if (!DIR.queue.length) { DIR.total = 0; renderHint(); return; }
     var t = DIR.queue.shift(), k = C.tileKey(t), ctl = { cancelled: false };
     DIR.job = { k: k, control: ctl };
     renderHint();
@@ -414,12 +410,12 @@
       DIR.err[k] = Date.now(); DIR.lastErr = (e && e.message) || 'Fehler';
     }).then(function () {
       DIR.job = null; DIR.done++; DIR.resKey = '';
-      scheduleCities(); scheduleMarkers(); refreshSettings();
+      scheduleCities(); scheduleMarkers(); refreshSettings(); scheduleDir();
       dirRun();
     });
   }
   function dirCancel() {
-    DIR.queue = []; DIR.manual = false; DIR.total = 0;
+    DIR.queue = []; DIR.total = 0;
     if (DIR.job) DIR.job.control.cancelled = true;
     DIR.err = {}; // a later zoom may try again
     renderHint();
@@ -437,28 +433,26 @@
     return DIR.res;
   }
   function estText(n) { var s = n * 6; return s < 90 ? 'ca. ' + Math.max(10, Math.round(s / 10) * 10) + ' s' : 'ca. ' + Math.round(s / 60) + ' min'; }
-  // The line above "Hier suchen": what the map shows at this zoom, loading, "Gegend laden"
+  // The line above "Hier suchen": what the map shows at this zoom and what "Hier suchen" will do (v0.8.1)
+  function detailOk(b) { return C.circleFor(b).radius <= (cfg.suche.max_halbdiagonale_m || 10000); }
   function renderHint() {
     var el = $('zoomHint');
     if (!el || !map) return;
-    var z = map.getZoom(), d = DZ(), reg = (d.zoom && d.zoom.region) || 9, nah = (d.zoom && d.zoom.nah) || 12, la = d.laden_ab_zoom || 10;
+    var z = map.getZoom(), d = DZ(), reg = (d.zoom && d.zoom.region) || 9, nah = (d.zoom && d.zoom.nah) || 12;
+    var b = viewBbox(), n = DIR.missing.length, tooMany = dirOn() && n > (d.max_kacheln_knopf || 150), small = detailOk(b);
     var txt, btn = '';
-    if (DIR.job || DIR.queue.length) {
+    var what = z < reg ? 'nur die großen Ziele' : z < nah ? 'Orte mit Sternen und Ausflugsziele' : 'alle Ziele';
+    if (busy && run && !run.quiet) txt = 'Suche läuft … (Stand in der Zeile unter der Karte)';
+    else if (DIR.job || DIR.queue.length) {
       txt = 'Lade Gegend ' + Math.min(DIR.done + 1, DIR.total || 1) + ' von ' + (DIR.total || 1) + ' …';
       btn = '<button type="button" data-h="cancel" aria-label="Abbrechen">✕</button>';
-    } else if (z < reg) txt = 'Zoom ' + z + ': nur die großen Ziele – für mehr hineinzoomen';
-    else if (z < nah) txt = 'Zoom ' + z + ': Orte mit Sternen und Ausflugsziele – ab Zoom ' + nah + ' alle';
-    else txt = 'Zoom ' + z + ': alle Ziele – „Hier suchen“ für Kurzinfos';
-    var n = DIR.missing.length;
-    if (!btn && dirOn() && n && z < la) {
-      if (n <= (d.max_kacheln_knopf || 150)) btn = '<button type="button" data-h="load">Gegend laden (' + estText(n) + ')</button>';
-      else txt += ' · zum Laden näher heran';
-    }
-    if (!btn && DIR.lastErr && n && z >= la) btn = '<button type="button" data-h="retry">Nochmal laden</button>';
+    } else if (tooMany && !small) txt = 'Zoom ' + z + ': zu weit draußen zum Suchen – näher heranzoomen';
+    else if (small) txt = 'Zoom ' + z + ': „Hier suchen“ lädt alle Ziele mit Kurzinfos';
+    else if (dirOn() && n) txt = 'Zoom ' + z + ': „Hier suchen“ lädt ' + what + ' (' + estText(n) + ')';
+    else txt = 'Zoom ' + z + ': ' + what + (z < nah ? ' – ab Zoom ' + nah + ' alle' : '');
     el.innerHTML = '<span>' + esc(txt) + '</span>' + btn;
     el.hidden = false;
-    var tooBig = C.circleFor(viewBbox()).radius > (cfg.suche.max_halbdiagonale_m || 10000);
-    $('btnHere').classList.toggle('dim', tooBig);
+    $('btnHere').classList.toggle('dim', tooMany && !small);
   }
   function dirMetaHtml() {
     var d = DZ();
@@ -467,19 +461,10 @@
     keys.forEach(function (k) { kb += DIR.index[k].kb || 0; oldest = Math.min(oldest, DIR.index[k].stand); });
     return '<h3>🗺 Verzeichnis (Ziele auf der Karte)</h3>' +
       '<p class="small">' + (keys.length ? keys.length + ' Stücke gespeichert (' + (kb >= 1024 ? (Math.round(kb / 102.4) / 10).toString().replace('.', ',') + ' MB' : kb + ' KB') + '), ältestes vom ' + esc(dateText(oldest)) + '.' : 'Noch nichts gespeichert.') +
-      ' Ein Stück ist etwa 25 × 28 km und dauert etwa 5 Sekunden. Ab Zoom ' + (d.laden_ab_zoom || 10) + ' lädt die Karte die Gegend selbst, weiter draußen mit „Gegend laden“. Gespeichert ' + (d.cache_tage || 30) + ' Tage.</p>' +
+      ' Geladen wird nur mit „Hier suchen“: die Gegend im Kartenausschnitt, in Stücken von etwa 25 × 28 km (je etwa 5 Sekunden). Gespeichert ' + (d.cache_tage || 30) + ' Tage.</p>' +
       (DIR.job || DIR.queue.length ? '<p class="small">Lädt gerade: ' + Math.min(DIR.done + 1, DIR.total || 1) + ' von ' + (DIR.total || 1) + '.</p>' : '') +
       (DIR.lastErr ? '<p class="small">Letzter Fehler: ' + esc(DIR.lastErr) + '</p>' : '') +
-      '<label class="opt"><input type="checkbox" id="useDir"' + (settings.verzeichnis !== false ? ' checked' : '') + '> Gegend laden und auf der Karte zeigen</label>' +
-      '<div class="actions"><button class="btn" type="button" data-a="dirreload">Ausschnitt neu laden</button>' +
-      '<button class="btn" type="button" data-a="dirclear">Verzeichnis löschen</button></div>';
-  }
-  function dirReload() {
-    var tiles = C.directoryTiles(viewBbox(), cfg), max = DZ().max_kacheln_knopf || 150;
-    if (tiles.length > max) { toast('Ausschnitt zu groß zum Neuladen – bitte näher heranzoomen.', 3500); return; }
-    DIR.err = {};
-    dirQueue(tiles, true);
-    toast('Lädt ' + tiles.length + ' Stücke neu (' + estText(tiles.length) + ').', 3000);
+      '<div class="actions"><button class="btn" type="button" data-a="dirclear">Verzeichnis löschen</button></div>';
   }
   function dirClear() {
     if (!confirm('Gespeichertes Verzeichnis löschen?')) return;
@@ -768,6 +753,7 @@
 
   function setBusy(b, quiet) {
     busy = b;
+    renderHint();
     if (quiet) return;
     $('btnHere').disabled = b; $('btnLocate').disabled = b;
     $('btnHere').textContent = b ? 'Suche …' : 'Hier suchen';
@@ -782,7 +768,7 @@
     var html = '<span>' + esc(run.text || 'Suche …') + '</span> <b class="secs">' + Math.floor(s / 1000) + ' s</b>';
     if (s >= 3000) {
       html += '<span class="st-btns">' +
-        (run.phase === 'osm' && run.control.skipOsm ? '<button type="button" class="st-btn" data-a="skiposm">Ohne OSM weiter</button>' : '') +
+        (run.phase === 'osm' && run.control.skipOsm ? '<button type="button" class="st-btn" data-a="skiposm">Ohne OSM</button>' : '') +
         '<button type="button" class="st-btn" data-a="cancel">Abbrechen</button></span>';
     }
     var st = $('status');
@@ -982,8 +968,8 @@
   function renderList() {
     var ul = $('list');
     if (!last || !last.places) {
-      ul.innerHTML = '<li class="empty">Tippe auf <b>◎ Mein Standort</b>, um Sehenswertes in deiner Nähe zu sehen.<br>' +
-        'Oder schiebe die Karte an einen Ort (z. B. Manchester) und tippe auf <b>Hier suchen</b> – gesucht wird im sichtbaren Kartenausschnitt.</li>';
+      ul.innerHTML = '<li class="empty">Schiebe und zoome die Karte an die Gegend, die dich interessiert (oder <b>◎ Mein Standort</b> oder 🔍), dann tippe auf <b>Hier suchen</b>.<br>' +
+        'Geladen wird nur der sichtbare Kartenausschnitt, und erst, wenn du tippst.</li>';
       if (!run) setStatus('');
       return;
     }
@@ -1036,7 +1022,7 @@
       ok: 'OSM ✓ ' + secText(o.ms),
       cache: 'OSM ✓ gespeichert',
       prep: 'OSM wartet (Gebiet wird vorbereitet)',
-      timeout: 'OSM ✗ keine Antwort (' + secText(o.ms) + ')',
+      timeout: 'OSM ⏳ lädt noch im Hintergrund',
       skip: 'OSM übersprungen',
       error: 'OSM ✗ Fehler',
       off: 'OSM aus'
@@ -1360,38 +1346,19 @@
     handOver(C.buildReviewPrompt(p, cfg), '', Date.now());
   }
 
-  // v0.7.2: Claude or Gemini (⚙). Claude can be opened with the text; for Gemini no such link is known,
-  // so the text is copied and Gemini opened (or handed over with Android "Teilen").
-  var AI = {
-    claude: { name: 'Claude', app: 'claude://claude.ai/new', direkt: function (t) { return C.claudeNewUrl(t); } },
-    gemini: { name: 'Gemini', app: 'https://gemini.google.com/app', direkt: null }
-  };
-  function aiNow() { return AI[settings.assistent] || AI.claude; }
-  function aiMethod() {
-    var m = settings.uebergabe, ai = aiNow();
-    if (m === 'teilen' && !navigator.share) m = 'kopieren-app';
-    if (m === 'claude-new' && !ai.direkt) m = 'kopieren-app';
-    return m;
-  }
-  // Copies the prompt and opens the assistant (method from the settings)
+  // v0.8.1: always Android "Teilen" – the user picks the app (Claude, Gemini, …) in the share menu.
+  // The text is copied as well; without "Teilen" (some browsers) only copying is left.
   function handOver(pr, extra, t0) {
     narr.prompt = pr.text;
-    var ai = aiNow(), method = aiMethod();
     return copyText(pr.text).then(function (copied) {
-      narr.url = method === 'kopieren' || method === 'teilen' ? '' : method === 'kopieren-app' ? ai.app : ai.direkt(pr.text);
+      var can = !!navigator.share;
       var info = (copied ? 'Prompt kopiert' : 'Kopieren nicht möglich') + ' (' + pr.length.toLocaleString('de-DE') + ' Zeichen' + (extra || '') + ').';
-      var hint = method === 'claude-new' ? ' ' + ai.name + ' öffnet sich mit dem Text.'
-        : method === 'kopieren-app' ? ' In ' + ai.name + ' lange ins Eingabefeld tippen → Einfügen.'
-        : method === 'teilen' ? ' Im Teilen-Menü ' + ai.name + ' wählen.' : ' In ' + ai.name + ' einfügen.';
+      var hint = can ? ' Im Teilen-Menü die App wählen (z. B. Claude oder Gemini).' : ' In der App einfügen (lange ins Eingabefeld tippen → Einfügen).';
       setTellStatus('<p>' + esc(info + hint) + '</p><div class="actions">' +
         '<button class="btn" type="button" data-a="recopy">Nochmal kopieren</button>' +
-        (method === 'teilen' ? '<button class="btn primary" type="button" data-a="aishare">Teilen …</button>' : '') +
-        (narr.url ? '<a class="btn primary" href="' + esc(narr.url) + '">' + esc(ai.name) + ' öffnen</a>' : '') + '</div>');
-      // open directly if the tap is still "fresh"; otherwise the user taps the button
-      if (Date.now() - t0 < 4000) {
-        if (narr.url) window.location.href = narr.url;
-        else if (method === 'teilen') aiShare();
-      }
+        (can ? '<button class="btn primary" type="button" data-a="aishare">Teilen …</button>' : '') + '</div>');
+      // open the share menu right away if the tap is still "fresh"; otherwise the user taps "Teilen …"
+      if (can && Date.now() - t0 < 4000) aiShare();
     });
   }
   function aiShare() {
@@ -1466,22 +1433,11 @@
         (prep ? 'Wird gerade vorbereitet …' : 'Kartenausschnitt vorbereiten') + '</button></div>' +
       areasHtml() +
       dirMetaHtml() +
-      cityMetaHtml() +
       fullscreenHtml() +
       '<h3>Karten-App für „In Google Maps“ und „Pin“</h3>' +
       [['google', 'Google Maps (Web-Link, empfohlen)'], ['geo', 'Android-Karten-App (geo:-Link, Auswahl möglich)'], ['osmand', 'OsmAnd (öffnet OsmAnd+; „Pin“ per geo:-Link)']].map(function (o) {
         return '<label class="opt"><input type="radio" name="kapp" value="' + o[0] + '"' + (settings.kartenApp === o[0] ? ' checked' : '') + '> ' + o[1] + '</label>';
       }).join('') +
-      '<h3>KI-Assistent für „Erzähl mir davon“ und „Übersicht“</h3>' +
-      [['claude', 'Claude'], ['gemini', 'Gemini']].map(function (o) {
-        return '<label class="opt"><input type="radio" name="assistent" value="' + o[0] + '"' + (settings.assistent === o[0] ? ' checked' : '') + '> ' + o[1] + '</label>';
-      }).join('') +
-      '<h3>Übergabe an ' + esc(aiNow().name) + '</h3>' +
-      (aiNow().direkt ? [['claude-new', 'App mit fertigem Text öffnen (empfohlen)']] : []).concat(
-        [['kopieren-app', 'Text kopieren und App öffnen' + (aiNow().direkt ? '' : ' (empfohlen)')], ['teilen', 'Über Android „Teilen“ (App im Menü wählen)'], ['kopieren', 'Nur kopieren']]).map(function (o) {
-        return '<label class="opt"><input type="radio" name="uebergabe" value="' + o[0] + '"' + (aiMethod() === o[0] ? ' checked' : '') + '> ' + o[1] + '</label>';
-      }).join('') +
-      (aiNow().direkt ? '' : '<p class="small">Für Gemini ist kein Link bekannt, der den Text gleich einfügt. Testknöpfe dafür: <a href="diag.html#v072">Diagnose</a>.</p>') +
       '<h3>Schon gehört</h3>' +
       '<label class="opt"><input type="checkbox" id="hideHeard"' + (settings.hideHeard ? ' checked' : '') + '> Schon gehörte Orte in Liste und Karte ausblenden</label>' +
       '<div class="actions"><button class="btn wide" type="button" data-a="clearheard">Liste „Schon gehört“ leeren (' + Object.keys(heard).length + ')</button></div>' +
@@ -1847,7 +1803,20 @@
   }
   /** "Hier suchen": search the visible section; after a sight was searched, open it if it is in the list. */
   function searchHere() {
-    var h = pendingHit, b = viewBbox();
+    var h = pendingHit, b = viewBbox(), small = detailOk(b);
+    // the directory of the section (towns, sights with stars) – only what is missing or older than cache_tage
+    if (dirOn() && DIR.ready) {
+      DIR.err = {}; DIR.lastErr = '';
+      dirEnsure();
+      var max = DZ().max_kacheln_knopf || 150;
+      if (DIR.missing.length > max && !small) { toast('Zu weit draußen zum Suchen – bitte näher heranzoomen.', 3500); return; }
+      if (DIR.missing.length) dirQueue(DIR.missing.slice(0, max));
+    }
+    if (!small) {
+      if (!dirOn()) toast('Ausschnitt zu groß. Bitte näher heranzoomen.', 3500);
+      else if (!DIR.missing.length) toast('Diese Gegend ist schon geladen. Für Kurzinfos näher heranzoomen.', 3500);
+      return;
+    }
     doSearch(b, { onDone: h ? function () {
       // the hit stays marked until a search really ran (not when the section was too large)
       if (pendingHit === h) pendingHit = null;
@@ -1873,14 +1842,13 @@
       if (!b) return;
       var h = b.getAttribute('data-h');
       if (h === 'cancel') dirCancel();
-      else if (h === 'load') { DIR.err = {}; dirQueue(DIR.missing, true); }
-      else if (h === 'retry') { DIR.err = {}; DIR.lastErr = ''; scheduleDir(); }
+
     });
     $('status').addEventListener('click', function (e) {
       var el = e.target.closest('[data-a]');
       if (!el) return;
       var a = el.getAttribute('data-a');
-      if (a === 'skiposm' && run && run.control.skipOsm) { run.control.skipOsm(); run.text = 'Weiter ohne OpenStreetMap …'; renderBusy(); }
+      if (a === 'skiposm' && run && run.control.skipOsm) { run.control.skipOsm(); run.text = 'Weiter ohne OSM …'; renderBusy(); }
       else if (a === 'cancel') cancelSearch();
       else if (a === 'details') openSearchDetails();
     });
@@ -2003,8 +1971,6 @@
         refreshSettings();
       } else if (a === 'cityhere') {
         closeSheet(); searchHere();
-      } else if (a === 'dirreload') {
-        closeSheet(); dirReload();
       } else if (a === 'dirclear') {
         dirClear();
       } else if (a === 'cityzoom' && cityCur) {
@@ -2022,11 +1988,8 @@
     });
     $('sheetBody').addEventListener('change', function (e) {
       if (e.target.id === 'focusSel') { settings.focus = e.target.value; saveSettings(); setTellStatus(''); return; }
-      if (e.target.name === 'uebergabe') { settings.uebergabe = e.target.value; saveSettings(); toast('Übergabe gespeichert'); return; }
-      if (e.target.name === 'assistent') { settings.assistent = e.target.value; saveSettings(); refreshSettings(); toast(aiNow().name + ' gewählt'); return; }
       if (e.target.id === 'useOsm') { settings.osm = e.target.checked; saveSettings(); toast('Gilt ab der nächsten Suche'); return; }
       if (e.target.id === 'autoFs') { settings.vollbild = e.target.checked; saveSettings(); return; }
-      if (e.target.id === 'useDir') { settings.verzeichnis = e.target.checked; saveSettings(); DIR.resKey = ''; if (!e.target.checked) dirCancel(); scheduleCities(); scheduleMarkers(); scheduleDir(); return; }
       if (e.target.id === 'showCities') { settings.staedte = e.target.checked; saveSettings(); renderMarkers(); scheduleCities(); return; }
       if (e.target.id === 'hideHeard') { settings.hideHeard = e.target.checked; saveSettings(); renderAll(); return; }
       if (e.target.name === 'kapp') {

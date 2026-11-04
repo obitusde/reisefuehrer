@@ -195,7 +195,6 @@
 
   "karten_app_standard": "google",
   "osmand_paket": "net.osmand.plus",
-  "claude_uebergabe": "claude-new",
 
   "besucher": {
     "_hinweis": "Prompt für den Knopf „Übersicht und Bewertung“ (v0.5): zum Lesen, nicht zum Vorlesen. Claude sucht Infos und Bewertungen von Besuchern im Netz und antwortet in einer festen, gut lesbaren Gliederung mit Tabelle und Stichpunkten.",
@@ -236,7 +235,7 @@
   },
 
   "erzaehlen": {
-    "_hinweis": "Prompt für „Erzähl mir davon“ (PROJEKT.md Abschnitt 8). Platzhalter in {geschweiften Klammern}. claude_uebergabe oben: claude-new = Claude-App mit Text, kopieren-app = kopieren und Claude öffnen, kopieren = nur kopieren.",
+    "_hinweis": "Prompt für „Erzähl mir davon“ (PROJEKT.md Abschnitt 8). Platzhalter in {geschweiften Klammern}. Übergabe (v0.8.1): Text wird kopiert und mit Android „Teilen“ an die gewählte App gegeben.",
     "max_zeichen": 12000,
     "quelltext_max": { "kurz": 2500, "normal": 3000, "ausfuehrlich": 10000 },
     "standard_ausfuehrlichkeit": "kurz",
@@ -320,12 +319,10 @@
     "natur": ["park", "natur"]
   },
   "verzeichnis": {
-    "_hinweis": "v0.8: Verzeichnis wie ein Reiseführer. Das Handy lädt die Gegend in Kacheln (kachel Grad, etwa 25 × 28 km) von Wikidata: alles mit Koordinaten und Wikipedia-Artikel, dazu Seitenaufrufe und Wikivoyage für die besten Kandidaten (kachel_aufrufe). Gespeichert cache_tage Tage. Automatisch ab Zoom laden_ab_zoom (höchstens max_kacheln_auto Kacheln), weiter draußen per Knopf (max_kacheln_knopf). Sterne: sterne (Sehenswürdigkeiten), sterne_natur (Natur und ausflug_typen wie Freizeitparks), stadt_sterne (Orte: Bekanntheit + was es zu sehen gibt; ohne min_sehen kein Stern). Ab welchem Zoom ein Punkt erscheint: ★★★-Ziele und ★★/★★★-Orte immer, ★★-Ziele, ★-Orte und ★-Ziele außerhalb von Stern-Orten ab zoom.region, alle anderen ab nah_ab Punkten ab zoom.nah.",
+    "_hinweis": "v0.8: Verzeichnis wie ein Reiseführer. Das Handy lädt die Gegend in Kacheln (kachel Grad, etwa 25 × 28 km) von Wikidata: alles mit Koordinaten und Wikipedia-Artikel, dazu Seitenaufrufe und Wikivoyage für die besten Kandidaten (kachel_aufrufe). Gespeichert cache_tage Tage. Geladen wird nur mit „Hier suchen“ (v0.8.1), höchstens max_kacheln_knopf Kacheln auf einmal. Sterne: sterne (Sehenswürdigkeiten), sterne_natur (Natur und ausflug_typen wie Freizeitparks), stadt_sterne (Orte: Bekanntheit + was es zu sehen gibt; ohne min_sehen kein Stern). Ab welchem Zoom ein Punkt erscheint: ★★★-Ziele und ★★/★★★-Orte immer, ★★-Ziele, ★-Orte und ★-Ziele außerhalb von Stern-Orten ab zoom.region, alle anderen ab nah_ab Punkten ab zoom.nah.",
     "aktiv": true,
     "kachel": 0.25,
     "cache_tage": 30,
-    "laden_ab_zoom": 10,
-    "max_kacheln_auto": 24,
     "max_kacheln_knopf": 150,
     "abfrage": { "min_sprachversionen": 1, "timeout_s": 30, "titel_sprachen": ["de", "en", "fr", "it"], "wikivoyage": true, "gewicht_sprachen": 2, "gewicht_aufrufe": 1.5, "aufrufe_stapel": 25, "aufrufe_parallel": 2 },
     "kachel_aufrufe": { "aufrufe_orte": 40, "aufrufe_natur": 25, "aufrufe_staedte": 60 },
