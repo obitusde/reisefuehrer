@@ -319,6 +319,28 @@
     "aussicht": ["aussicht"],
     "natur": ["park", "natur"]
   },
+  "verzeichnis": {
+    "_hinweis": "v0.8: Verzeichnis wie ein Reiseführer. Das Handy lädt die Gegend in Kacheln (kachel Grad, etwa 25 × 28 km) von Wikidata: alles mit Koordinaten und Wikipedia-Artikel, dazu Seitenaufrufe und Wikivoyage für die besten Kandidaten (kachel_aufrufe). Gespeichert cache_tage Tage. Automatisch ab Zoom laden_ab_zoom (höchstens max_kacheln_auto Kacheln), weiter draußen per Knopf (max_kacheln_knopf). Sterne: sterne (Sehenswürdigkeiten), sterne_natur, stadt_sterne (Orte: Bekanntheit + was es zu sehen gibt; ohne min_sehen kein Stern). Ab welchem Zoom ein Punkt erscheint: ★★★-Ziele und ★★/★★★-Orte immer, ★★-Ziele, ★-Orte und ★-Ziele außerhalb von Stern-Orten ab zoom.region, alle anderen ab nah_ab Punkten ab zoom.nah.",
+    "aktiv": true,
+    "kachel": 0.25,
+    "cache_tage": 30,
+    "laden_ab_zoom": 10,
+    "max_kacheln_auto": 24,
+    "max_kacheln_knopf": 150,
+    "abfrage": { "min_sprachversionen": 1, "timeout_s": 30, "titel_sprachen": ["de", "en", "fr", "it"], "wikivoyage": true, "gewicht_sprachen": 2, "gewicht_aufrufe": 1.5, "aufrufe_stapel": 25, "aufrufe_parallel": 2 },
+    "kachel_aufrufe": { "aufrufe_orte": 40, "aufrufe_natur": 15, "aufrufe_staedte": 60 },
+    "min_einwohner": 1000,
+    "aufrufe_ab": 5,
+    "doppelt_m": 500,
+    "nah_ab": 4,
+    "sterne": { "3": 10.5, "2": 8.5, "1": 7.5 },
+    "sterne_natur": { "3": 9, "2": 7, "1": 5.5 },
+    "stadt": { "sprachen": 3, "aufrufe": 3, "wikivoyage": 2, "hauptstadt": 1, "top_n": 5, "basis": 5, "einzel_anteil": 0.6, "min_sehen": 3 },
+    "stadt_sterne": { "3": 30, "2": 22, "1": 16 },
+    "zoom": { "region": 9, "nah": 12 },
+    "max_sichtbar": 40
+  },
+
   "staedte": {
     "_hinweis": "Stadt-Sterne (PROJEKT.md 6c, v0.7.0). Je Kachel (kachel_grad) eine Wikidata-Abfrage: alle Einträge mit Koordinaten und mindestens min_sprachversionen Sprachversionen. Siedlungen (stadt_woerter in der Wikidata-Klasse) werden Städte, der Rest zählt als Sehenswürdigkeit (Punkte wie Abschnitt 6, ohne Artikellänge). Stadt-Score = Summe der top_n besten Sehenswürdigkeiten im Stadtradius + Bonus. Sterne rechnet die App aus score mit schwellen (ändern ohne Neuberechnen). Sehenswürdigkeiten außerhalb von Städten ab ausflug_ab Punkten erscheinen als Ausflugsziele. zoom: bis nur_grosse_bis nur Städte ★★/★★★, bis staedte_bis alle Städte mit Sternen und Ausflugsziele, darüber die normalen Orte.",
     "aktiv": true,

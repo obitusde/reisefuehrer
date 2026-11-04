@@ -1460,12 +1460,12 @@
   function citySparql(t, cfg) {
     var c = cfg.staedte, min = c.min_sprachversionen || 12;
     var en = function (v) { return 'STRAFTER(STR(' + v + '),"entity/")'; };
-    var tl = c.titel_sprachen || [], sel = '', opt = '';
+    var tl = c.titel_in_abfrage ? c.titel_sprachen || [] : [], sel = '', opt = '';
     tl.forEach(function (l) {
       sel += ' (SAMPLE(?t_' + l + ') AS ?t_' + l + ')';
       opt += ' OPTIONAL { ?a_' + l + ' schema:about ?item; schema:isPartOf <https://' + l + '.wikipedia.org/>; schema:name ?t_' + l + '. }';
     });
-    if (c.wikivoyage) {
+    if (c.wikivoyage && c.titel_in_abfrage) {
       sel += ' (SAMPLE(?wv1) AS ?wv)';
       opt += ' OPTIONAL { ?wv1 schema:about ?item; schema:isPartOf ?wvs. FILTER(?wvs IN (<https://de.wikivoyage.org/>, <https://en.wikivoyage.org/>, <https://fr.wikivoyage.org/>, <https://it.wikivoyage.org/>)) }';
     }
@@ -1672,7 +1672,7 @@
           inside.u = inside.u || x.u; inside.cap = inside.cap || x.cap;
         } else x.fate = 'zusammengelegt mit ' + inside.name;
         // a "fortified town" without inhabitants (Cité de Carcassonne) is a sight of the city it lies in
-        var ss = !x.pop && sightScore(x, cfg);
+        var ss = !x.pop && (x._s !== undefined ? x._s : sightScore(x, cfg));
         if (ss) { x.fate += ', zählt als Sehenswürdigkeit'; sights.push({ x: x, score: ss.score, typ: ss.typ, natur: ss.natur }); }
         return;
       }
@@ -1838,8 +1838,8 @@
   }
 
   /** Items worth asking page views for: the best sights and the best-known places (before page views are known). */
-  function directoryCandidates(items, cfg) {
-    var v = cfg.verzeichnis, sights = [], nature = [], places = [];
+  function directoryCandidates(items, cfg, lim) {
+    var v = Object.assign({}, cfg.verzeichnis, lim || {}), sights = [], nature = [], places = [];
     items.forEach(function (x) {
       if (isCityItem(x, cfg)) { if (x.pop >= (v.min_einwohner || 0)) places.push(x); return; }
       var s = sightScore(x, cfg);
@@ -1861,12 +1861,16 @@
    * Sights shown on their own (★★ and more) count only partly for their town, so that a village is not
    * starred just because a famous castle lies in it (it gets its own marker instead).
    */
-  function computeDirectory(items, cfg, land) {
+  function computeDirectory(items, cfg, land, opt) {
+    // the app keeps the tile items and computes again and again: work on copies (merging changes names and positions)
+    if (opt && opt.copy) items = items.map(function (x) { return Object.assign({}, x); });
     var v = cfg.verzeichnis, c = cfg.staedte, cell = 0.2, zr = (v.zoom && v.zoom.region) || 9, zn = (v.zoom && v.zoom.nah) || 12;
     var cands = [], sights = [];
     items.forEach(function (x) {
-      if (isCityItem(x, cfg) && x.pop >= (v.min_einwohner || 0)) { if (isUnesco(x, cfg)) x.u = true; cands.push(x); return; }
-      var s = sightScore(x, cfg);
+      // items of a stored tile carry their kind (_c) and points (_s) already (prepareDirectoryTile)
+      var isC = x._c !== undefined ? x._c : isCityItem(x, cfg) && x.pop >= (v.min_einwohner || 0);
+      if (isC) { if (x._c === undefined && isUnesco(x, cfg)) x.u = true; cands.push(x); x.sights = []; return; }
+      var s = x._s !== undefined ? x._s : sightScore(x, cfg);
       if (s) sights.push({ x: x, score: s.score, typ: s.typ, natur: s.natur });
       else x.fate = isCityItem(x, cfg) ? 'kleiner Ort (' + x.pop + ' Einw.)' : 'zählt nicht';
     });
@@ -1904,7 +1908,8 @@
       var see = 0;
       k.sights.slice(0, g.top_n || 5).forEach(function (s) { see += Math.max(0, s.score - (g.basis || 5)) * (s.alone ? (g.einzel_anteil != null ? g.einzel_anteil : 1) : 1); });
       var sum = round1(fame + see);
-      k.st = starsFrom(sum, v.stadt_sterne);
+      // a star only if there is something to see (Thonon is well-known, but has hardly any sights)
+      k.st = see >= (g.min_sehen || 0) ? starsFrom(sum, v.stadt_sterne) : 0;
       k.score = sum;
       if (!inLand(k) || (!k.sights.length && !k.st)) return;
       staedte.push({
@@ -1922,6 +1927,45 @@
     });
     return { staedte: staedte, orte: orte, stats: { items: items.length, kandidaten: cands.length, staedte_gesamt: kept.length, orte_gesamt: sights.length } };
   }
+
+  /** Settings for the directory: the tile query and the scores use cfg.staedte with the overrides of cfg.verzeichnis.abfrage. */
+  function directoryConfig(cfg) {
+    var d = JSON.parse(JSON.stringify(cfg));
+    Object.assign(d.staedte, (cfg.verzeichnis && cfg.verzeichnis.abfrage) || {});
+    return d;
+  }
+
+  /**
+   * One tile of the directory, as the phone stores it: Wikidata items of the tile, page views and Wikivoyage for
+   * the best candidates, then only what counts (towns from min_einwohner, sights with points), each with its
+   * kind (_c) and points (_s), so that computeDirectory over many tiles is quick.
+   * dcfg = directoryConfig(cfg). Returns {t, stand, items, roh, ms, abfragen, fehler}.
+   */
+  function prepareDirectoryTile(t, dcfg, f, o) {
+    o = o || {};
+    var v = dcfg.verzeichnis, t0 = Date.now();
+    return loadCityTiles([t], dcfg, f, { control: o.control }).then(function (r) {
+      if (r.failed.length) { var e = new Error('Wikidata: Kachel nicht geladen'); e.failed = r.failed; throw e; }
+      var cands = directoryCandidates(r.items, dcfg, v.kachel_aufrufe);
+      return loadSitelinks(cands, dcfg, f).then(function () { return loadPageviews(cands, dcfg, f, {}); }).then(function (pv) {
+        var keep = [];
+        r.items.forEach(function (x) {
+          var isC = isCityItem(x, dcfg) && x.pop >= (v.min_einwohner || 0);
+          var s = isC ? null : sightScore(x, dcfg);
+          if (!isC && !s) return;
+          keep.push({
+            q: x.q, name: x.name, lat: x.lat, lon: x.lon, sl: x.sl, pop: x.pop || 0, km2: x.km2 || 0, land: x.land.slice(0, 1),
+            u: isUnesco(x, dcfg) || undefined, cap: x.cap || undefined, pv: x.pv || undefined, wv: x.wv || undefined,
+            _c: isC, _s: s ? { score: s.score, typ: s.typ, natur: s.natur || undefined } : null
+          });
+        });
+        return { t: tileKey(t), stand: Date.now(), items: keep, roh: r.items.length, ms: Date.now() - t0, abfragen: r.queries + pv.requests, fehler: pv.failed };
+      });
+    });
+  }
+
+  /** Tiles of the directory grid that cover a map section. */
+  function directoryTiles(b, cfg) { return cityTiles(b, (cfg.verzeichnis && cfg.verzeichnis.kachel) || 0.25); }
 
   /** Whole country: tiles over its bounding box, load, compute. */
   function loadCountryCities(land, cfg, f, o) {
@@ -1970,6 +2014,6 @@
     tripadvisorUrl: tripadvisorUrl, merkZeile: merkZeile,
     iconFor: iconFor, cityTiles: cityTiles, tileKey: tileKey, splitTile: splitTile, citySparql: citySparql, parseCityRows: parseCityRows,
     loadCityTiles: loadCityTiles, isCityItem: isCityItem, cityRadius: cityRadius, sightScore: sightScore,
-    computeCities: computeCities, loadPageviews: loadPageviews, loadSitelinks: loadSitelinks, directoryCandidates: directoryCandidates, computeDirectory: computeDirectory, cityStars: cityStars, ortStars: ortStars, loadCountryCities: loadCountryCities, bboxOf: bboxOf, cityWikiUrl: cityWikiUrl
+    computeCities: computeCities, loadPageviews: loadPageviews, loadSitelinks: loadSitelinks, directoryCandidates: directoryCandidates, computeDirectory: computeDirectory, directoryConfig: directoryConfig, prepareDirectoryTile: prepareDirectoryTile, directoryTiles: directoryTiles, cityStars: cityStars, ortStars: ortStars, loadCountryCities: loadCountryCities, bboxOf: bboxOf, cityWikiUrl: cityWikiUrl
   };
 });

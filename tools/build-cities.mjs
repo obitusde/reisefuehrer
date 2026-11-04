@@ -115,73 +115,57 @@ async function build(codes) {
   return anyFail;
 }
 
-// ---- v0.8 test: directory like a printed guide for a few tiles (all places with a Wikipedia article).
+// ---- v0.8: directory like a printed guide – the same path as the phone (prepareDirectoryTile per tile, computeDirectory).
 // node tools/build-cities.mjs --verzeichnis "46,6,47,7;46,7,47,8" [--fokus "46.15,6.0,47.0,7.3"]
-// The given boxes are split into tiles of `kachel` degrees (what the phone would load one by one).
-const VZ = {
-  kachel: 0.25, min_einwohner: 1000, aufrufe_ab: 5, aufrufe_orte: 250, aufrufe_natur: 60, aufrufe_staedte: 1000, doppelt_m: 500, nah_ab: 4,
-  sterne: { 3: 10.5, 2: 8.5, 1: 7.5 },
-  sterne_natur: { 3: 9, 2: 7, 1: 5.5 },
-  stadt: { sprachen: 3, aufrufe: 3, wikivoyage: 2, hauptstadt: 1, top_n: 5, basis: 5, einzel_anteil: 0.6 },
-  stadt_sterne: { 3: 30, 2: 22, 1: 16 },
-  zoom: { region: 9, nah: 12 }
-};
 async function verzeichnis(arg, fokusArg) {
-  const vc = JSON.parse(JSON.stringify(cfg));
-  Object.assign(vc.staedte, {
-    min_sprachversionen: 1, titel_sprachen: ['de', 'en', 'fr', 'it'], wikivoyage: true,
-    gewicht_sprachen: 2, gewicht_aufrufe: 1.5, aufrufe_stapel: 25, aufrufe_parallel: 2, timeout_s: 30
-  });
-  vc.verzeichnis = VZ;
+  const dc = core.directoryConfig(cfg), VZ = dc.verzeichnis;
   const boxes = arg.split(';').filter(Boolean).map((t) => core.bboxOf(t.split(',').map(Number)));
   const tiles = [];
-  boxes.forEach((bx) => core.cityTiles(bx, VZ.kachel).forEach((t) => { if (!tiles.some((u) => core.tileKey(u) === core.tileKey(t))) tiles.push(t); }));
+  boxes.forEach((bx) => core.directoryTiles(bx, dc).forEach((t) => { if (!tiles.some((u) => core.tileKey(u) === core.tileKey(t))) tiles.push(t); }));
   const fk = fokusArg ? fokusArg.split(',').map(Number) : null;
   const fokus = fk ? core.bboxOf(fk) : null;
   const inF = (x) => !fokus || core.inBbox(x, fokus);
   const t0 = Date.now();
-  let last = t0;
-  const r = await core.loadCityTiles(tiles, vc, f, {
-    onProgress: (d, t, n) => { const now = Date.now(); console.log('  Kachel ' + d + '/' + t + ', ' + n + ' Einträge, +' + fmtMs(now - last) + ' (gesamt ' + fmtMs(now - t0) + ')'); last = now; }
-  });
-  console.log('Wikidata: ' + tiles.length + ' Kacheln à ' + VZ.kachel + '°, ' + r.items.length + ' Einträge, ' + r.queries + ' Abfragen, ' + r.splits + ' geteilt, Fehler ' + JSON.stringify(r.failed) + ', ' + fmtMs(r.ms) + ', ' + Math.round(JSON.stringify(r.items).length / 1024) + ' KB (kompakt)');
-  const cands = core.directoryCandidates(r.items, vc);
-  const sl = await core.loadSitelinks(cands, vc, f);
-  console.log('Titel/Wikivoyage für ' + cands.length + ' Kandidaten: ' + sl.requests + ' Abfragen, ' + sl.failed + ' fehlgeschlagen, ' + fmtMs(sl.ms));
-  const pv = await core.loadPageviews(cands, vc, f, {});
-  console.log('Seitenaufrufe: ' + pv.requests + ' Abfragen, ' + pv.failed + ' fehlgeschlagen ' + JSON.stringify(pv.errors) + ', ' + fmtMs(pv.ms));
-  const land = vc.staedte.laender.find((l) => l.code === 'CH');
-  const res = core.computeDirectory(r.items, vc, null);
-  const stored = JSON.stringify({ staedte: res.staedte.map(({ name, q, lat, lon, score, st, z }) => ({ name, q, lat, lon, score, st, z })),
-    orte: res.orte.map(({ name, q, lat, lon, score, st, z, typ }) => ({ name, q, lat, lon, score, st, z, typ })) });
-  console.log('Gespeichert würde: ' + res.staedte.length + ' Orte + ' + res.orte.length + ' Sehenswürdigkeiten = ' + Math.round(stored.length / 1024) + ' KB');
+  const all = [], times = [];
+  let roh = 0, req = 0, failed = 0, bytes = 0;
+  for (let i = 0; i < tiles.length; i++) {
+    try {
+      const r = await core.prepareDirectoryTile(tiles[i], dc, f);
+      all.push(...r.items); roh += r.roh; req += r.abfragen; failed += r.fehler; times.push(r.ms); bytes += JSON.stringify(r).length;
+      console.log('  Kachel ' + (i + 1) + '/' + tiles.length + ' ' + r.t + ': ' + r.roh + ' roh → ' + r.items.length + ' gespeichert, ' + fmtMs(r.ms) + ', ' + Math.round(JSON.stringify(r).length / 1024) + ' KB');
+    } catch (e) { console.log('  Kachel ' + (i + 1) + ' FEHLER ' + e.message); }
+  }
+  times.sort((a, b) => a - b);
+  console.log('Laden: ' + tiles.length + ' Kacheln à ' + VZ.kachel + '°, ' + roh + ' Einträge roh, ' + all.length + ' gespeichert (' + Math.round(bytes / 1024) + ' KB), ' + req + ' Abfragen, ' + failed + ' Seitenaufruf-Fehler, ' + fmtMs(Date.now() - t0) +
+    '; je Kachel Median ' + fmtMs(times[times.length >> 1] || 0) + ', langsamste ' + fmtMs(times[times.length - 1] || 0));
+  const tc = Date.now();
+  const res = core.computeDirectory(all, dc, null, { copy: true });
+  console.log('Rechnen: ' + (Date.now() - tc) + ' ms');
   const S = ['', '★', '★★', '★★★'];
   const so = res.orte.filter(inF), st = res.staedte.filter(inF);
   const hist = {}; so.forEach((o) => { hist[o.st] = (hist[o.st] || 0) + 1; });
   console.log('\nIm Fokus: ' + st.length + ' Orte, ' + so.length + ' Sehenswürdigkeiten (ab ' + VZ.nah_ab + ' Punkten); Sterne: ' + [3, 2, 1, 0].map((k) => (S[k] || 'ohne') + ' ' + (hist[k] || 0)).join(', '));
   const fo = (o) => (S[o.st] || '·') + ' ' + o.name + ' ' + o.score + ' [' + o.typ + (o.natur ? ', Natur' : '') + ']' + (o.stadt ? ' in ' + o.stadt : '');
   const fs_ = (c) => S[c.st] + ' ' + c.name + ' ' + c.score + ' (bekannt ' + c.bekannt + ' + sehen ' + c.sehen + '; ' + c.pop + ' Einw., sl ' + c.sl + ', ' + c.pv + '/Tag' + (c.wv ? ', WV' : '') + ')';
-  const lvl = (z) => [st.filter((c) => c.z <= z), so.filter((o) => o.z <= z)];
-  let [c0, o0] = lvl(8);
+  const lvl = (z) => [st.filter((c) => c.st && c.z <= z), so.filter((o) => o.z <= z)];
+  const [c0, o0] = lvl(8);
   console.log('\n=== WEIT DRAUSSEN (Zoom ≤8): ' + c0.length + ' Orte, ' + o0.length + ' Ziele');
   c0.forEach((c) => console.log('  ' + fs_(c))); o0.forEach((o) => console.log('  ' + fo(o)));
-  let [c1, o1] = lvl(VZ.zoom.region);
+  const [c1, o1] = lvl(VZ.zoom.region);
   console.log('\n=== REGION (Zoom ' + VZ.zoom.region + '–' + (VZ.zoom.nah - 1) + '): zusätzlich ' + (c1.length - c0.length) + ' Orte, ' + (o1.length - o0.length) + ' Ziele');
   c1.filter((c) => c.z > 8).forEach((c) => console.log('  ' + fs_(c)));
   o1.filter((o) => o.z > 8).forEach((o) => console.log('  ' + fo(o)));
   const o2 = so.filter((o) => o.z >= VZ.zoom.nah);
-  console.log('\n=== NAH (Zoom ≥' + VZ.zoom.nah + '): zusätzlich ' + o2.length + ' Ziele; davon Museen ' + o2.filter((o) => o.typ === 'museum').length);
-  o2.slice(0, 50).forEach((o) => console.log('  ' + fo(o)));
-  console.log('  … Stichprobe ab Platz 50 (jeder 20.):');
-  o2.filter((_, i) => i >= 50 && i % 20 === 0).forEach((o) => console.log('  ' + fo(o)));
-  console.log('\nNATUR (beste 25):');
-  so.filter((o) => o.natur).slice(0, 25).forEach((o) => console.log('  ' + fo(o) + ' ab Zoom ' + o.z));
-  console.log('\nOrte ohne Stern (beste 30):');
-  st.filter((c) => !c.st).slice(0, 30).forEach((c) => console.log('  ' + fs_(c) + ' – ' + c.top.map((t) => t[0] + ' ' + t[1]).join(', ')));
-  console.log('\nWohin die 25 besten Ziele gezählt wurden:');
-  r.items.filter((x) => inF(x) && x.fate && /^(zu|außerhalb|Natur|doppelt)/.test(x.fate)).map((x) => ({ x, s: core.sightScore(x, vc) })).filter((o) => o.s)
-    .sort((a, b) => b.s.score - a.s.score).slice(0, 25).forEach((o) => console.log('  ' + o.x.name + ': ' + o.x.fate));
-  console.log('\nDoppelte entfernt: ' + r.items.filter((x) => /^doppelt/.test(x.fate || '')).length + ', kleine Orte ohne Marker: ' + r.items.filter((x) => /^kleiner Ort/.test(x.fate || '')).length);
+  console.log('\n=== NAH (Zoom ≥' + VZ.zoom.nah + '): zusätzlich ' + o2.length + ' Ziele; davon Museen ' + o2.filter((o) => o.typ === 'museum').length + ', Freizeit ' + o2.filter((o) => o.typ === 'freizeit').length);
+  o2.slice(0, 40).forEach((o) => console.log('  ' + fo(o)));
+  console.log('\nFREIZEITPARKS/ZOOS:'); so.filter((o) => o.typ === 'freizeit').forEach((o) => console.log('  ' + fo(o) + ' ab Zoom ' + o.z));
+  console.log('\nNATUR (beste 25):'); so.filter((o) => o.natur).slice(0, 25).forEach((o) => console.log('  ' + fo(o) + ' ab Zoom ' + o.z));
+  console.log('\nOrte ohne Stern (beste 20):'); st.filter((c) => !c.st).slice(0, 20).forEach((c) => console.log('  ' + fs_(c) + ' – ' + c.top.map((t) => t[0] + ' ' + t[1]).join(', ')));
+  if (process.env.NAMEN) {
+    const re = new RegExp(process.env.NAMEN, 'i');
+    console.log('\nNAMEN /' + process.env.NAMEN + '/:');
+    all.filter((x) => re.test(x.name)).forEach((x) => console.log('  ' + x.name + ' (' + x.q + ', sl ' + x.sl + ', ' + (x._c ? 'Ort' : x._s ? x._s.typ + ' ' + x._s.score : '') + ')'));
+  }
   console.log('\nGesamt ' + fmtMs(Date.now() - t0));
 }
 

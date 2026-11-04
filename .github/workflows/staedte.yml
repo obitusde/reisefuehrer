@@ -52,6 +52,7 @@ jobs:
         if: ${{ inputs.verzeichnis != '' }}
         env:
           VZ: ${{ inputs.verzeichnis }}
+          NAMEN: ${{ inputs.namen }}
         run: |
           if ! [[ "$VZ" =~ ^[-0-9.,\;\ ]+$ ]]; then echo "Ungültig"; exit 1; fi
           read -r KACHELN FOKUS <<< "$VZ"
