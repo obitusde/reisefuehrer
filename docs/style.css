@@ -93,13 +93,13 @@ button { cursor: pointer; }
 .mk3 { width: 22px; height: 22px; background: var(--s3); }
 .mk2 { width: 16px; height: 16px; background: var(--s2); }
 .mk1 { width: 12px; height: 12px; background: var(--s1); border-width: 1.5px; }
-.mk0 { width: 9px; height: 9px; background: var(--s0); border-width: 1.5px; }
+.mk0 { width: 12px; height: 12px; background: #8f8c85; border-width: 2px; } /* v0.8.4: easier to see */
 .mk.sel { outline: 4px solid rgba(14, 107, 125, .55); outline-offset: 1px; }
 /* symbols inside the dot (v0.7.0) */
 .mk.ic { display: flex; align-items: center; justify-content: center; }
 .mk.ic svg { width: 64%; height: 64%; fill: #fff; display: block; }
 .mk3.ic { width: 26px; height: 26px; } .mk2.ic { width: 20px; height: 20px; }
-.mk1.ic { width: 18px; height: 18px; border-width: 1.5px; } .mk0.ic { width: 16px; height: 16px; border-width: 1.5px; }
+.mk1.ic { width: 18px; height: 18px; border-width: 1.5px; } .mk0.ic { width: 18px; height: 18px; border-width: 1.5px; }
 .mk-lbl.l3.lic { left: calc(50% + 15px); } .mk-lbl.l2.lic { left: calc(50% + 12px); }
 .mk-lbl.l1.lic { left: calc(50% + 11px); } .mk-lbl.l0.lic { left: calc(50% + 10px); }
 .mk-lbl.l3.lic.left { left: auto; right: calc(50% + 15px); } .mk-lbl.l2.lic.left { left: auto; right: calc(50% + 12px); }
@@ -128,10 +128,10 @@ button { cursor: pointer; }
 }
 .mk-lbl.l2 { left: calc(50% + 10px); font-size: 11px; }
 .mk-lbl.l1 { left: calc(50% + 8px); font-size: 11px; font-weight: 500; color: #3a3935; }
-.mk-lbl.l0 { left: calc(50% + 7px); font-size: 10px; font-weight: 500; color: #55534e; }
+.mk-lbl.l0 { left: calc(50% + 9px); font-size: 11px; font-weight: 600; color: #3d3b37; } /* v0.8.4: easier to see */
 .mk-lbl.left { left: auto; }
 .mk-lbl.l3.left { right: calc(50% + 13px); } .mk-lbl.l2.left { right: calc(50% + 10px); }
-.mk-lbl.l1.left { right: calc(50% + 8px); } .mk-lbl.l0.left { right: calc(50% + 7px); }
+.mk-lbl.l1.left { right: calc(50% + 8px); } .mk-lbl.l0.left { right: calc(50% + 9px); }
 .me-dot {
   width: 16px; height: 16px; border-radius: 50%; background: #1a73e8; border: 3px solid #fff;
   box-shadow: 0 0 0 2px rgba(26, 115, 232, .35), 0 1px 3px rgba(0, 0, 0, .4);

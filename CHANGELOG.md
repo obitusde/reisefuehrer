@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.8.4 – 04.11.2026 – Ziele aus dem Verzeichnis mit Wikipedia-Text, ZKM als Museum
+
+Wunsch Nutzer: Beim ZKM keine Beschreibung, obwohl es einen Wikipedia-Artikel gibt. Punkte ohne Stern (Congress Center) kaum zu sehen. Stadtteile (Basel-Kleinhüningen) ohne viel Mehrwert.
+
+- **Ziel aus dem Verzeichnis antippen** (auf der Karte oder in der Liste): öffnet das gewohnte Fenster mit Wikipedia-Einleitung, Bild, „Erzähl mir davon“, „Übersicht und Bewertung“, Merken und Karten-Links. Dafür fragt die App erst beim Antippen Wikidata nach dem Wikipedia-Artikel dieses einen Ziels (Deutsch zuerst, sonst Englisch, Französisch, Italienisch …). Vorher stand dort nur „Hier suchen“ und „Wikipedia“.
+- **Art aus Wikidata**: Hat ein Ziel mehrere Arten, gewinnt die wichtigere (Museum vor Bibliothek, Kathedrale vor Kirche). Das ZKM stand als „Bibliothek“ drin. Ausnahmen wie Firma oder Person gewinnen weiter.
+- **Seitenaufrufe auch für Bekanntes mit wenigen Punkten**: alles mit mindestens 10 Sprachversionen (`verzeichnis.aufrufe_ab_sprachen`). Das ZKM (13 Sprachversionen) hatte 4,8 Punkte und bekam deshalb keine Seitenaufrufe.
+  - Wirkt erst nach neuem Laden: ⚙ → „Verzeichnis löschen“, dann „Hier suchen“.
+- **Punkte ohne Stern besser sichtbar**: größer, dunkler, Beschriftung größer.
+- **Stadtteile und Orte** (Art „Stadt/Ort“ und „Viertel“) stehen nicht mehr in Liste und Karte der Suche (`suche.ausblenden_typen`). Orte mit Sternen aus dem Verzeichnis bleiben.
+
 ## v0.8.3 – 04.11.2026 – Liste ausschaltbar, weniger Hinweise, kein automatisches Vollbild
 
 Wunsch Nutzer: Liste unter der Karte ein- und ausschalten; „Mein Standort“ nur als Symbol; Hinweise „„Hier suchen“: alle Ziele mit Kurzinfos“ und „Zoom 11 · 1 Ziele im Ausschnitt“ weg; Vollbild-Hinweis von Chrome kommt immer; „Echichens“ oben war unklar; „Schon geladen“ war unklar.

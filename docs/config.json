@@ -7,6 +7,7 @@
   },
 
   "suche": {
+    "ausblenden_typen": ["siedlung", "viertel"],
     "_hinweis": "v0.5: „Hier suchen“ sucht im sichtbaren Kartenausschnitt. Ist der Ausschnitt größer (halbe Diagonale in Metern), kommt der Hinweis „näher heranzoomen“. Wikipedia erlaubt höchstens 10 000 m.",
     "max_halbdiagonale_m": 10000,
     "standort_zoom": 14
@@ -328,6 +329,7 @@
     "kachel_aufrufe": { "aufrufe_orte": 40, "aufrufe_natur": 25, "aufrufe_staedte": 60 },
     "min_einwohner": 1000,
     "aufrufe_ab": 5,
+    "aufrufe_ab_sprachen": 10,
     "doppelt_m": 500,
     "nah_ab": 4,
     "sterne": { "3": 10.5, "2": 8.5, "1": 7.5 },

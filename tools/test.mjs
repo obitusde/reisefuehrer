@@ -560,6 +560,18 @@ eq(core.classify([], ['car park'], [''], ['P1'], cfg), 'parkplatz', 'car park st
   ok(town.top[0].length === 4, 'top sights with position (as in the country files)');
 }
 
+// ---- v0.8.4: the more important Wikidata type wins; page views for well-known sights with few points
+eq(core.classify(['Q7075'], ['library', 'art museum'], [''], ['ZKM'], cfg), 'museum', 'library + art museum → museum (ZKM)');
+eq(core.classify(['Q16970'], ['church building', 'cathedral'], [''], ['Dom'], cfg), 'kathedrale', 'church + cathedral → cathedral');
+eq(core.classify(['Q4830453'], ['company', 'museum'], [''], ['Firma X'], cfg), 'firma', 'a company stays a company (exclusion wins)');
+{
+  const dc = core.directoryConfig(cfg);
+  const mk = (q, sl, cls, p31) => ({ q, name: q, name_en: q, lat: 49, lon: 8.4, sl, pop: 0, km2: 0, p31: p31 || [], cls, h: [], land: [], u: false, cap: false, desc: '' });
+  const items = [mk('Qzkm', 13, ['bridge']), mk('Qsmall', 2, ['bridge'])];
+  const c = core.directoryCandidates(items, dc, dc.verzeichnis.kachel_aufrufe);
+  ok(c.some((x) => x.q === 'Qzkm') && !c.some((x) => x.q === 'Qsmall'), 'page views for a sight with 10+ languages even below 5 points: ' + c.map((x) => x.q).join(','));
+}
+
 // ---- version consistency across files
 const v = JSON.parse(fs.readFileSync(path.join(ROOT, 'docs/version.json'), 'utf8')).version;
 const read = p => fs.readFileSync(path.join(ROOT, p), 'utf8');

@@ -143,7 +143,7 @@ try {
   if (process.env.DEBUG) { page.on('request', (r) => { if (/extracts|mymemory/.test(r.url())) console.log('REQ', decodeURIComponent(r.url()).slice(0, 160)); }); page.on('requestfailed', (r) => console.log('FAILED', r.url().slice(0, 120), r.failure() && r.failure().errorText)); page.on('console', (m) => console.log('CONSOLE', m.text())); }
   await page.goto(BASE + 'index.html');
   await page.waitForSelector('.empty');
-  ok((await page.textContent('#version')) === 'v0.8.3', 'footer version');
+  ok((await page.textContent('#version')) === 'v0.8.4', 'footer version');
   if (OUT) await page.screenshot({ path: OUT + '/01-start.png' });
 
   await page.click('#btnLocate');
@@ -437,10 +437,10 @@ try {
   ok(splitNow && +splitNow > 12, 'split persisted: ' + splitNow);
 
   // update banner (fake newer version, then ?testupdate=1)
-  fakeVersion = '0.8.4';
+  fakeVersion = '0.8.5';
   await page.reload();
   await page.waitForSelector('#banner:not([hidden])');
-  ok((await page.textContent('#bannerText')).includes('v0.8.4'), 'banner shows remote version');
+  ok((await page.textContent('#bannerText')).includes('v0.8.5'), 'banner shows remote version');
   if (OUT) await page.screenshot({ path: OUT + '/05-banner.png' });
   fakeVersion = null;
   await page.click('#bannerBtn');
@@ -571,9 +571,9 @@ try {
   const swOk = await p3.evaluate(() => navigator.serviceWorker.ready.then((r) => !!r.active)).catch(() => false);
   ok(swOk, 'service worker active');
   const cacheKeys = await p3.evaluate(async () => { await new Promise((r) => setTimeout(r, 800)); return caches.keys(); });
-  ok(cacheKeys.includes('rf-app-0.8.3'), 'app cache with version: ' + cacheKeys.join(','));
-  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.8.3')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
-  ok(cached.some((u) => u.includes('app.js?v=0.8.3')), 'shell precached');
+  ok(cacheKeys.includes('rf-app-0.8.4'), 'app cache with version: ' + cacheKeys.join(','));
+  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.8.4')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
+  ok(cached.some((u) => u.includes('app.js?v=0.8.4')), 'shell precached');
   ok(errs3.length === 0, 'sw: no JS errors ' + errs3.join(' | '));
   await ctx3.close();
 
@@ -640,11 +640,19 @@ try {
     ok(!(await p8.$eval('#btnHere', (b) => b.classList.contains('dim'))), 'v0.8 "Hier suchen" normal when zoomed in');
     await p8.click('.mk.mk1, .mk.mk2, .mk.mk3, .mk.mk0');
     await p8.waitForSelector('#sheet:not([hidden])');
-    ok((await p8.textContent('#sheetBody')).includes('Hier suchen'), 'v0.8 sight sheet offers "Hier suchen"');
+    // v0.8.4: a sight of the directory opens with Wikipedia intro and "Erzähl mir davon", without "Hier suchen"
+    await p8.waitForSelector('#sheetBody [data-a="tell"]', { timeout: 10000 });
+    await p8.waitForSelector('#plIntro:not([hidden])', { timeout: 10000 });
+    ok(/ist ein Testort/.test(await p8.textContent('#plIntroText')), 'v0.8.4 directory sight: Wikipedia intro on tap: ' + (await p8.textContent('#sheetTitle')));
     if (OUT) await p8.screenshot({ path: OUT + '/14-verzeichnis-ziel.png' });
-    await p8.click('[data-a="cityhere"]');
+    await p8.click('[data-a="tell"]');
+    await p8.waitForFunction(() => /Prompt kopiert/.test(document.getElementById('tellStatus').textContent), null, { timeout: 8000 });
+    ok((await p8.evaluate(() => (window.__shared || []).length)) >= 1, 'v0.8.4 "Erzähl mir davon" from a directory sight');
+    await p8.evaluate(() => history.back());
+    await p8.waitForSelector('#sheet', { state: 'hidden' });
+    await p8.click('#btnHere');
     await p8.waitForFunction(() => localStorage.getItem('rf.last') && !document.getElementById('btnHere').disabled, null, { timeout: 15000 });
-    ok(true, 'v0.8 "Hier suchen" from the sight sheet searches');
+    ok(true, 'v0.8 "Hier suchen" searches when zoomed in');
     // v0.8.3: list on/off, no place chip, location button with symbol only
     ok(await p8.$eval('#ortLabel', (el) => el.hidden) && (await p8.textContent('#btnLocate')).trim() === '◎', 'v0.8.3 no place name chip; location button only ◎');
     const h0 = await p8.$eval('#mapWrap', (el) => el.getBoundingClientRect().height);

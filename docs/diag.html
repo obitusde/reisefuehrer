@@ -324,7 +324,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '0.8.3';
+  var VERSION = '0.8.4';
   var KEY = 'rf.diag.v1';
 
   var TESTS = [
@@ -635,14 +635,14 @@
   init();
 })();
 </script>
-<script src="core.js?v=0.8.3"></script>
+<script src="core.js?v=0.8.4"></script>
 <script>
 /* v0.2 diagnostics: API checks, gold list, manual checklist, summary */
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
   var KEY = 'rf.diag.v2';
-  var DV = '0.8.3';
+  var DV = '0.8.4';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function load() { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { return {}; } }
@@ -917,7 +917,7 @@
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
-  var KEY = 'rf.diag.v3', DV = '0.8.3';
+  var KEY = 'rf.diag.v3', DV = '0.8.4';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -994,7 +994,7 @@
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
-  var KEY = 'rf.diag.v6', DV = '0.8.3';
+  var KEY = 'rf.diag.v6', DV = '0.8.4';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -1095,7 +1095,7 @@
 /* v0.7 diagnostics: installability, checklist (symbols, city stars) */
 (function () {
   'use strict';
-  var KEY = 'rf.diag.v7', DV = '0.8.3';
+  var KEY = 'rf.diag.v7', DV = '0.8.4';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -1182,7 +1182,7 @@
 <script>
 /* v0.8: acceptance of the directory */
 (function () {
-  var KEY = 'rf.diag.v8', DV = '0.8.3';
+  var KEY = 'rf.diag.v8', DV = '0.8.4';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }

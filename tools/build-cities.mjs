@@ -164,7 +164,7 @@ async function verzeichnis(arg, fokusArg) {
   if (process.env.NAMEN) {
     const re = new RegExp(process.env.NAMEN, 'i');
     console.log('\nNAMEN /' + process.env.NAMEN + '/:');
-    all.filter((x) => re.test(x.name)).forEach((x) => console.log('  ' + x.name + ' (' + x.q + ', sl ' + x.sl + ', ' + (x._c ? 'Ort' : x._s ? x._s.typ + ' ' + x._s.score : '') + ')'));
+    all.filter((x) => re.test(x.name)).forEach((x) => console.log('  ' + x.name + ' (' + x.q + ', sl ' + x.sl + ', ' + (x.pv ? x.pv + '/Tag, ' : '') + (x._c ? 'Ort' : x._s ? x._s.typ + ' ' + x._s.score : '') + ')'));
   }
   console.log('\nGesamt ' + fmtMs(Date.now() - t0));
 }

@@ -1,5 +1,5 @@
 /*
- * Reiseführer – core logic (v0.8.3)
+ * Reiseführer – core logic (v0.8.4)
  * Shared by the app (index.html), the diagnostics page (diag.html) and Node tests.
  * No DOM access here. Network access only through the injected fetch function.
  */
@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var CORE_VERSION = '0.8.3';
+  var CORE_VERSION = '0.8.4';
 
   // ---------------------------------------------------------------- helpers
 
@@ -125,9 +125,12 @@
     for (i = 0; i < types.length && !byQid; i++) {
       for (j = 0; j < p31.length; j++) if (types[i].qids.indexOf(p31[j]) >= 0) { byQid = types[i]; break; }
     }
-    found.push(byQid);
     var heads = function (arr) { return (arr || []).filter(Boolean).map(headPhrase).filter(function (h) { return h.trim(); }); };
-    found.push(matchPhrases(types, heads(classLabels), [endsWithWord]));
+    var byClass = matchPhrases(types, heads(classLabels), [endsWithWord]);
+    // v0.8.4: both from Wikidata – the more important type wins (ZKM: "library" and "art museum" → museum)
+    var wt = function (t) { return t && !t.generic ? (typeInfo(t.id, cfg).gewicht || 0) : -99; };
+    if (byQid && byClass && byQid !== byClass && wt(byClass) > wt(byQid) && wt(byQid) >= 0) { found.push(byClass, byQid); }
+    else { found.push(byQid); found.push(byClass); }
     found.push(matchPhrases(types, heads(descs), [endsWithWord]));
     found.push(matchPhrases(types, heads((titles || []).map(cleanTitle)), [endsWithWord, startsWithWord]));
     var specific = found.filter(function (t) { return t && !t.generic; })[0];
@@ -1839,19 +1842,23 @@
 
   /** Items worth asking page views for: the best sights and the best-known places (before page views are known). */
   function directoryCandidates(items, cfg, lim) {
-    var v = Object.assign({}, cfg.verzeichnis, lim || {}), sights = [], nature = [], places = [];
+    var v = Object.assign({}, cfg.verzeichnis, lim || {}), sights = [], nature = [], places = [], s0 = [];
     items.forEach(function (x) {
       if (isCityItem(x, cfg)) { if (x.pop >= (v.min_einwohner || 0)) places.push(x); return; }
       var s = sightScore(x, cfg);
       // excursions (nature, leisure parks) always: Fort Fun has few language versions, but many readers
       if (s && (s.natur || (v.ausflug_typen || []).indexOf(s.typ) >= 0)) nature.push({ x: x, s: s.score });
       else if (s && s.score >= (v.aufrufe_ab || 0)) sights.push({ x: x, s: s.score });
+      else if (s) s0.push({ x: x, s: s.score });
     });
     var by = function (a, b) { return b.s - a.s; };
     sights.sort(by); nature.sort(by);
     places.sort(function (a, b) { return b.sl - a.sl; });
     var pick = function (l, n) { return l.slice(0, n).map(function (o) { return o.x; }); };
-    return pick(sights, v.aufrufe_orte || 250).concat(pick(nature, v.aufrufe_natur || 60), places.slice(0, v.aufrufe_staedte || 150));
+    var n = v.aufrufe_orte || 250, out = pick(sights, n);
+    // v0.8.4: everything known in many languages too, even with few points (ZKM: 13 languages, 4,8 points)
+    var known = sights.slice(n).concat(s0).filter(function (o) { return o.x.sl >= (v.aufrufe_ab_sprachen || 1e9) && out.indexOf(o.x) < 0; }).map(function (o) { return o.x; });
+    return out.concat(known, pick(nature, v.aufrufe_natur || 60), places.slice(0, v.aufrufe_staedte || 150));
   }
 
   /**

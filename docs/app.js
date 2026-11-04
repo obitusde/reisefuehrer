@@ -1,8 +1,8 @@
-/* Reiseführer – app (v0.8.3). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.8.4). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.8.3';
+  var VERSION = '0.8.4';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
@@ -265,9 +265,9 @@
     }
   }
 
-  var DOT_R = { 3: 11, 2: 8, 1: 6, 0: 5 };
-  var DOT_R_IC = { 3: 13, 2: 10, 1: 9, 0: 8 };  // with symbol (v0.7.0)
-  var LBL_PX = { 3: 12, 2: 11, 1: 11, 0: 10 };
+  var DOT_R = { 3: 11, 2: 8, 1: 6, 0: 6 };
+  var DOT_R_IC = { 3: 13, 2: 10, 1: 9, 0: 9 };  // with symbol (v0.7.0)
+  var LBL_PX = { 3: 12, 2: 11, 1: 11, 0: 11 };
   var measureCtx = null;
   function textWidth(t, px) {
     try {
@@ -346,7 +346,7 @@
       });
       m.on('click', function (e) {
         if (e.originalEvent) L.DomEvent.stopPropagation(e);
-        if (p.vz) openCity({ k: 'o', x: p.vz, s: p.vz.st, vz: true });
+        if (p.vz && p.vz.q) openDirPlace({ k: 'o', x: p.vz, s: p.vz.st, vz: true });
         else select(p.id, 'map');
       });
       markerLayer.addLayer(m);
@@ -360,7 +360,7 @@
   // Like a printed guide: the phone loads the region in tiles from Wikidata (core.prepareDirectoryTile; about 25 × 28 km,
   // 5 s each), keeps them cache_tage days (IndexedDB "vz:<tile>", list in "vz:index") and computes towns and sights
   // with stars for the visible section (core.computeDirectory). Loaded only with "Hier suchen" (v0.8.1).
-  var DIR = { mem: {}, index: {}, reading: {}, queue: [], job: null, total: 0, done: 0, manual: false, res: null, resKey: '', err: {}, lastErr: '', ready: false, missing: [] };
+  var DIR = { places: {}, mem: {}, index: {}, reading: {}, queue: [], job: null, total: 0, done: 0, manual: false, res: null, resKey: '', err: {}, lastErr: '', ready: false, missing: [] };
   var dcfg = null, dirTimer = null;
   function DZ() { return cfg.verzeichnis || {}; }
   function dirOn() { return !!(DZ().aktiv && settings.verzeichnis !== false); }
@@ -464,6 +464,33 @@
     // what belongs to this zoom first (like the guide), then the rest by stars and points: where there is little, all of it
     var rank = function (it) { return (it.x.z <= z ? 100 : 0) + it.s * 10 + (it.k === 'c' && it.s >= 2 ? 15 : 0); };
     return out.sort(function (a, b2) { return (rank(b2) - rank(a)) || (b2.x.score - a.x.score); });
+  }
+  // v0.8.4: a sight of the directory opens like a search result (intro, picture, "Erzähl mir davon"):
+  // on tap one request to Wikidata for its Wikipedia articles, then the usual place window
+  function openDirPlace(it) {
+    var x = it.x, id = 'wd:' + x.q, known = findPlace(id);
+    if (known) { selectedId = id; renderMarkers(); openPlace(known); return; }
+    openSheet(x.name, '<p class="small">Lade Wikipedia …</p>');
+    var langs = ['de', 'en', 'fr', 'it', 'es', 'nl'];
+    var url = 'https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&origin=*&props=sitelinks&ids=' + x.q +
+      '&sitefilter=' + langs.map(function (l) { return l + 'wiki'; }).join('|');
+    withTimeout(fetch(url).then(function (r) { return r.json(); }), 15000, null).catch(function () { return null; }).then(function (d) {
+      var sl = (d && d.entities && d.entities[x.q] && d.entities[x.q].sitelinks) || {}, artikel = {};
+      langs.forEach(function (l) { if (sl[l + 'wiki']) artikel[l] = sl[l + 'wiki'].title; });
+      var first = langs.filter(function (l) { return artikel[l]; })[0];
+      var t = C.typeInfo(x.typ, cfg);
+      var p = {
+        id: id, vz: true, name: x.name, name2: '', namen: {}, lat: x.lat, lon: x.lon,
+        wikidata: x.q, wikipedia: first ? first + ':' + artikel[first] : '', artikel: artikel,
+        typ: x.typ, typ_label: t.label, kategorie: t.kategorie || 'sonstiges',
+        quellen: ['W'], sterne: x.st || 0, score: x.score, geheimtipp: false, geprueft: true, warum: '', dauer_min: 0,
+        beschreibung: '', klassen: [], sprachversionen: 0, laenge: 0, denkmal: [], unesco: !!x.unesco, ort: x.stadt || '', teile: {}
+      };
+      DIR.places[id] = p;
+      if ($('sheet').hidden || $('sheetTitle').textContent !== x.name) return; // closed in between
+      selectedId = id; renderMarkers();
+      openPlace(p);
+    });
   }
   // after loading: a short message, and the list shows what was found
   function dirDone(already) {
@@ -594,7 +621,7 @@
         icon: L.divIcon({ className: 'mk-wrap', html: html, iconSize: [36, 36], iconAnchor: [18, 18] }),
         keyboard: false, title: x.name, zIndexOffset: it.s * 400 + (it.k === 'c' ? 1500 : 0)
       });
-      m.on('click', function (e) { if (e.originalEvent) L.DomEvent.stopPropagation(e); openCity(it); });
+      m.on('click', function (e) { if (e.originalEvent) L.DomEvent.stopPropagation(e); if (it.vz && it.k === 'o') openDirPlace(it); else openCity(it); });
       cityLayer.addLayer(m);
     });
     if (!list.length && !waiting && !cityHintShown && !dirOn()) {
@@ -974,7 +1001,9 @@
   // ------------------------------------------------------------- render
   function visiblePlaces() {
     if (!last || !last.places) return [];
+    var hide = cfg.suche.ausblenden_typen || [];
     return last.places.filter(function (p) {
+      if (hide.indexOf(p.typ) >= 0) return false; // v0.8.4: districts and villages add little
       var kat = !settings.kat || (settings.kat === '__osm' ? C.sourceTag(p) === 'OSM' : p.kategorie === settings.kat);
       return p.sterne >= settings.minStars && kat &&
         !(settings.hideHeard && heard[p.id]);
@@ -1201,7 +1230,7 @@
 
   function findPlace(id) {
     var p = last && last.places && last.places.filter(function (x) { return x.id === id; })[0];
-    return p || merk.filter(function (x) { return x.id === id; })[0] || null;
+    return p || merk.filter(function (x) { return x.id === id; })[0] || DIR.places[id] || null;
   }
 
   function select(id, from) {
@@ -1267,7 +1296,9 @@
     var on = isMerk(p.id);
     var t = p.teile || {};
     var osmTag = p.osm && p.osm.k ? ' (OSM: ' + p.osm.k + ')' : '';
-    var rows = p.osmOnly ? [
+    var rows = p.vz ? [
+      ['Punkte im Verzeichnis (Sprachversionen, Seitenaufrufe, Denkmal, Art)', p.score]
+    ] : p.osmOnly ? [
       ['Grundwert OpenStreetMap (höchstens ★, Museen ★★)', t.osm_basis],
       ['Denkmal', t.denkmal],
       ['Typ: ' + p.typ_label + osmTag, t.typ]
@@ -1923,7 +1954,7 @@
 
     $('list').addEventListener('click', function (e) {
       var vz = e.target.closest('.vz-item');
-      if (vz && DIR.listed) { var it = DIR.listed[+vz.getAttribute('data-vz')]; if (it) openCity(it); return; }
+      if (vz && DIR.listed) { var it = DIR.listed[+vz.getAttribute('data-vz')]; if (it) { if (it.k === 'o') openDirPlace(it); else openCity(it); } return; }
       var li = e.target.closest('.item');
       if (!li) return;
       var id = li.getAttribute('data-id');
