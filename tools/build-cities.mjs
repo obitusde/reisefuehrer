@@ -172,18 +172,22 @@ async function verzeichnis(arg, fokusArg) {
 // ---- v0.9: route corridor with real data, the same path as the phone
 // node tools/build-cities.mjs --strecke "46.511,6.498;46.204,6.143" fahrrad
 async function strecke(arg, mode) {
-  const dc = core.directoryConfig(cfg);
   const pts = arg.split(';').map((p) => { const [lat, lon] = p.split(',').map(Number); return { lat, lon }; });
-  const tiles = core.corridorTiles(pts, mode, cfg), t0 = Date.now(), all = [];
-  console.log('Strecke ' + mode + ', ' + Math.round(core.lineLength(pts)) + ' km Luftlinie, ' + tiles.length + ' Stücke');
-  for (const t of tiles) { try { const r = await core.prepareDirectoryTile(t, dc, f); all.push(...r.items); } catch (e) { console.log('  Fehler ' + core.tileKey(t) + ': ' + e.message); } }
+  const plan = core.routePlan(pts, mode, cfg), t0 = Date.now(), all = [];
+  console.log('Strecke ' + mode + ', ' + Math.round(plan.km) + ' km Luftlinie, ca. ' + plan.hours + ' h; ab ' + plan.minStars + ' Stern(en), höchstens ' + plan.maxStops + ' Halte; ' +
+    plan.tiles.length + ' Stücke à ' + plan.deg + '°, Einträge ab ' + plan.minSl + ' Sprachversionen');
+  for (const t of plan.tiles) {
+    const t1 = Date.now();
+    try { const r = await core.prepareDirectoryTile(t, plan.rcfg, f); all.push(...r.items); console.log('  ' + core.tileKey(t) + ': ' + r.roh + ' roh → ' + r.items.length + ', ' + fmtMs(Date.now() - t1)); }
+    catch (e) { console.log('  Fehler ' + core.tileKey(t) + ': ' + e.message); }
+  }
   const seen = {}, items = all.filter((x) => !seen[x.q] && (seen[x.q] = 1));
-  const res = core.computeDirectory(items, dc, null, { copy: true });
-  const pick = core.corridorPick(res, pts, mode, cfg);
+  const res = core.computeDirectory(items, plan.rcfg, null, { copy: true });
+  const pick = core.corridorPick(res, pts, mode, cfg, plan);
   const w = core.corridorWidths(mode, cfg);
-  console.log('Laden ' + fmtMs(Date.now() - t0) + '; ' + pick.length + ' Ziele; alle in ihrer Breite: ' + pick.every((p) => p.d <= w[p.s]) + '; sortiert: ' + pick.every((p, i) => !i || p.along >= pick[i - 1].along));
+  console.log('Laden ' + fmtMs(Date.now() - t0) + '; ' + pick.length + ' Halte; alle in ihrer Breite: ' + pick.every((p) => p.d <= w[p.s]) + '; sortiert: ' + pick.every((p, i) => !i || p.along >= pick[i - 1].along));
   const S = ['·', '★', '★★', '★★★'];
-  pick.slice(0, 80).forEach((p) => console.log('  km ' + Math.round(p.along) + ' ' + S[p.s] + ' ' + p.x.name + (p.k === 'c' ? ' (Ort)' : ' [' + p.x.typ + ']') + ', ' + p.d + ' km neben der Linie'));
+  pick.forEach((p) => console.log('  km ' + Math.round(p.along) + ' ' + S[p.s] + ' ' + p.x.name + (p.k === 'c' ? ' (Ort)' : ' [' + p.x.typ + ']') + ', ' + p.d + ' km neben der Linie'));
 }
 
 const args = process.argv.slice(2);

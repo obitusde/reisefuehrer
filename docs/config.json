@@ -327,7 +327,15 @@
       "fuss": { "3": 2, "2": 1, "1": 0.3, "0": 0.15 }
     },
     "probe_km": 10,
-    "max_kacheln": 150
+    "max_kacheln": 150,
+    "_hinweis_auswahl": "v0.9.2: Je länger die Strecke (Fahrzeit = Luftlinie / kmh), desto wichtiger die Ziele: sterne_ab, etwa halte_pro_stunde Halte je Stunde (min_halte bis max_halte). Geladen werden nur Einträge mit min_sprachen Sprachversionen (je nach Mindeststernen), in Stücken von kachel Grad, gespeichert wie das Verzeichnis.",
+    "kmh": { "auto": 80, "fahrrad": 18, "fuss": 4.5 },
+    "sterne_ab": [ { "bis_h": 1, "sterne": 1 }, { "bis_h": 3, "sterne": 2 }, { "sterne": 3 } ],
+    "halte_pro_stunde": 2,
+    "min_halte": 3,
+    "max_halte": 15,
+    "min_sprachen": { "1": 4, "2": 7, "3": 12 },
+    "kachel": 0.5
   },
 
   "verzeichnis": {

@@ -2006,14 +2006,15 @@
     return out;
   }
   /** Directory tiles along the line: samples every probe_km, each with a box of the largest width around it. */
-  function corridorTiles(pts, mode, cfg) {
+  function corridorTiles(pts, mode, cfg, deg) {
     var w = corridorWidths(mode, cfg)[3], step = (cfg.korridor && cfg.korridor.probe_km) || 10, seen = {}, out = [];
     for (var i = 0; i < pts.length - 1; i++) {
       var a = pts[i], b = pts[i + 1], len = lineLength([a, b]), n = Math.max(1, Math.ceil(len / step));
       for (var j = 0; j <= n; j++) {
         var lat = a.lat + (b.lat - a.lat) * j / n, lon = a.lon + (b.lon - a.lon) * j / n;
         var dLat = w / 110.57, dLon = w / (111.32 * Math.max(0.2, Math.cos(lat * Math.PI / 180)));
-        directoryTiles({ south: lat - dLat, north: lat + dLat, west: lon - dLon, east: lon + dLon }, cfg).forEach(function (t) {
+        var bx = { south: lat - dLat, north: lat + dLat, west: lon - dLon, east: lon + dLon };
+        (deg ? cityTiles(bx, deg) : directoryTiles(bx, cfg)).forEach(function (t) {
           var k = tileKey(t);
           if (!seen[k]) { seen[k] = 1; out.push(t); }
         });
@@ -2025,18 +2026,40 @@
    * What lies along the route: towns with stars and sights of the directory result within the width of their stars.
    * Returns [{k: 'c'|'o', x, s, d (km to the line), along (km from start), umweg (km, there and back)}] in order along the route.
    */
-  function corridorPick(res, pts, mode, cfg) {
-    var w = corridorWidths(mode, cfg), out = [];
+  function corridorPick(res, pts, mode, cfg, plan) {
+    var w = corridorWidths(mode, cfg), out = [], min = plan ? plan.minStars : 0;
     var take = function (k, x) {
       var s = x.st || 0;
-      if (k === 'c' && !s) return;
+      if ((k === 'c' && !s) || s < min) return;
       var r = lineDistance(x, pts);
       // v0.9.1: behind the start or past the destination only within the width of one star less (Chillon is not on the way from Morges to Lyon)
       if (r.d <= (r.beyond ? w[Math.max(0, s - 1)] : w[s])) out.push({ k: k, x: x, s: s, d: round1(r.d), along: round1(r.along), umweg: round1(2 * r.d) });
     };
     (res && res.staedte || []).forEach(function (x) { take('c', x); });
     (res && res.orte || []).forEach(function (x) { take('o', x); });
+    // v0.9.2: only as many stops as fit the travel time – the best ones (stars, then points)
+    if (plan && out.length > plan.maxStops) {
+      out = out.sort(function (a, b) { return (b.s - a.s) || ((b.x.score || 0) - (a.x.score || 0)); }).slice(0, plan.maxStops);
+    }
     return out.sort(function (a, b) { return a.along - b.along; });
+  }
+
+  /**
+   * v0.9.2: what a route shows depends on its travel time (straight line / speed of the means of transport):
+   * short ones from ★, longer ones only ★★/★★★, and about halte_pro_stunde stops per hour (at most max_halte).
+   * The tiles are big and the query light (only entries with min_sprachen language versions for these stars).
+   * Returns {km, hours, minStars, maxStops, minSl, deg, tiles, rcfg}.
+   */
+  function routePlan(pts, mode, cfg) {
+    var k = cfg.korridor || {}, km = lineLength(pts), kmh = (k.kmh || {})[mode] || 80, hours = km / kmh;
+    var steps = k.sterne_ab || [{ bis_h: 1, sterne: 1 }, { bis_h: 3, sterne: 2 }, { sterne: 3 }];
+    var minStars = steps.filter(function (st) { return st.bis_h == null || hours <= st.bis_h; })[0].sterne;
+    var maxStops = Math.max(k.min_halte || 3, Math.min(k.max_halte || 15, Math.ceil(hours * (k.halte_pro_stunde || 2))));
+    var minSl = (k.min_sprachen || { 1: 4, 2: 7, 3: 12 })[minStars] || 1, deg = k.kachel || 0.5;
+    var rcfg = directoryConfig(cfg);
+    rcfg.staedte.min_sprachversionen = minSl;
+    return { km: round1(km), hours: Math.round(hours * 10) / 10, minStars: minStars, maxStops: maxStops, minSl: minSl, deg: deg,
+      tiles: corridorTiles(pts, mode, cfg, deg), rcfg: rcfg };
   }
 
   /** Whole country: tiles over its bounding box, load, compute. */
@@ -2086,6 +2109,6 @@
     tripadvisorUrl: tripadvisorUrl, merkZeile: merkZeile,
     iconFor: iconFor, cityTiles: cityTiles, tileKey: tileKey, splitTile: splitTile, citySparql: citySparql, parseCityRows: parseCityRows,
     loadCityTiles: loadCityTiles, isCityItem: isCityItem, cityRadius: cityRadius, sightScore: sightScore,
-    computeCities: computeCities, loadPageviews: loadPageviews, loadSitelinks: loadSitelinks, directoryCandidates: directoryCandidates, computeDirectory: computeDirectory, lineDistance: lineDistance, lineLength: lineLength, corridorWidths: corridorWidths, corridorTiles: corridorTiles, corridorPick: corridorPick, directoryConfig: directoryConfig, prepareDirectoryTile: prepareDirectoryTile, directoryTiles: directoryTiles, cityStars: cityStars, ortStars: ortStars, loadCountryCities: loadCountryCities, bboxOf: bboxOf, cityWikiUrl: cityWikiUrl
+    computeCities: computeCities, loadPageviews: loadPageviews, loadSitelinks: loadSitelinks, directoryCandidates: directoryCandidates, computeDirectory: computeDirectory, lineDistance: lineDistance, routePlan: routePlan, lineLength: lineLength, corridorWidths: corridorWidths, corridorTiles: corridorTiles, corridorPick: corridorPick, directoryConfig: directoryConfig, prepareDirectoryTile: prepareDirectoryTile, directoryTiles: directoryTiles, cityStars: cityStars, ortStars: ortStars, loadCountryCities: loadCountryCities, bboxOf: bboxOf, cityWikiUrl: cityWikiUrl
   };
 });
