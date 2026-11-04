@@ -20,6 +20,10 @@ on:
         description: 'Nur Test: andere Mindestzahl Sprachversionen (leer = config.json)'
         required: false
         default: ''
+      strecke:
+        description: 'Nur Test v0.9: Strecke "lat,lon;lat,lon auto|fahrrad|fuss"'
+        required: false
+        default: ''
       verzeichnis:
         description: 'Nur Test v0.8: Verzeichnis für Kacheln "süd,west,nord,ost;…" (Fokus danach mit Leerzeichen)'
         required: false
@@ -48,6 +52,14 @@ jobs:
           path: tools/.cache
           key: staedte-${{ github.run_id }}
           restore-keys: staedte-
+      - name: Strecken-Test
+        if: ${{ inputs.strecke != '' }}
+        env:
+          ST: ${{ inputs.strecke }}
+        run: |
+          if ! [[ "$ST" =~ ^[-0-9.,\;]+\ (auto|fahrrad|fuss)$ ]]; then echo "Ungültig"; exit 1; fi
+          read -r PTS MODE <<< "$ST"
+          node tools/build-cities.mjs --strecke "$PTS" "$MODE"
       - name: Verzeichnis-Test
         if: ${{ inputs.verzeichnis != '' }}
         env:
@@ -66,20 +78,20 @@ jobs:
           if ! [[ "$PROBE" =~ ^[-0-9.,\;]+$ ]]; then echo "Ungültig"; exit 1; fi
           node tools/build-cities.mjs --probe "$PROBE"
       - name: Berechnen
-        if: ${{ inputs.probe == '' && inputs.verzeichnis == '' }}
+        if: ${{ inputs.probe == '' && inputs.verzeichnis == '' && inputs.strecke == '' }}
         env:
           LAENDER: ${{ inputs.laender }}
           FRISCH: ${{ inputs.frisch }}
           NAMEN: ${{ inputs.namen }}
         run: node tools/build-cities.mjs
       - name: Zwischenspeicher sichern
-        if: ${{ inputs.probe == '' && inputs.verzeichnis == '' }}
+        if: ${{ inputs.probe == '' && inputs.verzeichnis == '' && inputs.strecke == '' }}
         uses: actions/cache/save@v4
         with:
           path: tools/.cache
           key: staedte-${{ github.run_id }}
       - name: Speichern
-        if: ${{ inputs.probe == '' && inputs.verzeichnis == '' }}
+        if: ${{ inputs.probe == '' && inputs.verzeichnis == '' && inputs.strecke == '' }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

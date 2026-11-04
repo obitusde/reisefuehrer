@@ -106,7 +106,7 @@
 
 <!-- ======================= v0.7 ======================= -->
 <section class="card" id="v08">
-  <h2>v0.8 – Verzeichnis, Zoom-Stufen, Installieren</h2>
+  <h2>v0.8/v0.9 – Verzeichnis, Zoom-Stufen, Strecke</h2>
   <a class="btn secondary" href="index.html">App öffnen</a>
   <div id="checklist8"></div>
   <h2 style="margin-top:16px">Installieren (neue App-Kennung)</h2>
@@ -324,7 +324,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '0.8.4';
+  var VERSION = '0.9.0';
   var KEY = 'rf.diag.v1';
 
   var TESTS = [
@@ -635,14 +635,14 @@
   init();
 })();
 </script>
-<script src="core.js?v=0.8.4"></script>
+<script src="core.js?v=0.9.0"></script>
 <script>
 /* v0.2 diagnostics: API checks, gold list, manual checklist, summary */
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
   var KEY = 'rf.diag.v2';
-  var DV = '0.8.4';
+  var DV = '0.9.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function load() { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { return {}; } }
@@ -917,7 +917,7 @@
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
-  var KEY = 'rf.diag.v3', DV = '0.8.4';
+  var KEY = 'rf.diag.v3', DV = '0.9.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -994,7 +994,7 @@
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
-  var KEY = 'rf.diag.v6', DV = '0.8.4';
+  var KEY = 'rf.diag.v6', DV = '0.9.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -1095,7 +1095,7 @@
 /* v0.7 diagnostics: installability, checklist (symbols, city stars) */
 (function () {
   'use strict';
-  var KEY = 'rf.diag.v7', DV = '0.8.4';
+  var KEY = 'rf.diag.v7', DV = '0.9.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -1182,7 +1182,7 @@
 <script>
 /* v0.8: acceptance of the directory */
 (function () {
-  var KEY = 'rf.diag.v8', DV = '0.8.4';
+  var KEY = 'rf.diag.v8', DV = '0.9.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -1198,7 +1198,12 @@
     ['z8', '„Erzähl mir davon“ öffnet das Android-Teilen-Menü, dort die App wählen'],
     ['z9', 'Statuszeile beim Suchen in einer Zeile; man sieht, ob OSM noch lädt'],
     ['z10', '☰ unten links schaltet die Liste aus und an (Karte über den ganzen Bildschirm)'],
-    ['z11', 'Kein Vollbild-Hinweis von Chrome mehr beim ersten Antippen']
+    ['z11', 'Kein Vollbild-Hinweis von Chrome mehr beim ersten Antippen'],
+    ['z12', 'v0.8.4: Ziel aus dem Verzeichnis antippen zeigt Wikipedia-Text und Bild, „Erzähl mir davon“ geht'],
+    ['r1', 'v0.9 Strecke (⇢): Fahrrad Morges → Genf zeigt Ziele, Liste nach „km“ sortiert, mit Umweg'],
+    ['r2', 'v0.9 Strecke: Auto Morges → Lyon lädt mit Fortschritt; zweites Mal deutlich schneller'],
+    ['r3', 'v0.9 Strecke: Ziele mit weniger Sternen liegen nie weiter weg als solche mit mehr Sternen'],
+    ['r4', 'v0.9 „Strecke beenden“ zeigt wieder die normale Karte']
   ];
   var RES = [['ok', 'Installiert, öffnet vom Startbildschirm'], ['fehler', 'Fehlermeldung'], ['schon', 'Wieder „bereits installiert“'], ['nein', 'Nicht versucht']];
   $('checklist8').innerHTML = CHECKS.map(function (c) {

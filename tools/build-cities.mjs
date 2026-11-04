@@ -169,8 +169,27 @@ async function verzeichnis(arg, fokusArg) {
   console.log('\nGesamt ' + fmtMs(Date.now() - t0));
 }
 
+// ---- v0.9: route corridor with real data, the same path as the phone
+// node tools/build-cities.mjs --strecke "46.511,6.498;46.204,6.143" fahrrad
+async function strecke(arg, mode) {
+  const dc = core.directoryConfig(cfg);
+  const pts = arg.split(';').map((p) => { const [lat, lon] = p.split(',').map(Number); return { lat, lon }; });
+  const tiles = core.corridorTiles(pts, mode, cfg), t0 = Date.now(), all = [];
+  console.log('Strecke ' + mode + ', ' + Math.round(core.lineLength(pts)) + ' km Luftlinie, ' + tiles.length + ' Stücke');
+  for (const t of tiles) { try { const r = await core.prepareDirectoryTile(t, dc, f); all.push(...r.items); } catch (e) { console.log('  Fehler ' + core.tileKey(t) + ': ' + e.message); } }
+  const seen = {}, items = all.filter((x) => !seen[x.q] && (seen[x.q] = 1));
+  const res = core.computeDirectory(items, dc, null, { copy: true });
+  const pick = core.corridorPick(res, pts, mode, cfg);
+  const w = core.corridorWidths(mode, cfg);
+  console.log('Laden ' + fmtMs(Date.now() - t0) + '; ' + pick.length + ' Ziele; alle in ihrer Breite: ' + pick.every((p) => p.d <= w[p.s]) + '; sortiert: ' + pick.every((p, i) => !i || p.along >= pick[i - 1].along));
+  const S = ['·', '★', '★★', '★★★'];
+  pick.slice(0, 80).forEach((p) => console.log('  km ' + Math.round(p.along) + ' ' + S[p.s] + ' ' + p.x.name + (p.k === 'c' ? ' (Ort)' : ' [' + p.x.typ + ']') + ', ' + p.d + ' km neben der Linie'));
+}
+
 const args = process.argv.slice(2);
-if (args[0] === '--verzeichnis') {
+if (args[0] === '--strecke') {
+  await strecke(args[1], args[2] || 'auto');
+} else if (args[0] === '--verzeichnis') {
   await verzeichnis(args[1], args[3]);
 } else if (args[0] === '--probe') {
   await probe(args[1] || '50.9,6.9,51.0,7.0');

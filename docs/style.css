@@ -367,3 +367,13 @@ details.why summary { min-height: 40px; display: flex; align-items: center; colo
 .pill.icon.off { opacity: .7; }
 #app.nolist #mapWrap { flex: 1 1 auto !important; }
 #app.nolist #splitter, #app.nolist .filters, #app.nolist #scroller, #app.nolist #prep, #app.nolist #cprep { display: none !important; }
+
+/* v0.9: route */
+.rt-lbl { display: block; margin: 10px 0 4px; font-weight: 600; }
+.rt-row { display: flex; gap: 8px; }
+.rt-row .rt-in { flex: 1 1 auto; min-width: 0; min-height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--text); font-size: 16px; }
+.rt-row .btn { flex: none; width: 52px; }
+.rt-hits button { display: block; width: 100%; text-align: left; padding: 8px 4px; border: 0; background: transparent; color: var(--text); }
+.rt-mode { margin: 14px 0 6px; }
+.rt-head { display: flex; flex-direction: column; gap: 2px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.rt-head .btn { align-self: flex-start; margin-top: 6px; }

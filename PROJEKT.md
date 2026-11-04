@@ -308,6 +308,8 @@ score = 3.0 * log10(1 + sprachversionen)
 
 **Nicht Teil der App:** Routenberechnung, automatische Auswahl von Zwischenstopps, Wegpunktlisten, Zeitplanung.
 
+**Stand:** Umgesetzt in v0.9.0 mit den Daten des Verzeichnisses (6c, v0.8) statt Abfragen je Stützpunkt; ohne Zwischenpunkte und ohne Claude-Highlights. Details im CHANGELOG.
+
 **Abnahme (in `diag.html`):**
 1. Fahrrad, Morges (46.511, 6.498) → Genf (46.204, 6.143): mindestens 1 Ort, alle Orte erfüllen die Breite ihrer Stufe, Liste nach „km ab Start“ sortiert, Dauer < 20 Sekunden.
 2. Auto, Morges → Lyon (45.764, 4.836): läuft mit begrenzten Anfragen, Fortschritt sichtbar, zweiter Lauf deutlich schneller (Zwischenspeicher).

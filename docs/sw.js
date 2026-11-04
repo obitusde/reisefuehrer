@@ -1,8 +1,8 @@
-/* Reiseführer – service worker (v0.8.4)
+/* Reiseführer – service worker (v0.9.0)
  * App files: network first (always fresh after a push), cache only as fallback.
  * Map tiles: cache first (own cache, trimmed). version.json and APIs: never cached here.
  */
-const VERSION = '0.8.4';
+const VERSION = '0.9.0';
 const APP_CACHE = 'rf-app-' + VERSION;
 const TILE_CACHE = 'rf-tiles';
 const TILE_MAX = 2000;

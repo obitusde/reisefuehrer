@@ -91,7 +91,11 @@ async function mockApis(ctx) {
   await ctx.route(/nominatim\.openstreetmap\.org/, (route) => OFFLINE ? route.abort('internetdisconnected') : route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
     body: JSON.stringify((() => { const u = new URL(route.request().url());
       if (!u.pathname.startsWith('/search')) return fx.nominatim;
-      return /imperial/i.test(u.searchParams.get('q')) ? fx.nominatimSearch.imperial : fx.nominatimSearch.default; })()) }));
+      const q = u.searchParams.get('q');
+      // v0.9 route test: two places in Luxembourg (synthetic SPARQL data lies there)
+      if (/luxemburg/i.test(q)) return [{ place_id: 21, name: 'Luxemburg', addresstype: 'city', category: 'place', type: 'city', display_name: 'Luxemburg, Kanton Luxemburg, Luxemburg', lat: '49.6116', lon: '6.1319' }];
+      if (/vianden/i.test(q)) return [{ place_id: 22, name: 'Vianden', addresstype: 'town', category: 'place', type: 'town', display_name: 'Vianden, Kanton Vianden, Luxemburg', lat: '49.9345', lon: '6.2070' }];
+      return /imperial/i.test(q) ? fx.nominatimSearch.imperial : fx.nominatimSearch.default; })()) }));
   await ctx.route(/overpass-api\.de|overpass\.kumi\.systems|maps\.mail\.ru/, async (route) => {
     if (OFFLINE) return route.abort('internetdisconnected');
     if (OSM_DELAY) await new Promise((r) => setTimeout(r, OSM_DELAY));
@@ -143,7 +147,7 @@ try {
   if (process.env.DEBUG) { page.on('request', (r) => { if (/extracts|mymemory/.test(r.url())) console.log('REQ', decodeURIComponent(r.url()).slice(0, 160)); }); page.on('requestfailed', (r) => console.log('FAILED', r.url().slice(0, 120), r.failure() && r.failure().errorText)); page.on('console', (m) => console.log('CONSOLE', m.text())); }
   await page.goto(BASE + 'index.html');
   await page.waitForSelector('.empty');
-  ok((await page.textContent('#version')) === 'v0.8.4', 'footer version');
+  ok((await page.textContent('#version')) === 'v0.9.0', 'footer version');
   if (OUT) await page.screenshot({ path: OUT + '/01-start.png' });
 
   await page.click('#btnLocate');
@@ -437,10 +441,10 @@ try {
   ok(splitNow && +splitNow > 12, 'split persisted: ' + splitNow);
 
   // update banner (fake newer version, then ?testupdate=1)
-  fakeVersion = '0.8.5';
+  fakeVersion = '0.9.1';
   await page.reload();
   await page.waitForSelector('#banner:not([hidden])');
-  ok((await page.textContent('#bannerText')).includes('v0.8.5'), 'banner shows remote version');
+  ok((await page.textContent('#bannerText')).includes('v0.9.1'), 'banner shows remote version');
   if (OUT) await page.screenshot({ path: OUT + '/05-banner.png' });
   fakeVersion = null;
   await page.click('#bannerBtn');
@@ -571,9 +575,9 @@ try {
   const swOk = await p3.evaluate(() => navigator.serviceWorker.ready.then((r) => !!r.active)).catch(() => false);
   ok(swOk, 'service worker active');
   const cacheKeys = await p3.evaluate(async () => { await new Promise((r) => setTimeout(r, 800)); return caches.keys(); });
-  ok(cacheKeys.includes('rf-app-0.8.4'), 'app cache with version: ' + cacheKeys.join(','));
-  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.8.4')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
-  ok(cached.some((u) => u.includes('app.js?v=0.8.4')), 'shell precached');
+  ok(cacheKeys.includes('rf-app-0.9.0'), 'app cache with version: ' + cacheKeys.join(','));
+  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.9.0')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
+  ok(cached.some((u) => u.includes('app.js?v=0.9.0')), 'shell precached');
   ok(errs3.length === 0, 'sw: no JS errors ' + errs3.join(' | '));
   await ctx3.close();
 
@@ -664,6 +668,32 @@ try {
     ok(!(await p8.isVisible('#scroller')), 'v0.8.3 list off is remembered');
     await p8.click('#btnList'); await p8.waitForTimeout(200);
     ok(await p8.isVisible('#scroller'), 'v0.8.3 list on again');
+    // ---- v0.9: route Luxemburg → Vianden by car
+    await p8.click('#btnRoute');
+    await p8.waitForSelector('.rt-in[data-rt="ziel"]');
+    await p8.fill('.rt-in[data-rt="start"]', 'Luxemburg'); await p8.press('.rt-in[data-rt="start"]', 'Enter');
+    await p8.waitForSelector('[data-a="rtpick"][data-f="start"]'); await p8.click('[data-a="rtpick"][data-f="start"]');
+    await p8.fill('.rt-in[data-rt="ziel"]', 'Vianden'); await p8.click('[data-a="rtsearch"][data-f="ziel"]');
+    await p8.waitForSelector('[data-a="rtpick"][data-f="ziel"]'); await p8.click('[data-a="rtpick"][data-f="ziel"]');
+    ok((await p8.inputValue('.rt-in[data-rt="start"]')) === 'Luxemburg' && (await p8.inputValue('.rt-in[data-rt="ziel"]')) === 'Vianden', 'v0.9 route: start and destination picked');
+    await p8.click('[data-a="rtmode"][data-m="auto"]');
+    if (OUT) await p8.screenshot({ path: OUT + '/15-strecke-eingabe.png' });
+    await p8.click('[data-a="rtgo"]');
+    await p8.waitForFunction(() => /entlang der Strecke/.test(document.getElementById('toast').textContent), null, { timeout: 30000 });
+    const rt = await p8.$$eval('.vz-item', (els) => els.map((e) => e.querySelector('b').textContent + ' | ' + e.querySelector('.small').textContent));
+    ok(rt.length >= 2 && /^Luxemburg \| km 0/.test(rt[0]) && rt.some((t) => /^Burg Vianden \| km \d+/.test(t)) && !rt.some((t) => /Kanton/.test(t)), 'v0.9 route list in order along the route with km and detour: ' + rt.join(' / '));
+    const kms = rt.map((t) => +(/km (\d+)/.exec(t) || [0, 0])[1]);
+    ok(kms.every((k, i) => i === 0 || k >= kms[i - 1]), 'v0.9 sorted by km from start: ' + kms.join(','));
+    ok((await p8.textContent('.rt-head')).includes('Luxemburg → Vianden') && (await p8.textContent('.rt-head')).includes('Luftlinie'), 'v0.9 route header');
+    ok(await p8.evaluate(() => document.querySelectorAll('.leaflet-overlay-pane path').length >= 1), 'v0.9 route line on the map');
+    await p8.waitForFunction(() => document.querySelectorAll('.ct, .mk').length >= 2, null, { timeout: 5000 }).catch(() => {});
+    const rtMarks = await p8.$$eval('.ct-lbl, .mk-lbl', (els) => els.map((e) => e.textContent));
+    ok(rtMarks.includes('Luxemburg') && rtMarks.includes('Burg Vianden'), 'v0.9 route: sights along it on the map: ' + rtMarks.join(', '));
+    ok(await p8.$eval('#zoomHint', (el) => el.hidden), 'v0.9 no "Hier suchen" hint with a route');
+    if (OUT) await p8.screenshot({ path: OUT + '/16-strecke.png' });
+    await p8.click('[data-a="rtend2"]');
+    await p8.waitForFunction(() => !document.querySelector('.rt-head'));
+    ok(true, 'v0.9 route ended');
     // settings
     await p8.click('#btnSettings');
     await p8.waitForFunction(() => /Stücke gespeichert/.test(document.getElementById('sheetBody').textContent));

@@ -319,6 +319,17 @@
     "aussicht": ["aussicht"],
     "natur": ["park", "natur"]
   },
+  "korridor": {
+    "_hinweis": "v0.9 Strecken-Modus (PROJEKT.md 6b): Luftlinie Start → Ziel (mit Zwischenpunkten). Ein Ziel erscheint, wenn sein Abstand zur Linie höchstens breite_km für seine Sterne ist (3/2/1/0 Sterne). Geladen wird das Verzeichnis in einem Streifen der größten Breite (Proben alle probe_km), höchstens max_kacheln Stücke.",
+    "breite_km": {
+      "auto": { "3": 40, "2": 15, "1": 5, "0": 2 },
+      "fahrrad": { "3": 8, "2": 3, "1": 1, "0": 0.5 },
+      "fuss": { "3": 2, "2": 1, "1": 0.3, "0": 0.15 }
+    },
+    "probe_km": 10,
+    "max_kacheln": 150
+  },
+
   "verzeichnis": {
     "_hinweis": "v0.8: Verzeichnis wie ein Reiseführer. Das Handy lädt die Gegend in Kacheln (kachel Grad, etwa 25 × 28 km) von Wikidata: alles mit Koordinaten und Wikipedia-Artikel, dazu Seitenaufrufe und Wikivoyage für die besten Kandidaten (kachel_aufrufe). Gespeichert cache_tage Tage. Geladen wird nur mit „Hier suchen“ (v0.8.1), höchstens max_kacheln_knopf Kacheln auf einmal. Sterne: sterne (Sehenswürdigkeiten), sterne_natur (Natur und ausflug_typen wie Freizeitparks), stadt_sterne (Orte: Bekanntheit + was es zu sehen gibt; ohne min_sehen kein Stern). Ab welchem Zoom ein Punkt erscheint: ★★★-Ziele und ★★/★★★-Orte immer, ★★-Ziele, ★-Orte und ★-Ziele außerhalb von Stern-Orten ab zoom.region, alle anderen ab nah_ab Punkten ab zoom.nah.",
     "aktiv": true,

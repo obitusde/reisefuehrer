@@ -11,7 +11,7 @@
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="stylesheet" href="lib/leaflet/leaflet.css">
-<link rel="stylesheet" href="style.css?v=0.8.4">
+<link rel="stylesheet" href="style.css?v=0.9.0">
 </head>
 <body>
 <div id="app">
@@ -33,6 +33,7 @@
     <div class="map-bottom">
       <button id="btnLocate" class="pill icon" type="button" aria-label="Mein Standort" title="Mein Standort">◎</button>
       <button id="btnList" class="pill icon" type="button" aria-label="Liste ein/aus" title="Liste ein/aus" aria-pressed="true">☰</button>
+      <button id="btnRoute" class="pill icon" type="button" aria-label="Strecke" title="Strecke">⇢</button>
       <span class="spacer"></span>
       <button id="btnHere" class="pill primary" type="button">Hier suchen</button>
     </div>
@@ -54,7 +55,7 @@
 
   <div id="scroller" class="scroller">
     <div class="foot">
-      <span>Reiseführer <b id="version">v0.8.4</b></span>
+      <span>Reiseführer <b id="version">v0.9.0</b></span>
       <span>Sterne = Faustregel</span>
     </div>
     <div id="status" class="status" aria-live="polite"></div>
@@ -73,7 +74,7 @@
 <div id="toast" class="toast" hidden></div>
 
 <script src="lib/leaflet/leaflet.js"></script>
-<script src="core.js?v=0.8.4"></script>
-<script src="app.js?v=0.8.4"></script>
+<script src="core.js?v=0.9.0"></script>
+<script src="app.js?v=0.9.0"></script>
 </body>
 </html>

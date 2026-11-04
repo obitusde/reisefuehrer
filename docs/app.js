@@ -1,8 +1,8 @@
-/* Reiseführer – app (v0.8.4). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.9.0). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.8.4';
+  var VERSION = '0.9.0';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
@@ -300,7 +300,7 @@
   function renderMarkers() {
     if (!map) return;
     markerLayer.clearLayers();
-    if (cityMode()) return; // zoomed out: city stars instead of single places (v0.7.0)
+    if (cityMode() || ROUTE) return; // zoomed out: city stars instead of single places (v0.7.0); route: its own layer
     var mc = cfg.marker || {}, maxChars = mc.beschriftung_max_zeichen || 18;
     // v0.7.2: not too many at once – in the visible section only the most important ones (max_sichtbar);
     // where there is little (Le Brassus), everything. Same rule at every zoom.
@@ -354,7 +354,7 @@
   }
 
   var markerTimer = null;
-  function scheduleMarkers() { clearTimeout(markerTimer); markerTimer = setTimeout(function () { renderMarkers(); if (!last || !last.places) renderList(); renderHint(); }, 120); }
+  function scheduleMarkers() { clearTimeout(markerTimer); markerTimer = setTimeout(function () { renderMarkers(); if ((!last || !last.places) && !ROUTE) renderList(); renderHint(); }, 120); }
 
   // ------------------------------------------------------ directory (v0.8)
   // Like a printed guide: the phone loads the region in tiles from Wikidata (core.prepareDirectoryTile; about 25 × 28 km,
@@ -412,7 +412,7 @@
     if (!DIR.queue.length) {
       var had = DIR.total;
       DIR.total = 0; renderHint();
-      if (had && !DIR.cancelled) dirDone(false);
+      if (had && !DIR.cancelled) { if (ROUTE && !ROUTE.ready) routeCompute(); else dirDone(false); }
       DIR.cancelled = false;
       return;
     }
@@ -465,6 +465,111 @@
     var rank = function (it) { return (it.x.z <= z ? 100 : 0) + it.s * 10 + (it.k === 'c' && it.s >= 2 ? 15 : 0); };
     return out.sort(function (a, b2) { return (rank(b2) - rank(a)) || (b2.x.score - a.x.score); });
   }
+  // ------------------------------------------------------ route (v0.9, PROJEKT.md 6b)
+  // What lies between start and destination: straight line, the directory in a strip along it (loaded with the
+  // same tiles as "Hier suchen"), each sight within the width for its stars and means of transport. No routing.
+  var ROUTE = null, routeLine = null;
+  var RT = { start: null, ziel: null, mode: 'auto', hits: { start: [], ziel: [] }, q: { start: '', ziel: '' } };
+  var RT_MODES = [['auto', '🚗 Auto'], ['fahrrad', '🚲 Fahrrad'], ['fuss', '🚶 zu Fuß']];
+  function routeSheet() {
+    var f = function (key, label, ph) {
+      var sel = RT[key];
+      return '<label class="rt-lbl">' + label + '</label>' +
+        '<div class="rt-row"><input type="search" class="rt-in" data-rt="' + key + '" placeholder="' + esc(ph) + '" value="' + esc(sel ? sel.name : RT.q[key]) + '" autocomplete="off" enterkeyhint="search">' +
+        '<button class="btn" type="button" data-a="rtsearch" data-f="' + key + '" aria-label="Suchen">🔍</button></div>' +
+        (RT.hits[key].length ? '<ul class="hits rt-hits">' + RT.hits[key].map(function (h, i) {
+          return '<li><button type="button" data-a="rtpick" data-f="' + key + '" data-i="' + i + '"><b>' + esc(h.name) + '</b><span class="small"> ' + esc(h.detail || '') + '</span></button></li>';
+        }).join('') + '</ul>' : '');
+    };
+    var html = f('start', 'Start', 'Mein Standort') + f('ziel', 'Ziel', 'Ort eingeben, z. B. Lyon') +
+      '<div class="seg rt-mode" role="group" aria-label="Verkehrsmittel">' + RT_MODES.map(function (m) {
+        return '<button type="button" data-a="rtmode" data-m="' + m[0] + '"' + (RT.mode === m[0] ? ' class="on"' : '') + '>' + m[1] + '</button>';
+      }).join('') + '</div>' +
+      '<div class="actions"><button class="btn primary" type="button" data-a="rtgo">Strecke anzeigen</button>' +
+      (ROUTE ? '<button class="btn" type="button" data-a="rtend">Strecke beenden</button>' : '') + '</div>' +
+      '<p class="small">Luftlinie, keine Routenplanung. Gezeigt wird, was nahe an der Linie liegt: je mehr Sterne, desto breiter der Streifen. Geladen wird erst mit „Strecke anzeigen“.</p>';
+    openSheet('Strecke', html);
+    $('sheetBody').setAttribute('data-view', 'route');
+  }
+  function routeSearch(key) {
+    var inp = document.querySelector('.rt-in[data-rt="' + key + '"]'), q = inp ? inp.value.trim() : '';
+    RT.q[key] = q; RT[key] = null;
+    if (!q) { RT.hits[key] = []; routeSheet(); return; }
+    C.searchPlaces(q, function (u, o) { return fetch(u, o); }, viewBbox()).then(function (list) {
+      RT.hits[key] = list;
+      if (!list.length) toast('Nichts gefunden', 2000);
+      routeSheet();
+    }, function (e) { toast('Suche fehlgeschlagen: ' + e.message, 3000); });
+  }
+  function routeGo() {
+    ['start', 'ziel'].forEach(function (k) { var inp = document.querySelector('.rt-in[data-rt="' + k + '"]'); if (inp && !RT[k]) RT.q[k] = inp.value.trim(); });
+    if (!RT.ziel) { toast(RT.q.ziel ? 'Ziel: bitte 🔍 tippen und einen Treffer wählen' : 'Bitte ein Ziel eingeben', 3000); return; }
+    if (!RT.start && RT.q.start) { toast('Start: bitte 🔍 tippen und einen Treffer wählen', 3000); return; }
+    var startP = RT.start ? Promise.resolve(RT.start) : new Promise(function (res, rej) {
+      if (userPos) { res({ name: 'Mein Standort', lat: userPos.lat, lon: userPos.lon }); return; }
+      if (!navigator.geolocation) { rej(new Error('kein Standort')); return; }
+      navigator.geolocation.getCurrentPosition(function (pos) {
+        userPos = { lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy }; drawUser();
+        res({ name: 'Mein Standort', lat: userPos.lat, lon: userPos.lon });
+      }, function () { rej(new Error('Standort nicht verfügbar')); }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+    });
+    startP.then(function (st) { routeStart(st, RT.ziel, RT.mode); }, function (e) { toast(e.message + ' – Start eingeben', 3000); });
+  }
+  function routeStart(a, b, mode) {
+    var pts = [{ lat: a.lat, lon: a.lon }, { lat: b.lat, lon: b.lon }];
+    var tiles = C.corridorTiles(pts, mode, cfg), max = (cfg.korridor && cfg.korridor.max_kacheln) || 150;
+    if (tiles.length > max) { toast('Strecke zu lang (' + tiles.length + ' Stücke) – bitte kürzer', 3500); return; }
+    closeSheet();
+    ROUTE = { a: a, b: b, mode: mode, pts: pts, tiles: tiles.map(C.tileKey), items: [], km: Math.round(C.lineLength(pts)), ready: false };
+    if (routeLine) map.removeLayer(routeLine);
+    routeLine = L.polyline(pts.map(function (p) { return [p.lat, p.lon]; }), { color: '#0e6b7d', weight: 4, opacity: .8, dashArray: '8 6', interactive: false }).addTo(map);
+    map.fitBounds(routeLine.getBounds(), { padding: [40, 40], animate: false });
+    var missing = tiles.filter(function (t) { return dirStale(C.tileKey(t)); });
+    // stored tiles are read from the phone first
+    var reads = ROUTE.tiles.filter(function (k) { return DIR.index[k] && !DIR.mem[k]; });
+    Promise.all(reads.map(function (k) { return IDB.get('vz:' + k).then(function (r) { if (r && r.items) DIR.mem[k] = r; }); })).then(function () {
+      if (missing.length) { DIR.err = {}; dirQueue(missing); } else routeCompute();
+    });
+    renderAll(); scheduleCities();
+  }
+  function routeCompute() {
+    if (!ROUTE) return;
+    var seen = {}, items = [];
+    ROUTE.tiles.forEach(function (k) { var m = DIR.mem[k]; if (m && m.items) m.items.forEach(function (x) { if (!seen[x.q]) { seen[x.q] = 1; items.push(x); } }); });
+    var res = items.length ? C.computeDirectory(items, dcfg, null, { copy: true }) : null;
+    ROUTE.items = C.corridorPick(res, ROUTE.pts, ROUTE.mode, cfg).map(function (it) { it.vz = true; return it; });
+    ROUTE.ready = true;
+    toast('Fertig: ' + ROUTE.items.length + ' Ziele entlang der Strecke', 3000);
+    renderAll(); scheduleCities();
+  }
+  function routeEnd() {
+    ROUTE = null;
+    if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
+    closeSheet(); renderAll(); scheduleCities(); scheduleMarkers();
+  }
+  function routeInView(b) {
+    return (ROUTE && ROUTE.items || []).filter(function (it) {
+      return C.inBbox(it.x, b) && (it.k === 'c' || it.s >= settings.minStars) && (!settings.kat || (settings.kat !== '__osm' && it.k === 'o' && C.typeInfo(it.x.typ, cfg).kategorie === settings.kat));
+    }).slice().sort(function (p, q) {
+      // towns with ★★/★★★ before their own sights (same spot), then by stars and points
+      var r = function (it) { return it.s * 10 + (it.k === 'c' && it.s >= 2 ? 15 : 0); };
+      return (r(q) - r(p)) || (q.x.score - p.x.score);
+    });
+  }
+  function routeListHtml() {
+    var r = ROUTE, mode = RT_MODES.filter(function (m) { return m[0] === r.mode; })[0];
+    var vis = r.items.filter(function (it) { return it.k === 'c' || it.s >= settings.minStars; });
+    DIR.listed = vis;
+    return '<li class="rt-head"><b>' + esc(r.a.name) + ' → ' + esc(r.b.name) + '</b><span class="small">' + esc(mode ? mode[1] : '') + ' · ' + r.km + ' km Luftlinie · ' +
+      (r.ready ? vis.length + ' Ziele' : 'lädt …') + '</span><span class="small">Echte Straße kann abweichen.</span>' +
+      '<button class="btn" type="button" data-a="rtend2">Strecke beenden</button></li>' +
+      vis.map(function (it, i) {
+        var x = it.x, typ = it.k === 'c' ? 'Ort' : C.typeInfo(x.typ, cfg).label;
+        return '<li class="vz-item" data-vz="' + i + '"><span class="it-stars s' + it.s + '">' + (it.s ? C.starsText(it.s) : '·') + '</span>' +
+          '<span class="vz-main"><b>' + esc(x.name) + '</b><span class="small">km ' + Math.round(it.along) + ' · Umweg ca. ' + (it.umweg < 1 ? '<1' : Math.round(it.umweg)) + ' km · ' + esc(typ) + '</span></span></li>';
+      }).join('');
+  }
+
   // v0.8.4: a sight of the directory opens like a search result (intro, picture, "Erzähl mir davon"):
   // on tap one request to Wikidata for its Wikipedia articles, then the usual place window
   function openDirPlace(it) {
@@ -512,7 +617,7 @@
       txt = 'Lade Gegend ' + Math.min(DIR.done + 1, DIR.total || 1) + '/' + (DIR.total || 1) + ' …';
       btn = '<button type="button" data-h="cancel" aria-label="Abbrechen">✕</button>';
     } else if (tooMany && !small) txt = 'Zu weit draußen – näher heranzoomen';
-    else if (dirOn() && n) txt = '„Hier suchen“ lädt die Gegend (' + estText(n) + ')';
+    else if (dirOn() && n && !ROUTE) txt = '„Hier suchen“ lädt die Gegend (' + estText(n) + ')';
     // v0.8.3: otherwise no hint (wish of the user)
     el.innerHTML = txt ? '<span>' + esc(txt) + '</span>' + btn : '';
     el.hidden = !txt;
@@ -570,21 +675,22 @@
   }
   function scheduleCities() {
     clearTimeout(cityTimer);
-    if (cityLayer && !cityMode()) { cityLayer.clearLayers(); return; }
+    if (cityLayer && !cityMode() && !ROUTE) { cityLayer.clearLayers(); return; }
     cityTimer = setTimeout(renderCities, 120);
   }
 
   function renderCities() {
     if (!cityLayer) return;
     cityLayer.clearLayers();
-    if (!cityMode()) return;
+    if (!cityMode() && !ROUTE) return;
     var c = SC(), z = map.getZoom(), big = z <= ((c.zoom && c.zoom.nur_grosse_bis) || 8);
     var b = viewBbox(), dy = (b.north - b.south) * 0.1, dx = (b.east - b.west) * 0.1;
     var pad = { south: b.south - dy, north: b.north + dy, west: b.west - dx, east: b.east + dx };
     var list = [], waiting = false, seen = {};
     // v0.8: the directory (loaded in the phone) where there is one
-    dirInView(pad).forEach(function (it) { if (!seen[it.x.q]) { seen[it.x.q] = 1; list.push(it); } });
-    landsIn(pad).forEach(function (l) {
+    if (ROUTE) waiting = true; // v0.9: with a route only what lies along it
+    (ROUTE ? routeInView(pad) : dirInView(pad)).forEach(function (it) { if (!seen[it.x.q]) { seen[it.x.q] = 1; list.push(it); } });
+    if (!ROUTE) landsIn(pad).forEach(function (l) {
       var d = cityData[l.code];
       if (!d || d.then) { waiting = true; loadCityLand(l.code).then(scheduleCities); return; }
       (d.staedte || []).forEach(function (x) {
@@ -1030,6 +1136,7 @@
 
   function renderList() {
     var ul = $('list');
+    if (ROUTE) { ul.innerHTML = routeListHtml(); if (!run) setStatus(''); return; }
     var vzl = (!last || !last.places) && map && dirOn() ? dirInView(viewBbox()) : [];
     if (vzl.length) {
       DIR.listed = vzl.slice(0, 40);
@@ -1914,6 +2021,11 @@
   function bindUI() {
     $('btnLocate').addEventListener('click', locate);
     $('btnList').addEventListener('click', function () { setListOff(!settings.listeAus); });
+    $('btnRoute').addEventListener('click', routeSheet);
+    $('sheetBody').addEventListener('keydown', function (e) {
+      var inp = e.target.closest && e.target.closest('.rt-in');
+      if (inp && e.key === 'Enter') { e.preventDefault(); routeSearch(inp.getAttribute('data-rt')); }
+    });
     $('btnHere').addEventListener('click', searchHere);
     $('zoomHint').addEventListener('click', function (e) {
       var b = e.target.closest && e.target.closest('[data-h]');
@@ -1954,6 +2066,7 @@
 
     $('list').addEventListener('click', function (e) {
       var vz = e.target.closest('.vz-item');
+      if (e.target.closest('[data-a="rtend2"]')) { routeEnd(); return; }
       if (vz && DIR.listed) { var it = DIR.listed[+vz.getAttribute('data-vz')]; if (it) { if (it.k === 'o') openDirPlace(it); else openCity(it); } return; }
       var li = e.target.closest('.item');
       if (!li) return;
@@ -2052,6 +2165,17 @@
         refreshSettings();
       } else if (a === 'cityhere') {
         closeSheet(); searchHere();
+      } else if (a === 'rtsearch') {
+        routeSearch(el.getAttribute('data-f'));
+      } else if (a === 'rtpick') {
+        var fk = el.getAttribute('data-f'), hh = RT.hits[fk][+el.getAttribute('data-i')];
+        if (hh) { RT[fk] = { name: hh.name, lat: hh.lat, lon: hh.lon }; RT.hits[fk] = []; routeSheet(); }
+      } else if (a === 'rtmode') {
+        RT.mode = el.getAttribute('data-m'); routeSheet();
+      } else if (a === 'rtgo') {
+        routeGo();
+      } else if (a === 'rtend') {
+        routeEnd();
       } else if (a === 'dirclear') {
         dirClear();
       } else if (a === 'cityzoom' && cityCur) {

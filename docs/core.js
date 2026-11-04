@@ -1,5 +1,5 @@
 /*
- * Reiseführer – core logic (v0.8.4)
+ * Reiseführer – core logic (v0.9.0)
  * Shared by the app (index.html), the diagnostics page (diag.html) and Node tests.
  * No DOM access here. Network access only through the injected fetch function.
  */
@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var CORE_VERSION = '0.8.4';
+  var CORE_VERSION = '0.9.0';
 
   // ---------------------------------------------------------------- helpers
 
@@ -1976,6 +1976,67 @@
   /** Tiles of the directory grid that cover a map section. */
   function directoryTiles(b, cfg) { return cityTiles(b, (cfg.verzeichnis && cfg.verzeichnis.kachel) || 0.25); }
 
+  // ------------------------------------------------------- route corridor (v0.9, PROJEKT.md 6b)
+  // The line is the straight line (great circle, approximated per segment) between start, via points and destination.
+  // A place is shown if its distance to the line is at most the width for its stars and means of transport.
+
+  /** Distance of p to the polyline pts (km) and position along it (km from start). Local flat projection per segment. */
+  function lineDistance(p, pts) {
+    var best = { d: Infinity, along: 0 }, run = 0;
+    for (var i = 0; i < pts.length - 1; i++) {
+      var a = pts[i], b = pts[i + 1], k = Math.cos(((a.lat + b.lat) / 2) * Math.PI / 180);
+      var bx = (b.lon - a.lon) * k * 111.32, by = (b.lat - a.lat) * 110.57;
+      var px = (p.lon - a.lon) * k * 111.32, py = (p.lat - a.lat) * 110.57;
+      var len2 = bx * bx + by * by, t = len2 ? Math.max(0, Math.min(1, (px * bx + py * by) / len2)) : 0;
+      var dx = px - t * bx, dy = py - t * by, d = Math.sqrt(dx * dx + dy * dy), len = Math.sqrt(len2);
+      if (d < best.d) best = { d: d, along: run + t * len };
+      run += len;
+    }
+    best.total = run;
+    return best;
+  }
+  /** Length of the polyline in km. */
+  function lineLength(pts) { return lineDistance(pts[0], pts).total; }
+  /** Widths (km) for the means of transport, by stars 3..0; monotone (fewer stars never wider). */
+  function corridorWidths(mode, cfg) {
+    var w = ((cfg.korridor && cfg.korridor.breite_km) || {})[mode] || { 3: 40, 2: 15, 1: 5, 0: 2 };
+    var out = {}, prev = Infinity;
+    [3, 2, 1, 0].forEach(function (s) { prev = Math.min(prev, +w[s] || 0); out[s] = prev; });
+    return out;
+  }
+  /** Directory tiles along the line: samples every probe_km, each with a box of the largest width around it. */
+  function corridorTiles(pts, mode, cfg) {
+    var w = corridorWidths(mode, cfg)[3], step = (cfg.korridor && cfg.korridor.probe_km) || 10, seen = {}, out = [];
+    for (var i = 0; i < pts.length - 1; i++) {
+      var a = pts[i], b = pts[i + 1], len = lineLength([a, b]), n = Math.max(1, Math.ceil(len / step));
+      for (var j = 0; j <= n; j++) {
+        var lat = a.lat + (b.lat - a.lat) * j / n, lon = a.lon + (b.lon - a.lon) * j / n;
+        var dLat = w / 110.57, dLon = w / (111.32 * Math.max(0.2, Math.cos(lat * Math.PI / 180)));
+        directoryTiles({ south: lat - dLat, north: lat + dLat, west: lon - dLon, east: lon + dLon }, cfg).forEach(function (t) {
+          var k = tileKey(t);
+          if (!seen[k]) { seen[k] = 1; out.push(t); }
+        });
+      }
+    }
+    return out;
+  }
+  /**
+   * What lies along the route: towns with stars and sights of the directory result within the width of their stars.
+   * Returns [{k: 'c'|'o', x, s, d (km to the line), along (km from start), umweg (km, there and back)}] in order along the route.
+   */
+  function corridorPick(res, pts, mode, cfg) {
+    var w = corridorWidths(mode, cfg), out = [];
+    var take = function (k, x) {
+      var s = x.st || 0;
+      if (k === 'c' && !s) return;
+      var r = lineDistance(x, pts);
+      if (r.d <= w[s]) out.push({ k: k, x: x, s: s, d: round1(r.d), along: round1(r.along), umweg: round1(2 * r.d) });
+    };
+    (res && res.staedte || []).forEach(function (x) { take('c', x); });
+    (res && res.orte || []).forEach(function (x) { take('o', x); });
+    return out.sort(function (a, b) { return a.along - b.along; });
+  }
+
   /** Whole country: tiles over its bounding box, load, compute. */
   function loadCountryCities(land, cfg, f, o) {
     var tiles = cityTiles(bboxOf(land.bbox), cfg.staedte.kachel_grad || 1);
@@ -2023,6 +2084,6 @@
     tripadvisorUrl: tripadvisorUrl, merkZeile: merkZeile,
     iconFor: iconFor, cityTiles: cityTiles, tileKey: tileKey, splitTile: splitTile, citySparql: citySparql, parseCityRows: parseCityRows,
     loadCityTiles: loadCityTiles, isCityItem: isCityItem, cityRadius: cityRadius, sightScore: sightScore,
-    computeCities: computeCities, loadPageviews: loadPageviews, loadSitelinks: loadSitelinks, directoryCandidates: directoryCandidates, computeDirectory: computeDirectory, directoryConfig: directoryConfig, prepareDirectoryTile: prepareDirectoryTile, directoryTiles: directoryTiles, cityStars: cityStars, ortStars: ortStars, loadCountryCities: loadCountryCities, bboxOf: bboxOf, cityWikiUrl: cityWikiUrl
+    computeCities: computeCities, loadPageviews: loadPageviews, loadSitelinks: loadSitelinks, directoryCandidates: directoryCandidates, computeDirectory: computeDirectory, lineDistance: lineDistance, lineLength: lineLength, corridorWidths: corridorWidths, corridorTiles: corridorTiles, corridorPick: corridorPick, directoryConfig: directoryConfig, prepareDirectoryTile: prepareDirectoryTile, directoryTiles: directoryTiles, cityStars: cityStars, ortStars: ortStars, loadCountryCities: loadCountryCities, bboxOf: bboxOf, cityWikiUrl: cityWikiUrl
   };
 });

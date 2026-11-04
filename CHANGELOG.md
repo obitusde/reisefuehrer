@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.9.0 – 04.11.2026 – Strecke: was liegt zwischen Start und Ziel
+
+Nächste Funktion aus PROJEKT.md (6b, Korridormodus), gebaut auf dem Verzeichnis aus v0.8.
+
+- **⇢ unten** öffnet „Strecke“: Start (leer = Mein Standort, sonst Ort eingeben und 🔍), Ziel, Verkehrsmittel 🚗 Auto / 🚲 Fahrrad / 🚶 zu Fuß, dann „Strecke anzeigen“. Erst dann wird geladen.
+- **Rechnung**: Linie = Luftlinie Start → Ziel. Geladen wird das Verzeichnis in einem Streifen entlang der Linie (dieselben Stücke wie bei „Hier suchen“, schon gespeicherte werden nicht neu geladen; Fortschritt „Lade Gegend 3/20 …“, ✕ bricht ab). Ein Ziel erscheint, wenn es höchstens so weit von der Linie weg ist, wie seine Sterne erlauben:
+
+  | Verkehrsmittel | ★★★ | ★★ | ★ | ohne Stern |
+  |---|---|---|---|---|
+  | Auto | 40 km | 15 km | 5 km | 2 km |
+  | Fahrrad | 8 km | 3 km | 1 km | 0,5 km |
+  | zu Fuß | 2 km | 1 km | 0,3 km | 0,15 km |
+
+- **Anzeige**: Linie gestrichelt auf der Karte, die Ziele darauf (je Ausschnitt die wichtigsten), die Liste **in Reihenfolge entlang der Strecke** mit „km ab Start“ und „Umweg ca. X km“ (hin und zurück zur Linie). Antippen öffnet das Ziel wie gewohnt (Wikipedia, Erzählen, Karten-Links). „Strecke beenden“ oben in der Liste oder im Strecken-Fenster.
+- **Diagnose**: Checkliste um die Abnahme aus PROJEKT.md 6b ergänzt.
+- GitHub Action „Stadt-Sterne berechnen“: neue Eingabe `strecke` zum Prüfen mit echten Daten.
+
+### Annahmen/Abweichungen
+
+- **Daten aus dem Verzeichnis statt Wikipedia-Abfragen je Stützpunkt** (PROJEKT.md 6b, Abfrage 1–3): Das Verzeichnis hat schon Sterne, Seitenaufrufe und Zwischenspeicher, und die Stücke sind dieselben wie beim Herauszoomen. Kurzinfos kommen beim Antippen.
+- **Zwischenpunkte durch Tippen auf die Karte** (in PROJEKT.md optional) sind noch nicht dabei.
+- **Ziele ohne Stern** bekommen eine eigene, schmalere Breite (nicht in PROJEKT.md), damit wenig bekannte Ziele direkt an der Strecke auch erscheinen. Der Filter „ab ★“ blendet sie aus.
+- **Luftlinie**: Über einen See (z. B. Morges → Genf über den Genfersee) liegt die Linie nicht auf der Straße. Darum steht „Echte Straße kann abweichen.“ dabei.
+- **Claude nach Highlights fragen** (PROJEKT.md 6b, Punkt 4) ist nicht eingebaut.
+
 ## v0.8.4 – 04.11.2026 – Ziele aus dem Verzeichnis mit Wikipedia-Text, ZKM als Museum
 
 Wunsch Nutzer: Beim ZKM keine Beschreibung, obwohl es einen Wikipedia-Artikel gibt. Punkte ohne Stern (Congress Center) kaum zu sehen. Stadtteile (Basel-Kleinhüningen) ohne viel Mehrwert.

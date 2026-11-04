@@ -572,6 +572,40 @@ eq(core.classify(['Q4830453'], ['company', 'museum'], [''], ['Firma X'], cfg), '
   ok(c.some((x) => x.q === 'Qzkm') && !c.some((x) => x.q === 'Qsmall'), 'page views for a sight with 10+ languages even below 5 points: ' + c.map((x) => x.q).join(','));
 }
 
+// ---- v0.9: route corridor
+{
+  const morges = { lat: 46.511, lon: 6.498 }, genf = { lat: 46.204, lon: 6.143 }, lyon = { lat: 45.764, lon: 4.836 };
+  const len = core.lineLength([morges, genf]);
+  ok(len > 40 && len < 46, 'Morges → Genf straight line about 43 km: ' + len.toFixed(1));
+  const mid = { lat: (morges.lat + genf.lat) / 2, lon: (morges.lon + genf.lon) / 2 };
+  const r = core.lineDistance(mid, [morges, genf]);
+  ok(r.d < 0.3 && Math.abs(r.along - len / 2) < 1, 'point in the middle: on the line, half way: ' + JSON.stringify(r));
+  const off = core.lineDistance({ lat: mid.lat + 0.05, lon: mid.lon - 0.05 }, [morges, genf]);
+  ok(off.d > 3 && off.d < 9, 'point beside the line: some km away: ' + off.d.toFixed(1));
+  for (const m of ['auto', 'fahrrad', 'fuss']) {
+    const w = core.corridorWidths(m, cfg);
+    ok(w[3] >= w[2] && w[2] >= w[1] && w[1] >= w[0], 'widths monotone for ' + m + ': ' + JSON.stringify(w));
+  }
+  eq(JSON.stringify(core.corridorWidths('fahrrad', cfg)), JSON.stringify({ 3: 8, 2: 3, 1: 1, 0: 0.5 }), 'bike widths from PROJEKT.md 6b');
+  const tl = core.corridorTiles([morges, lyon], 'auto', cfg);
+  ok(tl.length > 10 && tl.length <= cfg.korridor.max_kacheln, 'Morges → Lyon by car: tiles along the line: ' + tl.length);
+  const tb = core.corridorTiles([morges, genf], 'fahrrad', cfg);
+  ok(tb.length >= 2 && tb.length < 12, 'Morges → Genf by bike: few tiles: ' + tb.length);
+  // positions at a share of the line, moved north by some km (1 km ≈ 0.009°)
+  const at = (t, km) => ({ lat: morges.lat + (genf.lat - morges.lat) * t + km * 0.009, lon: morges.lon + (genf.lon - morges.lon) * t });
+  const res = { staedte: [{ name: 'Rolle', q: 'Q1', ...at(0.3, 2), st: 2 }, { name: 'Ohne', q: 'Q9', ...at(0.4, 0.1), st: 0 }],
+    orte: [
+      { name: 'Schloss Prangins', q: 'Q2', ...at(0.6, 0.8), st: 1 },        // ★ within 1 km
+      { name: 'Kleine Kapelle', q: 'Q3', ...at(0.5, 1.5), st: 0 },          // no star, 1,5 km off: not by bike (0,5 km)
+      { name: 'Château de Joux', q: 'Q4', ...at(0.5, 30), st: 2 },          // far away
+      { name: 'Genf Kathedrale', q: 'Q5', ...at(0.98, 0.2), st: 3 }] };
+  const pick = core.corridorPick(res, [morges, genf], 'fahrrad', cfg);
+  const names = pick.map((p) => p.x.name);
+  ok(names.join(',') === 'Rolle,Schloss Prangins,Genf Kathedrale', 'bike corridor: in order along the route, widths by stars: ' + names.join(','));
+  ok(pick.every((p, i) => i === 0 || p.along >= pick[i - 1].along) && pick.every((p) => p.d <= core.corridorWidths('fahrrad', cfg)[p.s]), 'sorted by km from start, all within their width');
+  ok(Math.abs(pick[0].umweg - 2 * pick[0].d) <= 0.11, 'detour = there and back');
+}
+
 // ---- version consistency across files
 const v = JSON.parse(fs.readFileSync(path.join(ROOT, 'docs/version.json'), 'utf8')).version;
 const read = p => fs.readFileSync(path.join(ROOT, p), 'utf8');
