@@ -618,6 +618,38 @@ eq(core.classify(['Q4830453'], ['company', 'museum'], [''], ['Firma X'], cfg), '
   ok(back.map((p) => p.x.name).join(',') === 'Nah', 'behind the start only within the width of one star less: ' + back.map((p) => p.x.name + ' ' + p.d).join(','));
 }
 
+// ---- v0.9.3: labels in two lines, ordinal numbers, OSM only for small sections, small directory items only very close
+{
+  const L = (n) => JSON.stringify(core.mapLabel(n, 'Ingolstadt', 16, 2));
+  eq(L('Deutsches Medizinhistorisches Museum'), '["Medizinhistorisches","Museum"]', 'two lines, "Deutsches" dropped');
+  eq(L('Bayerisches Armeemuseum'), '["Armeemuseum"]', 'compound of a type word is enough');
+  eq(L('Deutsches Museum'), '["Deutsches Museum"]', '"Deutsches Museum" stays');
+  eq(L('Deutsches Eck'), '["Deutsches Eck"]', '"Deutsches Eck" stays');
+  eq(L('St. Matthäus (Ingolstadt)'), '["St. Matthäus"]', 'bracket at the end dropped');
+  ok(core.mapLabel('Münster Zur Schönen Unserer Lieben Frau', '', 16, 2).length === 2 && /…$/.test(core.mapLabel('Münster Zur Schönen Unserer Lieben Frau', '', 16, 2)[1]), 'too long: two lines, then …');
+  eq(core.firstSentence('Die Moschee wurde in der Manisa Straße am 18. Oktober 2009 eröffnet. Sie ist groß.'),
+    'Die Moschee wurde in der Manisa Straße am 18. Oktober 2009 eröffnet.', 'ordinal "18. Oktober" is no sentence end');
+  eq(core.firstSentence('Das Haus wurde 2009 gebaut. Danach mehr.'), 'Das Haus wurde 2009 gebaut.', 'normal sentence end still works');
+  const b13 = { south: 48.725, north: 48.795, west: 11.365, east: 11.435 }, b12 = { south: 48.66, north: 48.86, west: 11.33, east: 11.47 };
+  const k13 = core.osmTileKeys([core.circleFor(b13)], cfg, b13), k13c = core.osmTileKeys([core.circleFor(b13)], cfg);
+  ok(k13.length <= cfg.osm.max_kacheln && k13.length < k13c.length, 'zoom-13 section: OSM tiles only where the section is (' + k13.length + ' instead of ' + k13c.length + ')');
+  ok(core.osmTileKeys([core.circleFor(b12)], cfg, b12).length > cfg.osm.max_kacheln, 'zoom-12 section: too many OSM tiles');
+  const calls = [];
+  const fO = async (u) => { calls.push(u); if (/overpass|kumi|mail\.ru/.test(u)) throw new Error('should not ask OSM');
+    if (/list=geosearch/.test(u)) return { ok: true, json: async () => ({ query: { geosearch: [] } }) };
+    return { ok: true, json: async () => ({ entities: {}, query: { pages: {} } }) }; };
+  const c = core.circleFor(b12);
+  const rB = await core.loadPlaces({ lat: c.lat, lon: c.lon, radius: c.radius, bbox: b12, cfg, fetch: fO, langs: ['de'] }).catch((e) => ({ err: e.message }));
+  ok(!calls.some((u) => /overpass/.test(u)) && (rB.err || rB.stats.src.osm.state === 'gross'), 'big section: no OSM request, state "gross": ' + (rB.err || rB.stats.src.osm.state));
+  const dc = core.directoryConfig(cfg);
+  const items = [{ q: 'Qm', name: 'Museum des Ersten Weltkriegs', lat: 48.759, lon: 11.427, sl: 1, land: [], _c: false, _s: { score: 3.6, typ: 'museum' } },
+    { q: 'Qn', name: 'Neues Schloss', lat: 48.764, lon: 11.428, sl: 6, land: [], _c: false, _s: { score: 7.5, typ: 'burg' } }];
+  const r = core.computeDirectory(items, dc, null, { copy: true });
+  const m = r.orte.find((o) => o.q === 'Qm');
+  ok(m && m.low && m.z === dc.verzeichnis.zoom.alle && !r.orte.find((o) => o.q === 'Qn').low, 'below nah_ab: kept, but only from zoom.alle: ' + JSON.stringify(m));
+  ok(!core.corridorPick(r, [{ lat: 48.7, lon: 11.4 }, { lat: 48.8, lon: 11.45 }], 'fuss', cfg).some((p) => p.x.q === 'Qm'), 'small ones are no route stops');
+}
+
 // ---- version consistency across files
 const v = JSON.parse(fs.readFileSync(path.join(ROOT, 'docs/version.json'), 'utf8')).version;
 const read = p => fs.readFileSync(path.join(ROOT, p), 'utf8');

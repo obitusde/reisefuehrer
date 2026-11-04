@@ -33,7 +33,8 @@ const SPARQL_LU = [
   B('Q11', 'Kathedrale Unserer Lieben Frau', 6.1307, 49.6097, { sl: 40, cls: 'cathedral', p31: 'Q2977' }),
   B('Q12', 'Großherzoglicher Palast', 6.1335, 49.6113, { sl: 45, cls: 'palace', p31: 'Q16560' }),
   B('Q13', 'Burg Vianden', 6.2015, 49.9353, { sl: 45, cls: 'castle', p31: 'Q23413', h: 'Q1' }),
-  B('Q14', 'Kanton Luxemburg', 6.13, 49.62, { sl: 50, cls: 'canton of Luxembourg' })];
+  B('Q14', 'Kanton Luxemburg', 6.13, 49.62, { sl: 50, cls: 'canton of Luxembourg' }),
+  B('Q15', 'Deutsches Kleinmuseum Testhaus', 6.1285, 49.6135, { sl: 1, cls: 'museum', p31: 'Q33506' })]; // v0.9.3: below nah_ab, only from zoom 15
 
 let fakeVersion = null;
 const SPARQL_CALLS = [];
@@ -147,7 +148,7 @@ try {
   if (process.env.DEBUG) { page.on('request', (r) => { if (/extracts|mymemory/.test(r.url())) console.log('REQ', decodeURIComponent(r.url()).slice(0, 160)); }); page.on('requestfailed', (r) => console.log('FAILED', r.url().slice(0, 120), r.failure() && r.failure().errorText)); page.on('console', (m) => console.log('CONSOLE', m.text())); }
   await page.goto(BASE + 'index.html');
   await page.waitForSelector('.empty');
-  ok((await page.textContent('#version')) === 'v0.9.2', 'footer version');
+  ok((await page.textContent('#version')) === 'v0.9.3', 'footer version');
   if (OUT) await page.screenshot({ path: OUT + '/01-start.png' });
 
   await page.click('#btnLocate');
@@ -189,7 +190,7 @@ try {
   ok(names4.includes('Pankhurst Centre'), 'v0.4: OSM-only museum in list');
   // v0.5: where results come from
   const srcLine = await page.textContent('#status .src-line');
-  ok(/^🌐 Online · W ✓ .* · OSM ✓/.test(srcLine), 'v0.6.1 status shows online and sources: ' + srcLine);
+  ok(/^🌐 Online · W ✓ · OSM ✓/.test(srcLine) && !/\d+ s/.test(srcLine), 'v0.6.1 status shows online and sources: ' + srcLine);
   const stH = await page.$eval('#status', (e) => e.getBoundingClientRect().height);
   ok(stH <= 48, 'v0.6.1 status at most two lines: ' + stH);
   ok(await page.$eval('#scroller', (sc) => sc.contains(document.getElementById('status')) && sc.contains(document.querySelector('.foot'))), 'v0.6.1 version line and status scroll with the list');
@@ -441,10 +442,10 @@ try {
   ok(splitNow && +splitNow > 12, 'split persisted: ' + splitNow);
 
   // update banner (fake newer version, then ?testupdate=1)
-  fakeVersion = '0.9.3';
+  fakeVersion = '0.9.4';
   await page.reload();
   await page.waitForSelector('#banner:not([hidden])');
-  ok((await page.textContent('#bannerText')).includes('v0.9.3'), 'banner shows remote version');
+  ok((await page.textContent('#bannerText')).includes('v0.9.4'), 'banner shows remote version');
   if (OUT) await page.screenshot({ path: OUT + '/05-banner.png' });
   fakeVersion = null;
   await page.click('#bannerBtn');
@@ -479,11 +480,13 @@ try {
     await p5.click('#status [data-a=skiposm]');
     await p5.waitForSelector('.item', { timeout: 8000 });
     const sl5 = await p5.textContent('#status .src-line');
-    ok(/OSM übersprungen/.test(sl5) && !(await p5.$$eval('.it-src', (els) => els.some((e) => e.textContent !== 'W'))), 'v0.5 skip OSM: Wikipedia results at once: ' + sl5);
+    ok(/OSM ⏳ lädt noch/.test(sl5) && !(await p5.$$eval('.it-src', (els) => els.some((e) => e.textContent !== 'W'))), 'v0.5 skip OSM: Wikipedia results at once: ' + sl5);
+    const h5 = await p5.$eval('#zoomHint', (e) => e.hidden ? '' : e.textContent);
+    ok(h5 === 'OSM lädt noch – es kommt mehr', 'v0.9.3 hint on the map: OSM is still loading: ' + h5);
     // v0.6.1: OSM comes later -> added automatically
     await p5.waitForFunction(() => /^OSM: (\d+ Orte dazu|nichts Neues)$/.test(document.getElementById('toast').textContent), null, { timeout: 15000 });
     const sl5b = await p5.textContent('#status .src-line');
-    ok(/nachgeladen/.test(sl5b) && (await p5.$$eval('.it-src', (els) => els.some((e) => e.textContent !== 'W'))), 'v0.6.1 late OSM merged automatically: ' + sl5b + ' / ' + await p5.textContent('#toast'));
+    ok(/OSM ✓ ergänzt/.test(sl5b) && await p5.$eval('#zoomHint', (e) => e.hidden) && (await p5.$$eval('.it-src', (els) => els.some((e) => e.textContent !== 'W'))), 'v0.6.1 late OSM merged automatically: ' + sl5b + ' / ' + await p5.textContent('#toast'));
     OSM_DELAY = 0;
     await p5.evaluate(() => window.__rfMap && window.__rfMap.setZoom(10, { animate: false }));
     await p5.click('#btnHere');
@@ -575,9 +578,9 @@ try {
   const swOk = await p3.evaluate(() => navigator.serviceWorker.ready.then((r) => !!r.active)).catch(() => false);
   ok(swOk, 'service worker active');
   const cacheKeys = await p3.evaluate(async () => { await new Promise((r) => setTimeout(r, 800)); return caches.keys(); });
-  ok(cacheKeys.includes('rf-app-0.9.2'), 'app cache with version: ' + cacheKeys.join(','));
-  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.9.2')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
-  ok(cached.some((u) => u.includes('app.js?v=0.9.2')), 'shell precached');
+  ok(cacheKeys.includes('rf-app-0.9.3'), 'app cache with version: ' + cacheKeys.join(','));
+  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.9.3')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
+  ok(cached.some((u) => u.includes('app.js?v=0.9.3')), 'shell precached');
   ok(errs3.length === 0, 'sw: no JS errors ' + errs3.join(' | '));
   await ctx3.close();
 
@@ -616,9 +619,9 @@ try {
     ok(await p8.$eval('#btnHere', (b) => b.classList.contains('dim')), 'v0.8 "Hier suchen" greyed when too far out');
     const n0 = SPARQL_CALLS.length;
     await p8.evaluate(() => window.__rfMap.setView([49.61, 6.13], 10, { animate: false }));
-    await p8.waitForFunction(() => /^„Hier suchen“ lädt die Gegend \(ca\./.test(document.getElementById('zoomHint').textContent), null, { timeout: 8000 });
+    await p8.waitForFunction(() => document.getElementById('zoomHint').hidden, null, { timeout: 8000 });
     await p8.waitForTimeout(1500);
-    ok(SPARQL_CALLS.length === n0 && !(await p8.$eval('#btnHere', (b) => b.classList.contains('dim'))), 'v0.8.1 nothing loads by itself; hint says what "Hier suchen" loads');
+    ok(SPARQL_CALLS.length === n0 && !(await p8.$eval('#btnHere', (b) => b.classList.contains('dim'))) && await p8.$eval('#zoomHint', (e) => e.hidden), 'v0.8.1 nothing loads by itself; v0.9.3 no hint about it');
     await p8.click('#btnHere');
     await p8.waitForFunction(() => /Lade Gegend/.test(document.getElementById('zoomHint').textContent), null, { timeout: 8000 }).catch(() => {});
     await p8.waitForFunction(() => /Lade \d+\/\d+ …/.test(document.getElementById('btnHere').textContent), null, { timeout: 5000 }).catch(() => {});
@@ -641,6 +644,19 @@ try {
       .catch(() => {});
     const lbl15 = await p8.$$eval('.mk-lbl', (els) => els.map((e) => e.textContent));
     ok(lbl15.some((t) => /Kathedrale/.test(t)) && !(await p8.$('.item')), 'v0.8 zoom 15: loaded sights shown before the detail search: ' + lbl15.join(', '));
+    // v0.9.3: names in up to two lines, "Deutsches" dropped; below nah_ab points only from zoom 15 (with "Alle Orte")
+    await p8.selectOption('#fStars', '0');
+    await p8.waitForTimeout(300);
+    const lblH = await p8.$$eval('.mk-lbl', (els) => els.map((e) => e.innerHTML));
+    if (OUT) await p8.screenshot({ path: OUT + '/15-namen-zweizeilig.png' });
+    ok(lblH.includes('Kleinmuseum<br>Testhaus') && lblH.some((h) => /^Kathedrale<br>/.test(h)), 'v0.9.3 labels in two lines, without "Deutsches": ' + lblH.join(' | '));
+    const katSt = await p8.$$eval('.mk-wrap', (els) => { const e = els.find((x) => /Kathedrale/.test(x.textContent)); return e ? +e.querySelector('.mk').className.match(/mk(\d)/)[1] : -1; });
+    await p8.evaluate(() => window.__rfMap.setZoom(14, { animate: false }));
+    await p8.waitForTimeout(400);
+    ok(!(await p8.$$eval('.mk-lbl', (els) => els.some((e) => /Kleinmuseum/.test(e.textContent)))), 'v0.9.3 the small museum not at zoom 14');
+    await p8.evaluate(() => window.__rfMap.setView([49.6105, 6.1325], 15, { animate: false }));
+    await p8.waitForTimeout(400);
+    await p8.selectOption('#fStars', '1');
     ok(!(await p8.$eval('#btnHere', (b) => b.classList.contains('dim'))), 'v0.8 "Hier suchen" normal when zoomed in');
     await p8.click('.mk.mk1, .mk.mk2, .mk.mk3, .mk.mk0');
     await p8.waitForSelector('#sheet:not([hidden])');
@@ -657,6 +673,22 @@ try {
     await p8.click('#btnHere');
     await p8.waitForFunction(() => localStorage.getItem('rf.last') && !document.getElementById('btnHere').disabled, null, { timeout: 15000 });
     ok(true, 'v0.8 "Hier suchen" searches when zoomed in');
+    ok((await p8.$$('path[stroke-dasharray="6 6"]')).length === 0, 'v0.9.3 no frame around the searched section');
+    // v0.9.3: one star scale - "Hier suchen" places get the stars of the directory; not in it (covered area): at most one star
+    const ver = (await p8.textContent('#version')).slice(1);
+    await p8.evaluate((v) => localStorage.setItem('rf.last', JSON.stringify({ version: v, bbox: { south: 49.605, west: 6.125, north: 49.615, east: 6.14 }, lat: 49.61, lon: 6.1325, ort: 'Luxemburg', time: Date.now(),
+      places: [{ id: 'w1', name: 'Kathedrale Unserer Lieben Frau', lat: 49.6097, lon: 6.1307, wikidata: 'Q11', sterne: 3, score: 20, typ: 'kirche', typ_label: 'Kirche', quellen: ['W'], geprueft: true, artikel: {}, teile: {} },
+        { id: 'w2', name: 'Kleines Haus', lat: 49.6100, lon: 6.1320, wikidata: 'Q999', sterne: 3, score: 19, typ: 'museum', typ_label: 'Museum', quellen: ['W'], geprueft: true, artikel: {}, teile: {} }],
+      warnings: [], src: { wiki: { ms: 1000 }, osm: { state: 'ok', ms: 735000 } } })), ver);
+    await p8.reload();
+    await p8.waitForSelector('.item');
+    await p8.waitForFunction(() => document.querySelector('.item[data-id="w2"] .it-stars') && !document.querySelector('.item[data-id="w2"] .it-stars.s3'), null, { timeout: 8000 }).catch(() => {});
+    const stars = await p8.$$eval('.item', (els) => Object.fromEntries(els.map((e) => [e.dataset.id, +(e.querySelector('.it-stars').className.match(/s(\d)/) || [0, 0])[1]])));
+    ok(katSt >= 0 && stars.w1 === katSt && stars.w2 <= 1, 'v0.9.3 same stars as the directory (Kathedrale ' + katSt + '), not in it: at most one star: ' + JSON.stringify(stars));
+    const sl8 = await p8.textContent('#status .src-line');
+    ok(/OSM ✓/.test(sl8) && !/735|\d+ s/.test(sl8), 'v0.9.3 status line without seconds: ' + sl8);
+    await p8.evaluate(() => localStorage.setItem('rf.last', 'null'));
+    await p8.reload(); await p8.waitForSelector('#btnList');
     // v0.8.3: list on/off, no place chip, location button with symbol only
     ok(await p8.$eval('#ortLabel', (el) => el.hidden) && (await p8.textContent('#btnLocate')).trim() === '◎', 'v0.8.3 no place name chip; location button only ◎');
     const h0 = await p8.$eval('#mapWrap', (el) => el.getBoundingClientRect().height);

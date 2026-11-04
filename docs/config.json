@@ -43,7 +43,7 @@
   "dauer_min": { "3": 90, "2": 60, "1": 30, "0": 0 },
   "dauer_text": { "3": "ab 1,5 Std.", "2": "ca. 1 Std.", "1": "ca. 30 Min.", "0": "" },
 
-  "marker": { "_hinweis": "v0.7.2: im sichtbaren Ausschnitt höchstens max_sichtbar Punkte, die wichtigsten zuerst; wo wenig ist, alle.", "max_sichtbar": 30, "beschriftung_max_zeichen": 18 },
+  "marker": { "_hinweis": "v0.7.2: im sichtbaren Ausschnitt höchstens max_sichtbar Punkte, die wichtigsten zuerst; wo wenig ist, alle.", "max_sichtbar": 30, "beschriftung_max_zeichen": 16, "beschriftung_zeilen": 2, "_hinweis_beschriftung": "v0.9.3: Namen auf der Karte in bis zu 2 Zeilen zu je etwa 16 Zeichen, ohne vorangestelltes Deutsches/Bayerisches, wenn danach noch ein Name bleibt." },
 
   "uebersetzung": {
     "_hinweis": "Kurzinfo in der Liste: erster Satz des Wikipedia-Artikels, ins Deutsche übersetzt. chrome = Übersetzer im Browser (auf dem Gerät), mymemory = kostenloser Webdienst ohne Schlüssel (Tageslimit).",
@@ -167,6 +167,8 @@
     "server": ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter"],
     "kachel_grad": 0.05,
     "max_wartezeit_s": 60,
+    "max_kacheln": 12,
+    "_hinweis_max_kacheln": "v0.9.3: OSM nur, wenn der Ausschnitt höchstens so viele OSM-Kacheln berührt (auf dem Pixel 8 etwa ab Zoom 13). Größere Ausschnitte: nur Wikipedia, OSM-Punkte würden dort ohnehin kaum gezeigt.",
     "vorbereiten_wartezeit_s": 600,
     "server_timeout_s": 25,
     "cache_tage": 30,
@@ -357,7 +359,8 @@
     "ausflug_typen": ["freizeit"],
     "stadt": { "sprachen": 3, "aufrufe": 3, "wikivoyage": 2, "hauptstadt": 1, "top_n": 5, "basis": 5, "einzel_anteil": 0.6, "min_sehen": 3 },
     "stadt_sterne": { "3": 30, "2": 22, "1": 16 },
-    "zoom": { "region": 9, "nah": 12 },
+    "zoom": { "region": 9, "nah": 12, "alle": 15 },
+    "_hinweis_zoom": "v0.9.3: ab zoom.alle auch alles unter nah_ab Punkten (alles mit Wikipedia-Artikel; höchstens max_sichtbar im Ausschnitt).",
     "max_sichtbar": 40
   },
 

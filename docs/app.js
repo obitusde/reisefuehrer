@@ -1,8 +1,8 @@
-/* Reiseführer – app (v0.9.2). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.9.3). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.9.2';
+  var VERSION = '0.9.3';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
@@ -227,12 +227,9 @@
     window.addEventListener('resize', function () { map.invalidateSize(); });
   }
 
-  // Searched map section (dashed frame)
-  function drawSearchArea(b) {
-    if (searchCircle) map.removeLayer(searchCircle);
-    searchCircle = L.rectangle([[b.south, b.west], [b.north, b.east]], {
-      color: '#0e6b7d', weight: 2, opacity: .7, dashArray: '6 6', fill: true, fillOpacity: .03, interactive: false
-    }).addTo(map);
+  // v0.9.3: no frame for the searched section any more – the directory shows more than the section, the frame confused
+  function drawSearchArea() {
+    if (searchCircle) { map.removeLayer(searchCircle); searchCircle = null; }
   }
   // Prepared areas (green frame)
   function drawAreas() {
@@ -292,7 +289,8 @@
   function markerIcon(p, sel, label, side) {
     var ic = C.iconFor(p.typ, cfg);
     var html = '<span class="mk mk' + p.sterne + (ic ? ' ic' : '') + (sel ? ' sel' : '') + '">' + iconSvg(ic) + '</span>';
-    if (label) html += '<span class="mk-lbl l' + p.sterne + (ic ? ' lic' : '') + (side === 'left' ? ' left' : '') + '">' + esc(label) + '</span>';
+    // label: array of up to two lines (v0.9.3)
+    if (label && label.length) html += '<span class="mk-lbl l' + p.sterne + (ic ? ' lic' : '') + (side === 'left' ? ' left' : '') + '">' + label.map(esc).join('<br>') + '</span>';
     return L.divIcon({ className: 'mk-wrap', html: html, iconSize: [36, 36], iconAnchor: [18, 18] });
   }
 
@@ -301,7 +299,8 @@
     if (!map) return;
     markerLayer.clearLayers();
     if (cityMode() || ROUTE) return; // zoomed out: city stars instead of single places (v0.7.0); route: its own layer
-    var mc = cfg.marker || {}, maxChars = mc.beschriftung_max_zeichen || 18;
+    var mc = cfg.marker || {}, maxChars = mc.beschriftung_max_zeichen || 16, lines = mc.beschriftung_zeilen || 2;
+    var zNow = map.getZoom(), zAll = (cfg.verzeichnis && cfg.verzeichnis.zoom && cfg.verzeichnis.zoom.alle) || 15;
     // v0.7.2: not too many at once – in the visible section only the most important ones (max_sichtbar);
     // where there is little (Le Brassus), everything. Same rule at every zoom.
     var vb = viewBbox(), dy = (vb.north - vb.south) * 0.05, dx = (vb.east - vb.west) * 0.05;
@@ -315,7 +314,7 @@
       var have = {};
       (last && last.places || []).forEach(function (p) { if (p.wikidata) have[p.wikidata] = 1; });
       dr.orte.forEach(function (x) {
-        if (have[x.q] || !C.inBbox(x, pad) || x.st < settings.minStars) return;
+        if (have[x.q] || !C.inBbox(x, pad) || x.st < settings.minStars || (x.low && zNow < zAll)) return;
         if (settings.kat && C.typeInfo(x.typ, cfg).kategorie !== settings.kat) return;
         shown.push({ id: 'vz:' + x.q, name: x.name, lat: x.lat, lon: x.lon, sterne: x.st, score: x.score, typ: x.typ, vz: x });
       });
@@ -333,15 +332,15 @@
       var r = dotR(p), px = LBL_PX[p.sterne] || 11;
       // crowded: a less important dot on top of a more important one is left out
       if (!sel && p.sterne < 3 && !free({ x1: pt.x - r, y1: pt.y - r, x2: pt.x + r, y2: pt.y + r })) return;
-      var label = C.shortLabel(p.name, last && last.ort, maxChars);
-      var w = textWidth(label, px) + 3;
-      var right = { x1: pt.x + r + 2, y1: pt.y - px * 0.75, x2: pt.x + r + 2 + w, y2: pt.y + px * 0.75 };
+      var label = C.mapLabel(p.name, last && last.ort, maxChars, lines);
+      var w = Math.max.apply(null, label.map(function (l) { return textWidth(l, px); })) + 3, hh = px * 0.6 * label.length + px * 0.15;
+      var right = { x1: pt.x + r + 2, y1: pt.y - hh, x2: pt.x + r + 2 + w, y2: pt.y + hh };
       var left = { x1: pt.x - r - 2 - w, y1: right.y1, x2: pt.x - r - 2, y2: right.y2 };
       var side = free(right) ? 'right' : free(left) ? 'left' : '';  // right of the dot, else left, else none
       if (side) boxes.push(side === 'right' ? right : left);
       boxes.push({ x1: pt.x - r, y1: pt.y - r, x2: pt.x + r, y2: pt.y + r });
       var m = L.marker([p.lat, p.lon], {
-        icon: markerIcon(p, sel, side ? label : '', side), keyboard: false, title: p.name,
+        icon: markerIcon(p, sel, side ? label : null, side), keyboard: false, title: p.name,
         zIndexOffset: sel ? 2500 : p.sterne * 400
       });
       m.on('click', function (e) {
@@ -354,7 +353,7 @@
   }
 
   var markerTimer = null;
-  function scheduleMarkers() { clearTimeout(markerTimer); markerTimer = setTimeout(function () { renderMarkers(); if ((!last || !last.places) && !ROUTE) renderList(); renderHint(); }, 120); }
+  function scheduleMarkers() { clearTimeout(markerTimer); markerTimer = setTimeout(function () { var ch = dirStars(); renderMarkers(); if (((!last || !last.places) && !ROUTE) || ch) renderList(); renderHint(); }, 120); }
 
   // ------------------------------------------------------ directory (v0.8)
   // Like a printed guide: the phone loads the region in tiles from Wikidata (core.prepareDirectoryTile; about 25 × 28 km,
@@ -454,10 +453,10 @@
   function dirInView(b) {
     var dr = dirResult(b);
     if (!dr) return [];
-    var z = map.getZoom(), out = [];
+    var z = map.getZoom(), out = [], zAll = (cfg.verzeichnis.zoom && cfg.verzeichnis.zoom.alle) || 15;
     dr.staedte.forEach(function (x) { if (x.st && C.inBbox(x, b)) out.push({ k: 'c', x: x, s: x.st, vz: true }); });
     dr.orte.forEach(function (x) {
-      if (!C.inBbox(x, b) || x.st < settings.minStars) return;
+      if (!C.inBbox(x, b) || x.st < settings.minStars || (x.low && z < zAll)) return; // v0.9.3: the small ones only very close
       if (settings.kat && (settings.kat === '__osm' || C.typeInfo(x.typ, cfg).kategorie !== settings.kat)) return;
       out.push({ k: 'o', x: x, s: x.st, vz: true });
     });
@@ -646,12 +645,17 @@
       txt = 'Lade Gegend ' + Math.min(DIR.done + 1, DIR.total || 1) + '/' + (DIR.total || 1) + ' …';
       btn = '<button type="button" data-h="cancel" aria-label="Abbrechen">✕</button>';
     } else if (tooMany && !small) txt = 'Zu weit draußen – näher heranzoomen';
-    else if (dirOn() && n && !ROUTE) txt = '„Hier suchen“ lädt die Gegend (' + estText(n) + ')';
-    // v0.8.3: otherwise no hint (wish of the user)
+    else if (osmPending()) txt = 'OSM lädt noch – es kommt mehr';
+    // v0.8.3: otherwise no hint (wish of the user); v0.9.3: also no „Hier suchen lädt die Gegend“
     el.innerHTML = txt ? '<span>' + esc(txt) + '</span>' + btn : '';
     el.hidden = !txt;
     if (!busy) $('btnHere').textContent = DIR.job || DIR.queue.length ? 'Lade ' + Math.min(DIR.done + 1, DIR.total || 1) + '/' + (DIR.total || 1) + ' …' : 'Hier suchen';
     $('btnHere').classList.toggle('dim', tooMany && !small);
+  }
+  // v0.9.3: OpenStreetMap is still loading in the background after the search went on without it
+  function osmPending() {
+    var o = last && !ROUTE && last.src && last.src.osm;
+    return !!(o && Date.now() - (last.time || 0) < 20 * 60000 && (o.state === 'timeout' || o.state === 'skip') && !o.lateMs && !(o.late && !o.late.ok));
   }
   function dirMetaHtml() {
     var d = DZ();
@@ -1069,6 +1073,7 @@
     last.src.osm.late = { ok: info.ok, ms: info.ms };
     LS.set(K.last, last);
     if (!busy) renderList();
+    renderHint();
     if (!info.ok || !last.bbox) return;
     var before = last.places.length, b = last.bbox;
     (function again(tries) {
@@ -1076,6 +1081,7 @@
       if (last.bbox !== b) return; // another search in between
       doSearch(b, { force: true, quiet: true, lateMs: info.ms, onDone: function () {
         var n = last.places.length - before;
+        renderHint();
         toast(n > 0 ? 'OSM: ' + n + ' Orte dazu' : 'OSM: nichts Neues', 4000);
       } });
     })(0);
@@ -1157,7 +1163,27 @@
 
   function isMerk(id) { return merk.some(function (m) { return m.id === id; }); }
 
+  // v0.9.3: one star scale. "Hier suchen" places get the stars of the directory (the same as on the map and on routes);
+  // where the directory is loaded but does not have the place (too few points), at most ★. Without the directory: as before.
+  function dirStars() {
+    if (!last || !last.places) return false;
+    var dr = dirOn() && last.bbox ? dirResult(last.bbox) : null;
+    var byQ = {};
+    if (dr) dr.orte.forEach(function (x) { byQ[x.q] = x; });
+    var changed = false;
+    last.places.forEach(function (p) {
+      if (p._own == null) p._own = p.sterne;
+      var x = p.wikidata && byQ[p.wikidata], st;
+      p.vzScore = x ? x.score : undefined;
+      p.vzCap = !x && dr && dirCovers(p) ? true : undefined;
+      st = x ? x.st : p.vzCap ? Math.min(p._own, 1) : p._own;
+      if (st !== p.sterne) { p.sterne = st; p.dauer_min = (cfg.dauer_min && cfg.dauer_min[String(st)]) || 0; changed = true; }
+    });
+    if (changed) C.sortPlaces(last.places);
+    return changed;
+  }
   function renderAll() {
+    dirStars();
     renderMarkers();
     renderList();
     $('ortLabel').hidden = true; // v0.8.3: the name of the last search was misleading once the map was moved
@@ -1229,18 +1255,20 @@
     if (s.area) return '📥 Offline: Gebiet „' + s.area.name + '“' + (s.area.partial ? ', nur teilweise' : '') + ' · Stand ' + dateText(s.area.updated);
     var wFail = (l.warnings || []).some(function (w) { return /^Wikipedia /.test(w); });
     var o = s.osm || {};
+    // v0.9.3: no seconds (735 s confused); clear whether more is coming
     var osm = {
-      ok: 'OSM ✓ ' + secText(o.ms),
-      cache: 'OSM ✓ gespeichert',
+      ok: 'OSM ✓',
+      cache: 'OSM ✓',
       prep: 'OSM wartet (Gebiet wird vorbereitet)',
-      timeout: 'OSM ⏳ lädt noch im Hintergrund',
-      skip: 'OSM übersprungen',
+      timeout: 'OSM ⏳ lädt noch',
+      skip: 'OSM ⏳ lädt noch',
       error: 'OSM ✗ Fehler',
+      gross: 'OSM erst näher dran',
       off: 'OSM aus'
     }[o.state] || 'OSM ?';
-    if (o.lateMs) osm = 'OSM ✓ ' + secText(o.lateMs) + ' (nachgeladen)';
-    else if (o.late) osm = o.late.ok ? 'OSM ✓ ' + secText(o.late.ms) + ', wird eingefügt …' : 'OSM ✗ auch später keine Antwort';
-    return '🌐 Online · W ' + (s.wiki.ms != null ? (wFail ? '⚠ ' : '✓ ') + secText(s.wiki.ms) : '✗') + ' · ' + osm;
+    if (o.lateMs) osm = 'OSM ✓ ergänzt';
+    else if (o.late) osm = o.late.ok ? 'OSM ⏳ wird eingefügt' : 'OSM ✗ keine Antwort';
+    return '🌐 Online · W ' + (s.wiki.ms != null ? (wFail ? '⚠' : '✓') : '✗') + ' · ' + osm;
   }
 
   // Details of the last search (tap on the status line)
@@ -1259,7 +1287,8 @@
       if (st.wdTotal != null) rows.push(['Wikidata', st.wdTotal + ' Einträge, davon ' + (st.wdCached || 0) + ' gespeichert']);
       var o = s.osm || {};
       var ot = { ok: 'geladen nach ' + secText(o.ms), cache: 'aus dem Speicher (schon einmal geladen)', timeout: 'keine Antwort nach ' + secText(o.ms) + ' – lädt im Hintergrund weiter',
-        skip: 'übersprungen nach ' + secText(o.ms) + ' – lädt im Hintergrund weiter', error: 'Fehler: ' + (o.error || '?'), off: 'ausgeschaltet (⚙ Einstellungen)' }[o.state] || '?';
+        skip: 'übersprungen nach ' + secText(o.ms) + ' – lädt im Hintergrund weiter', error: 'Fehler: ' + (o.error || '?'), off: 'ausgeschaltet (⚙ Einstellungen)',
+        gross: 'nicht geladen: Ausschnitt größer als ' + ((cfg.osm && cfg.osm.max_kacheln) || '?') + ' OSM-Kacheln – näher heranzoomen' }[o.state] || '?';
       if (o.late) ot += o.late.ok ? '; später geladen nach ' + secText(o.late.ms) : '; auch später keine Antwort';
       rows.push(['OpenStreetMap', ot]);
       if (o.tiles) rows.push(['OSM-Kacheln', o.tiles + ', davon ' + (o.cachedTiles || 0) + ' gespeichert' + (o.server ? '; Server: ' + o.server : '')]);
@@ -1432,6 +1461,8 @@
     var on = isMerk(p.id);
     var t = p.teile || {};
     var osmTag = p.osm && p.osm.k ? ' (OSM: ' + p.osm.k + ')' : '';
+    var vzRow = p.vzScore != null ? [['Sterne wie im Verzeichnis (gleicher Maßstab wie auf der Karte), Punkte', p.vzScore]]
+      : p.vzCap ? [['Nicht im Verzeichnis (zu wenig Punkte): höchstens ★', null]] : [];
     var rows = p.vz ? [
       ['Punkte im Verzeichnis (Sprachversionen, Seitenaufrufe, Denkmal, Art)', p.score]
     ] : p.osmOnly ? [
@@ -1445,6 +1476,7 @@
       ['Typ: ' + p.typ_label + (p.klassen && p.klassen.length ? ' (Wikidata: ' + p.klassen.join(', ') + ')' : osmTag), t.typ],
       ['Weitere Quellen (' + p.quellen.join(' + ') + ')', t.quellen]
     ];
+    if (!p.vz) rows = vzRow.concat(rows);
     var srcNames = { W: 'Wikipedia', O: 'OpenStreetMap', V: 'Wikivoyage', C: 'Claude-Liste' };
     var lv = settings.level;
     var foci = (cfg.erzaehlen && cfg.erzaehlen.schwerpunkte) || [];

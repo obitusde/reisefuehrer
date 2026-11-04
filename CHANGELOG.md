@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.9.3 – 04.11.2026 – Namen in 2 Zeilen, einheitliche Sterne, OSM nur bei kleinem Ausschnitt
+
+Wünsche Nutzer (Ingolstadt): „Deutsches…“ abgeschnitten, Museum des Ersten Weltkriegs fehlt, Text der Kocatepe-Moschee bricht ab, „OSM 735 s??“, Hinweis über „Hier suchen“ weg, Ziele außerhalb des Rechtecks.
+
+- **Namen auf der Karte in bis zu 2 Zeilen** (je etwa 16 Zeichen, vorher 1 Zeile mit 18). Lange Wörter bleiben ganz.
+  - Vorangestelltes Deutsches/Deutsche/Bayerisches/Bayerische fällt auf der Karte weg, wenn danach noch ein Name bleibt: „Medizinhistorisches Museum“, „Armeemuseum“. „Deutsches Museum“ und „Deutsches Eck“ bleiben.
+  - Eine Klammer am Ende fällt auf der Karte weg („St. Matthäus (Ingolstadt)“ → „St. Matthäus“). In der Liste und im Fenster steht immer der volle Name.
+- **Ab Zoom 15 alles mit Wikipedia-Artikel** aus dem Verzeichnis, auch unter 4 Punkten (`verzeichnis.zoom.alle`). Ziele ohne Stern erscheinen nur mit dem Filter „Alle Orte“. Sie sind keine Halte auf Strecken.
+- **Kurzinfo**: Nach einer ein- oder zweistelligen Zahl mit Punkt endet kein Satz mehr („am 18. Oktober“, „im 19. Jahrhundert“).
+- **OSM**:
+  - Nur noch, wenn der Ausschnitt höchstens 12 OSM-Kacheln berührt (`osm.max_kacheln`). Auf dem Pixel 8 ist das etwa ab Zoom 13. Weiter draußen sucht „Hier suchen“ nur Wikipedia; die Statuszeile sagt „OSM erst näher dran“.
+  - Geladen werden nur noch die Kacheln, die den Ausschnitt berühren. Vorher waren es alle im Quadrat um den Kreis um den Ausschnitt, bei Zoom 12 etwa 24–48 statt 16–24.
+  - Statuszeile ohne Sekunden: „OSM ✓“, „OSM ⏳ lädt noch“, „OSM ✓ ergänzt“. Lädt OSM nach, steht über der Karte „OSM lädt noch – es kommt mehr“, bis die Orte eingefügt sind (höchstens 20 Minuten nach der Suche). Die Sekunden stehen weiter im Fenster hinter der Statuszeile.
+- **Kein Hinweis** „„Hier suchen“ lädt die Gegend (ca. …)“ mehr.
+- **Kein gestricheltes Rechteck** mehr um den gesuchten Ausschnitt. Das Verzeichnis zeigt mehr als den Ausschnitt (ganze Kacheln von etwa 28 × 18 km, auch früher geladene); das Rechteck hat darum verwirrt.
+- **Einheitliche Sterne**: Orte aus „Hier suchen“ bekommen die Sterne des Verzeichnisses, also denselben Maßstab wie auf der Karte und auf Strecken. Ist das Verzeichnis für die Stelle geladen, hat den Ort aber nicht (zu wenig Punkte), höchstens ★. Ohne Verzeichnis bleiben die bisherigen Sterne. Im Fenster nennt „Warum ★?“ die Punkte im Verzeichnis.
+- Test auf GitHub: neue Eingabe `osm` (Bereich, dazu `namen`) zeigt, wie ein Ort in OpenStreetMap eingetragen ist und ob der App-Filter ihn findet (`tools/osm-probe.mjs`).
+
+### Annahmen/Abweichungen
+
+- „Deutsches/Bayerisches“ fällt nur weg, wenn danach mindestens zwei Wörter bleiben oder ein zusammengesetztes Wort mit Museum, Kirche, Theater, Oper, Bibliothek, Archiv, Schloss, Burg, Garten, Park, Haus, Halle, Zentrum, Denkmal, Galerie oder Sammlung am Ende.
+- Die Grenze 12 OSM-Kacheln ist berechnet (Pixel 8 mit und ohne Liste), nicht auf dem Handy gemessen.
+- Einheitliche Sterne: Das Neue Schloss Ingolstadt hat jetzt ★ statt ★★★ (Verzeichnis: 7,5 Punkte), das Audi museum mobile ohne Stern statt ★★★ (6,8 Punkte). Ob dir die Verzeichnis-Sterne so passen, ist noch offen.
+- Mit echten Daten geprüft (GitHub, Verzeichnis Ingolstadt): Museum des Ersten Weltkriegs steht in Wikidata mit 1 Sprachversion und 3,6 Punkten, Kocatepe-Moschee mit 3,5 Punkten. Beide erscheinen jetzt ab Zoom 15. Der Wildpark am Baggersee hat keinen Eintrag in Wikipedia/Wikidata.
+
 ## v0.9.2 – 04.11.2026 – Strecke: nur wirklich wichtige Halte, schneller
 
 Wunsch Nutzer: Die Strecke nach Genf hat sehr lange gedauert; nur wirklich wichtige Sehenswürdigkeiten zeigen, und je länger die Strecke, desto wichtiger.

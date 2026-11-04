@@ -32,6 +32,10 @@ on:
         description: 'Nur Test: Kacheln "süd,west,nord,ost;…" ansehen (erste ausführlich), nichts speichern'
         required: false
         default: ''
+      osm:
+        description: 'Nur Test v0.9.3: OSM-Objekte im Bereich "süd,west,nord,ost" mit Namen aus „namen“ (findet die App sie?)'
+        required: false
+        default: ''
 permissions:
   contents: write
 concurrency:
@@ -69,6 +73,14 @@ jobs:
           if ! [[ "$VZ" =~ ^[-0-9.,\;\ ]+$ ]]; then echo "Ungültig"; exit 1; fi
           read -r KACHELN FOKUS <<< "$VZ"
           node tools/build-cities.mjs --verzeichnis "$KACHELN" --fokus "$FOKUS"
+      - name: OSM-Test
+        if: ${{ inputs.osm != '' }}
+        env:
+          OSMB: ${{ inputs.osm }}
+          NAMEN: ${{ inputs.namen }}
+        run: |
+          if ! [[ "$OSMB" =~ ^[-0-9.,]+$ ]] || ! [[ "$NAMEN" =~ ^[[:alnum:]\ äöüÄÖÜß|.-]*$ ]]; then echo "Ungültig"; exit 1; fi
+          node tools/osm-probe.mjs "$OSMB"
       - name: Probe
         if: ${{ inputs.probe != '' }}
         env:
@@ -78,20 +90,20 @@ jobs:
           if ! [[ "$PROBE" =~ ^[-0-9.,\;]+$ ]]; then echo "Ungültig"; exit 1; fi
           node tools/build-cities.mjs --probe "$PROBE"
       - name: Berechnen
-        if: ${{ inputs.probe == '' && inputs.verzeichnis == '' && inputs.strecke == '' }}
+        if: ${{ inputs.probe == '' && inputs.verzeichnis == '' && inputs.strecke == '' && inputs.osm == '' }}
         env:
           LAENDER: ${{ inputs.laender }}
           FRISCH: ${{ inputs.frisch }}
           NAMEN: ${{ inputs.namen }}
         run: node tools/build-cities.mjs
       - name: Zwischenspeicher sichern
-        if: ${{ inputs.probe == '' && inputs.verzeichnis == '' && inputs.strecke == '' }}
+        if: ${{ inputs.probe == '' && inputs.verzeichnis == '' && inputs.strecke == '' && inputs.osm == '' }}
         uses: actions/cache/save@v4
         with:
           path: tools/.cache
           key: staedte-${{ github.run_id }}
       - name: Speichern
-        if: ${{ inputs.probe == '' && inputs.verzeichnis == '' && inputs.strecke == '' }}
+        if: ${{ inputs.probe == '' && inputs.verzeichnis == '' && inputs.strecke == '' && inputs.osm == '' }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

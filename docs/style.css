@@ -129,7 +129,7 @@ button { cursor: pointer; }
 .mk-lbl.l2 { left: calc(50% + 10px); font-size: 11px; }
 .mk-lbl.l1 { left: calc(50% + 8px); font-size: 11px; font-weight: 500; color: #3a3935; }
 .mk-lbl.l0 { left: calc(50% + 9px); font-size: 11px; font-weight: 600; color: #3d3b37; } /* v0.8.4: easier to see */
-.mk-lbl.left { left: auto; }
+.mk-lbl.left { left: auto; text-align: right; }
 .mk-lbl.l3.left { right: calc(50% + 13px); } .mk-lbl.l2.left { right: calc(50% + 10px); }
 .mk-lbl.l1.left { right: calc(50% + 8px); } .mk-lbl.l0.left { right: calc(50% + 9px); }
 .me-dot {

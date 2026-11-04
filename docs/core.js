@@ -1,5 +1,5 @@
 /*
- * Reiseführer – core logic (v0.9.2)
+ * Reiseführer – core logic (v0.9.3)
  * Shared by the app (index.html), the diagnostics page (diag.html) and Node tests.
  * No DOM access here. Network access only through the injected fetch function.
  */
@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var CORE_VERSION = '0.9.2';
+  var CORE_VERSION = '0.9.3';
 
   // ---------------------------------------------------------------- helpers
 
@@ -620,7 +620,10 @@
     var circles = opts.circles || [{ lat: opts.lat, lon: opts.lon, radius: opts.radius }];
     var centre = opts.lat != null ? { lat: opts.lat, lon: opts.lon } : opts.bbox ? bboxCenter(opts.bbox) : circles[0];
     var t0 = Date.now(), warnings = [], requests = 0;
-    var src = { wiki: { ms: null }, osm: { state: useOsm ? 'wait' : 'off', ms: null } };
+    // v0.9.3: OSM only for small sections (max_kacheln tiles) – a big one took minutes and its OSM points are hardly shown
+    var osmMax = cfg.osm && cfg.osm.max_kacheln, osmBig = false;
+    if (useOsm && osmMax && osmTileKeys(circles, cfg, opts.bbox).length > osmMax) { useOsm = false; osmBig = true; }
+    var src = { wiki: { ms: null }, osm: { state: osmBig ? 'gross' : useOsm ? 'wait' : 'off', ms: null } };
     var many = circles.length > 1;
     prog('Lade Wikipedia (' + langs.join(', ') + ')' + (useOsm ? ' und OSM' : '') + ' …', 'wiki');
     // OpenStreetMap: wait at most osmWaitS (or until the user taps "Ohne OSM weiter"), then go on without it.
@@ -629,7 +632,7 @@
     var skipP = new Promise(function (res) { skipFn = res; });
     if (opts.control) opts.control.skipOsm = function () { skipFn('skip'); };
     var waitS = opts.osmWaitS || (cfg.osm && cfg.osm.max_wartezeit_s) || 120;
-    var osmFull = useOsm ? loadOsmArea(circles, cfg, f, opts.osmCache, null, !!opts.osmCacheOnly) : null;
+    var osmFull = useOsm ? loadOsmArea(circles, cfg, f, opts.osmCache, null, !!opts.osmCacheOnly, opts.bbox) : null;
     var waitTimer = null;
     var waitP = useOsm ? new Promise(function (res) { waitTimer = setTimeout(function () { res('timeout'); }, waitS * 1000); }) : null;
     var osmP = !useOsm ? Promise.resolve(null) : Promise.race([
@@ -806,6 +809,47 @@
     return cut.replace(/[\s,–-]+$/, '') + '…';
   }
 
+  // v0.9.3: "Deutsches Medizinhistorisches Museum" -> "Medizinhistorisches Museum" on the map, but only if a real name
+  // is left: "Deutsches Museum", "Deutsches Eck" stay. A single word is enough when it is a compound of a type word
+  // ("Bayerisches Armeemuseum" -> "Armeemuseum").
+  var NAT_PREFIX = /^(?:Deutsche[srn]?|Bayerische[srn]?)\s+(.+)$/;
+  var TYPE_TAIL = /(museum|kirche|theater|oper|bibliothek|archiv|schloss|burg|garten|park|haus|halle|zentrum|denkmal|galerie|sammlung)$/i;
+  function dropNationalPrefix(name) {
+    var m = NAT_PREFIX.exec(String(name || '').trim());
+    if (!m) return name;
+    var rest = m[1].trim(), words = rest.split(/\s+/);
+    if (words.length >= 2) return rest;
+    var t = TYPE_TAIL.exec(rest);
+    return t && rest.length > t[1].length + 2 ? rest : name;
+  }
+
+  /**
+   * Label of a map point in up to `lines` lines of about `max` characters (v0.9.3, before: one line, 18 characters).
+   * Without the town ("Manchester Cathedral" -> "Cathedral", see shortLabel), without a bracket at the end
+   * ("St. Matthäus (Ingolstadt)") and without "Deutsches"/"Bayerisches" in front where a name is left.
+   */
+  function mapLabel(name, ort, max, lines) {
+    max = max || 16; lines = lines || 2;
+    var s = shortLabel(name, ort, 1000).replace(/\s*\([^()]*\)\s*$/, '').trim() || String(name || '').trim();
+    s = dropNationalPrefix(s);
+    var words = s.split(/\s+/).filter(Boolean), out = [], cur = '';
+    var longWord = max + 6; // long German compounds stay whole
+    for (var i = 0; i < words.length; i++) {
+      var w = words[i];
+      if (!cur) cur = w;
+      else if ((cur + ' ' + w).length <= max) cur += ' ' + w;
+      else { out.push(cur); cur = w; }
+      if (out.length === lines) { cur = ''; break; }
+    }
+    if (cur) out.push(cur);
+    var cutAll = out.length > lines || words.join(' ').length > out.slice(0, lines).join(' ').length;
+    out = out.slice(0, lines).map(function (l) {
+      return l.length > longWord ? l.slice(0, longWord).replace(/[\s,–-]+$/, '') + '…' : l;
+    });
+    if (cutAll && !/…$/.test(out[out.length - 1])) out[out.length - 1] = out[out.length - 1].replace(/[\s,–-]+$/, '') + '…';
+    return out;
+  }
+
   /** Wikidata description without the location part: "Museum in Morges (Schweiz)" -> "Museum". */
   function stripLocation(desc) {
     var s = String(desc || '').split(/[,;]/)[0];
@@ -824,7 +868,10 @@
     s = s.replace(/\s+([,.;:])/g, '$1');
     var re = /[.!?](?=\s+["„«(]?[A-ZÄÖÜÉÈÀ0-9])/g, m;
     while ((m = re.exec(s))) {
-      if (!ABBR.test(s.slice(0, m.index))) { s = s.slice(0, m.index + 1); break; }
+      var head = s.slice(0, m.index);
+      // v0.9.3: "am 18. Oktober", "im 19. Jahrhundert": a short number with a dot is an ordinal, not the end
+      if (s[m.index] === '.' && /(^|[^\d.])\d{1,2}$/.test(head)) continue;
+      if (!ABBR.test(head)) { s = s.slice(0, m.index + 1); break; }
     }
     if (s.length > max) {
       var cut = s.slice(0, max), sp = cut.lastIndexOf(' ');
@@ -1212,12 +1259,25 @@
     return loadOsmArea([{ lat: lat, lon: lon, radius: radius }], cfg, f, cache, onProgress);
   }
 
-  /** All OSM elements inside any of the circles; every tile is loaded once. */
-  function loadOsmArea(circles, cfg, f, cache, onProgress, cacheOnly) {
-    var keys = [], have = {};
+  /** OSM tiles for the circles; with bbox only those that touch it (v0.9.3: the circle around a section is much bigger). */
+  function osmTileKeys(circles, cfg, bbox) {
+    var keys = [], have = {}, size = cfg.osm.kachel_grad || 0.1;
     circles.forEach(function (c) {
-      tileKeys(c.lat, c.lon, c.radius, cfg.osm.kachel_grad).forEach(function (k) { if (!have[k]) { have[k] = 1; keys.push(k); } });
+      tileKeys(c.lat, c.lon, c.radius, size).forEach(function (k) {
+        if (have[k]) return;
+        if (bbox) {
+          var p = k.split(',').map(Number);
+          if (p[0] >= bbox.north || p[0] + size <= bbox.south || p[1] >= bbox.east || p[1] + size <= bbox.west) return;
+        }
+        have[k] = 1; keys.push(k);
+      });
     });
+    return keys;
+  }
+
+  /** All OSM elements inside any of the circles (and bbox, if given); every tile is loaded once. */
+  function loadOsmArea(circles, cfg, f, cache, onProgress, cacheOnly, bbox) {
+    var keys = osmTileKeys(circles, cfg, bbox);
     var seen = {}, out = [], done = 0, requests = 0, failed = 0, cachedTiles = 0, missing = 0, servers = {};
     return runLimited(keys, cfg.osm.parallel || 2, function (key) {
       return loadOsmTile(key, cfg, f, cache, cacheOnly).then(function (r) {
@@ -1928,11 +1988,13 @@
       });
     });
     staedte.sort(function (a, b) { return b.score - a.score; });
-    var orte = sights.filter(function (s) { return s.score >= (v.nah_ab || 0) && inLand(s.x); }).map(function (s) {
-      var inStar = s.city && s.city.st > 0;
-      var z = s.st >= 3 ? 0 : s.st === 2 ? zr : s.st === 1 && !inStar ? zr : zn;
+    // v0.9.3: below nah_ab points only when zoomed in very close (zoom.alle): then everything with an article
+    var za = (v.zoom && v.zoom.alle) || 15;
+    var orte = sights.filter(function (s) { return inLand(s.x); }).map(function (s) {
+      var inStar = s.city && s.city.st > 0, low = s.score < (v.nah_ab || 0);
+      var z = low ? za : s.st >= 3 ? 0 : s.st === 2 ? zr : s.st === 1 && !inStar ? zr : zn;
       return { name: s.x.name, q: s.x.q, lat: +s.x.lat.toFixed(4), lon: +s.x.lon.toFixed(4), score: s.score, st: s.st, z: z, typ: s.typ,
-        natur: s.natur || undefined, unesco: s.x.u || undefined, stadt: s.city ? s.city.name : undefined };
+        natur: s.natur || undefined, unesco: s.x.u || undefined, stadt: s.city ? s.city.name : undefined, low: low || undefined };
     });
     return { staedte: staedte, orte: orte, stats: { items: items.length, kandidaten: cands.length, staedte_gesamt: kept.length, orte_gesamt: sights.length } };
   }
@@ -2030,7 +2092,7 @@
     var w = corridorWidths(mode, cfg), out = [], min = plan ? plan.minStars : 0;
     var take = function (k, x) {
       var s = x.st || 0;
-      if ((k === 'c' && !s) || s < min) return;
+      if ((k === 'c' && !s) || s < min || x.low) return; // v0.9.3: the small ones of zoom.alle are no stops
       var r = lineDistance(x, pts);
       // v0.9.1: behind the start or past the destination only within the width of one star less (Chillon is not on the way from Morges to Lyon)
       if (r.d <= (r.beyond ? w[Math.max(0, s - 1)] : w[s])) out.push({ k: k, x: x, s: s, d: round1(r.d), along: round1(r.along), umweg: round1(2 * r.d) });
@@ -2104,7 +2166,7 @@
     buildPlaces: buildPlaces, sortPlaces: sortPlaces, loadPlaces: loadPlaces,
     reverseGeocode: reverseGeocode, languagesFor: languagesFor, localLanguage: localLanguage,
     searchPlaces: searchPlaces, isLatin: isLatin, pickNames: pickNames,
-    shortLabel: shortLabel, stripLocation: stripLocation, firstSentence: firstSentence,
+    shortLabel: shortLabel, mapLabel: mapLabel, osmTileKeys: osmTileKeys, dropNationalPrefix: dropNationalPrefix, stripLocation: stripLocation, firstSentence: firstSentence,
     dropLocation: dropLocation, shortInfo: shortInfo, splitSentences: splitSentences,
     articleFor: articleFor, loadIntros: loadIntros, translate: translate,
     cleanArticle: cleanArticle, cutAtSentence: cutAtSentence, loadArticle: loadArticle,
