@@ -1,8 +1,8 @@
-/* Reiseführer – app (v0.9.1). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.9.2). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.9.1';
+  var VERSION = '0.9.2';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
@@ -412,7 +412,7 @@
     if (!DIR.queue.length) {
       var had = DIR.total;
       DIR.total = 0; renderHint();
-      if (had && !DIR.cancelled) { if (ROUTE && !ROUTE.ready) routeCompute(); else dirDone(false); }
+      if (had && !DIR.cancelled) dirDone(false);
       DIR.cancelled = false;
       return;
     }
@@ -515,34 +515,60 @@
     });
     startP.then(function (st) { routeStart(st, RT.ziel, RT.mode); }, function (e) { toast(e.message + ' – Start eingeben', 3000); });
   }
+  // v0.9.2: the route plan (core.routePlan) decides by travel time which stars count and how many stops;
+  // it loads big tiles with a light query (only well-known entries), stored like the directory ("vzr:<min>:<tile>")
   function routeStart(a, b, mode) {
     var pts = [{ lat: a.lat, lon: a.lon }, { lat: b.lat, lon: b.lon }];
-    var tiles = C.corridorTiles(pts, mode, cfg), max = (cfg.korridor && cfg.korridor.max_kacheln) || 150;
-    if (tiles.length > max) { toast('Strecke zu lang (' + tiles.length + ' Stücke) – bitte kürzer', 3500); return; }
+    var plan = C.routePlan(pts, mode, cfg), max = (cfg.korridor && cfg.korridor.max_kacheln) || 150;
+    if (plan.tiles.length > max) { toast('Strecke zu lang (' + plan.tiles.length + ' Stücke) – bitte kürzer', 3500); return; }
     closeSheet();
-    ROUTE = { a: a, b: b, mode: mode, pts: pts, tiles: tiles.map(C.tileKey), items: [], km: Math.round(C.lineLength(pts)), ready: false };
+    if (ROUTE && ROUTE.control) ROUTE.control.cancelled = true;
+    ROUTE = { a: a, b: b, mode: mode, pts: pts, plan: plan, items: [], km: Math.round(plan.km), ready: false, mem: {}, done: 0, total: 0, control: { cancelled: false } };
     if (routeLine) map.removeLayer(routeLine);
     routeLine = L.polyline(pts.map(function (p) { return [p.lat, p.lon]; }), { color: '#0e6b7d', weight: 4, opacity: .8, dashArray: '8 6', interactive: false }).addTo(map);
     map.fitBounds(routeLine.getBounds(), { padding: [40, 40], animate: false });
-    var missing = tiles.filter(function (t) { return dirStale(C.tileKey(t)); });
-    // stored tiles are read from the phone first
-    var reads = ROUTE.tiles.filter(function (k) { return DIR.index[k] && !DIR.mem[k]; });
-    Promise.all(reads.map(function (k) { return IDB.get('vz:' + k).then(function (r) { if (r && r.items) DIR.mem[k] = r; }); })).then(function () {
-      if (missing.length) { DIR.err = {}; dirQueue(missing); } else routeCompute();
-    });
     renderAll(); scheduleCities();
+    var r = ROUTE, ttl = (DZ().cache_tage || 30) * 864e5;
+    var key = function (t) { return 'vzr:' + plan.minSl + ':' + C.tileKey(t); };
+    // 1. what the phone has: route tiles, and directory tiles of "Hier suchen" in the strip
+    var full = {};
+    plan.tiles.forEach(function (t) { C.directoryTiles(t, cfg).forEach(function (u) { var k = C.tileKey(u); if (DIR.index[k]) full[k] = 1; }); });
+    Promise.all(plan.tiles.map(function (t) { return IDB.get(key(t)).then(function (v) { if (v && v.items && Date.now() - v.stand < ttl) r.mem[key(t)] = v; }); })
+      .concat(Object.keys(full).map(function (k) { return DIR.mem[k] ? null : IDB.get('vz:' + k).then(function (v) { if (v && v.items) DIR.mem[k] = v; }); }))).then(function () {
+      r.full = Object.keys(full);
+      // 2. the rest from Wikidata, one tile after the other
+      var todo = plan.tiles.filter(function (t) { return !r.mem[key(t)]; });
+      r.total = todo.length; r.done = 0; renderHint();
+      (function next() {
+        if (r.control.cancelled || ROUTE !== r) return;
+        if (!todo.length) { r.loading = false; renderHint(); routeCompute(); return; }
+        r.loading = true; renderHint();
+        var t = todo.shift();
+        C.prepareDirectoryTile(t, plan.rcfg, function (u, o) { return fetch(u, o); }, { control: r.control }).then(function (v) {
+          r.mem[key(t)] = v;
+          return IDB.set(key(t), v);
+        }).catch(function () { r.failed = (r.failed || 0) + 1; }).then(function () { r.done++; next(); });
+      })();
+    });
   }
   function routeCompute() {
-    if (!ROUTE) return;
+    var r = ROUTE;
+    if (!r) return;
     var seen = {}, items = [];
-    ROUTE.tiles.forEach(function (k) { var m = DIR.mem[k]; if (m && m.items) m.items.forEach(function (x) { if (!seen[x.q]) { seen[x.q] = 1; items.push(x); } }); });
-    var res = items.length ? C.computeDirectory(items, dcfg, null, { copy: true }) : null;
-    ROUTE.items = C.corridorPick(res, ROUTE.pts, ROUTE.mode, cfg).map(function (it) { it.vz = true; return it; });
-    ROUTE.ready = true;
-    toast('Fertig: ' + ROUTE.items.length + ' Ziele entlang der Strecke', 3000);
+    var add = function (list) { (list || []).forEach(function (x) { if (!seen[x.q]) { seen[x.q] = 1; items.push(x); } }); };
+    Object.keys(r.mem).forEach(function (k) { add(r.mem[k].items); });
+    (r.full || []).forEach(function (k) { if (DIR.mem[k]) add(DIR.mem[k].items); });
+    var res = items.length ? C.computeDirectory(items, r.plan.rcfg, null, { copy: true }) : null;
+    r.items = C.corridorPick(res, r.pts, r.mode, cfg, r.plan).map(function (it) { it.vz = true; return it; });
+    r.ready = true;
+    toast('Fertig: ' + r.items.length + (r.items.length === 1 ? ' Halt' : ' Halte') + ' entlang der Strecke' + (r.failed ? ' (' + r.failed + ' Stücke fehlen)' : ''), 3500);
     renderAll(); scheduleCities();
   }
+  function routeCancel() {
+    if (ROUTE) { ROUTE.control.cancelled = true; ROUTE.loading = false; routeCompute(); }
+  }
   function routeEnd() {
+    if (ROUTE && ROUTE.control) ROUTE.control.cancelled = true;
     ROUTE = null;
     if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
     closeSheet(); renderAll(); scheduleCities(); scheduleMarkers();
@@ -560,8 +586,10 @@
     var r = ROUTE, mode = RT_MODES.filter(function (m) { return m[0] === r.mode; })[0];
     var vis = r.items.filter(function (it) { return it.k === 'c' || it.s >= settings.minStars; });
     DIR.listed = vis;
-    return '<li class="rt-head"><b>' + esc(r.a.name) + ' → ' + esc(r.b.name) + '</b><span class="small">' + esc(mode ? mode[1] : '') + ' · ' + r.km + ' km Luftlinie · ' +
-      (r.ready ? vis.length + ' Ziele' : 'lädt …') + '</span><span class="small">Echte Straße kann abweichen.</span>' +
+    var h = r.plan.hours, ht = h < 1 ? Math.max(5, Math.round(h * 60 / 5) * 5) + ' Min.' : String(Math.round(h * 2) / 2).replace('.', ',') + ' Std.';
+    return '<li class="rt-head"><b>' + esc(r.a.name) + ' → ' + esc(r.b.name) + '</b><span class="small">' + esc(mode ? mode[1] : '') + ' · ' + r.km + ' km Luftlinie · ca. ' + ht + '</span>' +
+      '<span class="small">' + (r.ready ? vis.length + (vis.length === 1 ? ' Halt' : ' Halte') + ', ab ' + C.starsText(r.plan.minStars) + ' (je länger die Strecke, desto wichtiger)' : 'lädt …') + '</span>' +
+      '<span class="small">Luftlinie – echte Straße kann abweichen.</span>' +
       '<button class="btn" type="button" data-a="rtend2">Strecke beenden</button></li>' +
       vis.map(function (it, i) {
         var x = it.x, typ = it.k === 'c' ? 'Ort' : C.typeInfo(x.typ, cfg).label;
@@ -612,7 +640,8 @@
     var z = map.getZoom(), d = DZ(), reg = (d.zoom && d.zoom.region) || 9, nah = (d.zoom && d.zoom.nah) || 12;
     var b = viewBbox(), n = DIR.missing.length, tooMany = dirOn() && n > (d.max_kacheln_knopf || 150), small = detailOk(b);
     var txt, btn = '';
-    if (busy && !busyQuiet) { txt = 'Suche läuft …'; btn = '<button type="button" data-h="stop" aria-label="Abbrechen">✕</button>'; }
+    if (ROUTE && ROUTE.loading) { txt = 'Lade Strecke ' + Math.min(ROUTE.done + 1, ROUTE.total || 1) + '/' + (ROUTE.total || 1) + ' …'; btn = '<button type="button" data-h="rtcancel" aria-label="Abbrechen">✕</button>'; }
+    else if (busy && !busyQuiet) { txt = 'Suche läuft …'; btn = '<button type="button" data-h="stop" aria-label="Abbrechen">✕</button>'; }
     else if (DIR.job || DIR.queue.length) {
       txt = 'Lade Gegend ' + Math.min(DIR.done + 1, DIR.total || 1) + '/' + (DIR.total || 1) + ' …';
       btn = '<button type="button" data-h="cancel" aria-label="Abbrechen">✕</button>';
@@ -2033,6 +2062,7 @@
       var h = b.getAttribute('data-h');
       if (h === 'cancel') dirCancel();
       else if (h === 'stop') cancelSearch();
+      else if (h === 'rtcancel') routeCancel();
 
     });
     $('status').addEventListener('click', function (e) {

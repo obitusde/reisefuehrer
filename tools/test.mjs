@@ -604,6 +604,14 @@ eq(core.classify(['Q4830453'], ['company', 'museum'], [''], ['Firma X'], cfg), '
   ok(names.join(',') === 'Rolle,Schloss Prangins,Genf Kathedrale', 'bike corridor: in order along the route, widths by stars: ' + names.join(','));
   ok(pick.every((p, i) => i === 0 || p.along >= pick[i - 1].along) && pick.every((p) => p.d <= core.corridorWidths('fahrrad', cfg)[p.s]), 'sorted by km from start, all within their width');
   ok(Math.abs(pick[0].umweg - 2 * pick[0].d) <= 0.11, 'detour = there and back');
+  // v0.9.2: the longer the route, the more important the stops
+  const pb = core.routePlan([morges, genf], 'fahrrad', cfg), pc = core.routePlan([morges, lyon], 'auto', cfg), pw = core.routePlan([morges, { lat: 46.515, lon: 6.53 }], 'fuss', cfg);
+  ok(pb.minStars === 2 && pb.maxStops === 5 && pb.hours > 2 && pb.hours < 3, 'bike Morges → Genf (~2,4 h): from ★★, 5 stops: ' + JSON.stringify({ h: pb.hours, s: pb.minStars, n: pb.maxStops }));
+  ok(pc.minStars === 2 && pc.maxStops === 4 && pc.tiles.length < 25, 'car Morges → Lyon (~1,9 h): from ★★, 4 stops, few big tiles: ' + JSON.stringify({ h: pc.hours, s: pc.minStars, n: pc.maxStops, t: pc.tiles.length }));
+  ok(pw.minStars === 1 && pw.maxStops === 3 && pw.rcfg.staedte.min_sprachversionen === 4, 'short walk: from ★, at least 3 stops, light query: ' + JSON.stringify({ h: pw.hours, s: pw.minStars, n: pw.maxStops }));
+  ok(core.routePlan([morges, { lat: 43.3, lon: 5.37 }], 'auto', cfg).minStars === 3, 'long drive (> 3 h): only ★★★');
+  const pk = core.corridorPick(res, [morges, genf], 'fahrrad', cfg, { minStars: 2, maxStops: 1 });
+  ok(pk.length === 1 && pk[0].x.name === 'Genf Kathedrale', 'plan: only ★★ and more, best first, at most maxStops: ' + pk.map((p) => p.x.name).join(','));
   // behind the start: Chillon-like ★★★ 30 km the other way is not on the way; a town just behind the start still is
   const lyonPts = [morges, lyon];
   const back = core.corridorPick({ staedte: [{ name: 'Nah', q: 'Qa', lat: 46.55, lon: 6.62, st: 3 }], orte: [{ name: 'Weit', q: 'Qb', lat: 46.414, lon: 6.927, st: 3 }] }, lyonPts, 'auto', cfg);

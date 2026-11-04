@@ -147,7 +147,7 @@ try {
   if (process.env.DEBUG) { page.on('request', (r) => { if (/extracts|mymemory/.test(r.url())) console.log('REQ', decodeURIComponent(r.url()).slice(0, 160)); }); page.on('requestfailed', (r) => console.log('FAILED', r.url().slice(0, 120), r.failure() && r.failure().errorText)); page.on('console', (m) => console.log('CONSOLE', m.text())); }
   await page.goto(BASE + 'index.html');
   await page.waitForSelector('.empty');
-  ok((await page.textContent('#version')) === 'v0.9.1', 'footer version');
+  ok((await page.textContent('#version')) === 'v0.9.2', 'footer version');
   if (OUT) await page.screenshot({ path: OUT + '/01-start.png' });
 
   await page.click('#btnLocate');
@@ -441,10 +441,10 @@ try {
   ok(splitNow && +splitNow > 12, 'split persisted: ' + splitNow);
 
   // update banner (fake newer version, then ?testupdate=1)
-  fakeVersion = '0.9.2';
+  fakeVersion = '0.9.3';
   await page.reload();
   await page.waitForSelector('#banner:not([hidden])');
-  ok((await page.textContent('#bannerText')).includes('v0.9.2'), 'banner shows remote version');
+  ok((await page.textContent('#bannerText')).includes('v0.9.3'), 'banner shows remote version');
   if (OUT) await page.screenshot({ path: OUT + '/05-banner.png' });
   fakeVersion = null;
   await page.click('#bannerBtn');
@@ -575,9 +575,9 @@ try {
   const swOk = await p3.evaluate(() => navigator.serviceWorker.ready.then((r) => !!r.active)).catch(() => false);
   ok(swOk, 'service worker active');
   const cacheKeys = await p3.evaluate(async () => { await new Promise((r) => setTimeout(r, 800)); return caches.keys(); });
-  ok(cacheKeys.includes('rf-app-0.9.1'), 'app cache with version: ' + cacheKeys.join(','));
-  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.9.1')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
-  ok(cached.some((u) => u.includes('app.js?v=0.9.1')), 'shell precached');
+  ok(cacheKeys.includes('rf-app-0.9.2'), 'app cache with version: ' + cacheKeys.join(','));
+  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.9.2')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
+  ok(cached.some((u) => u.includes('app.js?v=0.9.2')), 'shell precached');
   ok(errs3.length === 0, 'sw: no JS errors ' + errs3.join(' | '));
   await ctx3.close();
 
@@ -679,9 +679,11 @@ try {
     await p8.click('[data-a="rtmode"][data-m="auto"]');
     if (OUT) await p8.screenshot({ path: OUT + '/15-strecke-eingabe.png' });
     await p8.click('[data-a="rtgo"]');
-    await p8.waitForFunction(() => /entlang der Strecke/.test(document.getElementById('toast').textContent), null, { timeout: 30000 });
+    await p8.waitForFunction(() => /Halte? entlang der Strecke/.test(document.getElementById('toast').textContent), null, { timeout: 30000 });
     const rt = await p8.$$eval('.vz-item', (els) => els.map((e) => e.querySelector('b').textContent + ' | ' + e.querySelector('.small').textContent));
-    ok(rt.length >= 2 && /^Luxemburg \| km 0/.test(rt[0]) && rt.some((t) => /^Burg Vianden \| km \d+/.test(t)) && !rt.some((t) => /Kanton/.test(t)), 'v0.9 route list in order along the route with km and detour: ' + rt.join(' / '));
+    ok(rt.length === 3 && rt.slice(0, 2).some((t) => /^Luxemburg \| km 0/.test(t)) && /^Burg Vianden \| km \d+/.test(rt[2]) && !rt.some((t) => /Kanton/.test(t)),
+      'v0.9.2 short drive (~30 min): 3 stops, best ones, in order along the route with km and detour: ' + rt.join(' / '));
+    ok(/3 Halte, ab ★/.test(await p8.textContent('.rt-head')), 'v0.9.2 header: stops and stars: ' + await p8.textContent('.rt-head'));
     const kms = rt.map((t) => +(/km (\d+)/.exec(t) || [0, 0])[1]);
     ok(kms.every((k, i) => i === 0 || k >= kms[i - 1]), 'v0.9 sorted by km from start: ' + kms.join(','));
     ok((await p8.textContent('.rt-head')).includes('Luxemburg → Vianden') && (await p8.textContent('.rt-head')).includes('Luftlinie'), 'v0.9 route header');

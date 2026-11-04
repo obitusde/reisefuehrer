@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.9.2 – 04.11.2026 – Strecke: nur wirklich wichtige Halte, schneller
+
+Wunsch Nutzer: Die Strecke nach Genf hat sehr lange gedauert; nur wirklich wichtige Sehenswürdigkeiten zeigen, und je länger die Strecke, desto wichtiger.
+
+- **Auswahl nach Fahrzeit** (Luftlinie ÷ 80 km/h Auto, 18 km/h Fahrrad, 4,5 km/h zu Fuß):
+  - bis 1 Stunde: ab ★; 1 bis 3 Stunden: ab ★★; über 3 Stunden: nur ★★★.
+  - etwa 2 Halte je Stunde Fahrzeit, mindestens 3, höchstens 15; bei mehr Kandidaten die mit den meisten Sternen und Punkten.
+  - Beispiele: Fahrrad Morges → Genf (ca. 2,5 Std.) ab ★★, 5 Halte; Auto Morges → Lyon (ca. 2 Std.) ab ★★, 4 Halte.
+- **Schneller laden**: Die Strecke fragt nur bekannte Einträge ab (ab 4/7/12 Sprachversionen für ★/★★/★★★), in großen Stücken (0,5°). Gespeichert 30 Tage; was „Hier suchen“ schon geladen hat, wird mitbenutzt. Fortschritt „Lade Strecke 2/9 …“, ✕ bricht ab (dann gilt, was schon da ist).
+- Listenkopf: Fahrzeit, Zahl der Halte und ab wie vielen Sternen.
+- Die Grenzen stehen in `config.json` → `korridor` (`kmh`, `sterne_ab`, `halte_pro_stunde`, `min_halte`, `max_halte`, `min_sprachen`, `kachel`).
+
 ## v0.9.1 – 04.11.2026 – Strecke: nichts hinter dem Start
 
 - Hinter dem Start und nach dem Ziel gilt nur noch die Breite für einen Stern weniger (★★★ mit Auto: 15 statt 40 km). Im Test Morges → Lyon standen sonst Schloss Chillon und Lavaux (35 und 19 km hinter Morges, in der Gegenrichtung) in der Liste.
