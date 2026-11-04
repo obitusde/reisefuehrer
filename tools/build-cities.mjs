@@ -160,7 +160,7 @@ async function verzeichnis(arg, fokusArg) {
   o2.slice(0, 40).forEach((o) => console.log('  ' + fo(o)));
   console.log('\nFREIZEITPARKS/ZOOS:'); so.filter((o) => o.typ === 'freizeit').forEach((o) => console.log('  ' + fo(o) + ' ab Zoom ' + o.z));
   console.log('\nNATUR (beste 25):'); so.filter((o) => o.natur).slice(0, 25).forEach((o) => console.log('  ' + fo(o) + ' ab Zoom ' + o.z));
-  console.log('\nOrte ohne Stern (beste 20):'); st.filter((c) => !c.st).slice(0, 20).forEach((c) => console.log('  ' + fs_(c) + ' – ' + c.top.map((t) => t[0] + ' ' + t[1]).join(', ')));
+  console.log('\nOrte ohne Stern (beste 20):'); st.filter((c) => !c.st).slice(0, 20).forEach((c) => console.log('  ' + fs_(c) + ' – ' + c.top.map((t) => t[0] + ' ' + t[3]).join(', ')));
   if (process.env.NAMEN) {
     const re = new RegExp(process.env.NAMEN, 'i');
     console.log('\nNAMEN /' + process.env.NAMEN + '/:');

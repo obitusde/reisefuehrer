@@ -515,6 +515,51 @@ eq(core.classify([], ['zoo'], [''], ['Zoo Zürich'], cfg), 'freizeit', 'zoo');
 eq(core.classify([], ['park'], [''], ['Stadtpark'], cfg), 'park', 'plain park stays park');
 eq(core.classify([], ['car park'], [''], ['P1'], cfg), 'parkplatz', 'car park stays car park');
 
+// ---- v0.8: directory
+{
+  const dc = core.directoryConfig(cfg);
+  ok(dc.staedte.min_sprachversionen === 1 && cfg.staedte.min_sprachversionen === 12, 'directory config overrides a copy only');
+  ok(!core.citySparql({ south: 0, west: 0, north: 0.25, east: 0.25 }, dc).includes('schema:about'), 'directory tile query without title joins');
+  eq(core.directoryTiles(core.bboxOf([46.6, 6.2, 46.7, 6.3]), cfg).map(core.tileKey).join(' '), '46.5,6,46.75,6.25 46.5,6.25,46.75,6.5', 'directory tiles 0.25°');
+  const it = (q, name, lat, lon, sl, cls, o = {}) => ({ q, name, name_en: name, lat, lon, sl, pop: o.pop || 0, km2: o.km2 || 0, p31: o.p31 || [], cls, h: [], land: ['Q39'], u: !!o.u, cap: false, desc: '' });
+  const B = (x) => ({ item: { value: 'http://www.wikidata.org/entity/' + x.q }, coord: { value: 'Point(' + x.lon + ' ' + x.lat + ')' }, sl: { value: String(x.sl) }, de: { value: x.name }, en: { value: x.name },
+    cls: { value: x.cls.join('|') }, p31: { value: x.p31.join('|') }, land: { value: 'Q39' }, ...(x.pop ? { pop: { value: String(x.pop) } } : {}) });
+  const raw = [
+    it('Q1', 'Le Chenit', 46.6, 6.23, 30, ['municipality of Switzerland'], { pop: 4500 }),
+    it('Q2', 'Audemars Piguet Museum', 46.57, 6.22, 3, ['museum'], { p31: ['Q33506'] }),
+    it('Q3', 'Espace Horloger', 46.61, 6.24, 1, ['museum'], { p31: ['Q33506'] }),
+    it('Q4', 'Bahnhof Le Brassus', 46.58, 6.21, 3, ['railway station'], { p31: ['Q55488'] }),
+    it('Q5', 'Fort Fun Abenteuerland', 46.62, 6.3, 4, ['amusement park']),
+    it('Q6', 'Le Brassus', 46.58, 6.21, 20, ['village'], { pop: 600 })
+  ];
+  const calls = [];
+  const fD = async (url) => {
+    calls.push(url.replace(/\?.*/, '') + (url.includes('wbgetentities') ? ' wb' : url.includes('pageviews') ? ' pv' : ''));
+    if (url.includes('query.wikidata.org')) return { ok: true, status: 200, json: async () => ({ results: { bindings: raw.map(B) } }) };
+    if (url.includes('wbgetentities')) {
+      const ids = new URL(url).searchParams.get('ids').split('|');
+      return { ok: true, status: 200, json: async () => ({ entities: Object.fromEntries(ids.map((id) => [id, { id, sitelinks: { dewiki: { title: raw.find((x) => x.q === id).name } } }])) }) };
+    }
+    const titles = new URL(url).searchParams.get('titles').split('|');
+    return { ok: true, status: 200, json: async () => ({ query: { pages: titles.map((t) => ({ title: t, pageviews: { d: /Fort Fun/.test(t) ? 3000 : 30 } })) } }) };
+  };
+  const dc0 = JSON.parse(JSON.stringify(dc)); dc0.staedte.pause_ms = 0;
+  const tile = await core.prepareDirectoryTile({ south: 46.5, west: 6.0, north: 46.75, east: 6.25 }, dc0, fD);
+  const byQ = Object.fromEntries(tile.items.map((x) => [x.q, x]));
+  ok(tile.roh === 6 && !byQ.Q4 && !byQ.Q6 && byQ.Q1._c && byQ.Q2._s.typ === 'museum', 'tile keeps towns from 1000 inhabitants and sights only: ' + tile.items.map((x) => x.name).join(', '));
+  ok(byQ.Q5._s.typ === 'freizeit' && byQ.Q5.pv === 100, 'leisure park gets page views (excursion candidate): ' + JSON.stringify(byQ.Q5));
+  ok(calls.filter((c) => / wb$/.test(c)).length === 1 && calls.filter((c) => / pv$/.test(c)).length >= 1, 'one sitelinks request, page views per language');
+  const stored = JSON.parse(JSON.stringify(tile.items));
+  const res = core.computeDirectory(tile.items, dc0, null, { copy: true });
+  ok(JSON.stringify(tile.items) === JSON.stringify(stored), 'computeDirectory with copy leaves the stored items as they are');
+  const fort = res.orte.find((o) => o.name === 'Fort Fun Abenteuerland');
+  ok(fort && fort.st >= 1 && fort.z === dc.verzeichnis.zoom.region, 'Fort Fun as excursion from region zoom: ' + JSON.stringify(fort));
+  ok(res.orte.some((o) => o.name === 'Audemars Piguet Museum' && o.z === dc.verzeichnis.zoom.nah), 'local museum from zoom 12: ' + JSON.stringify(res.orte.map((o) => [o.name, o.score, o.st, o.z])));
+  const town = res.staedte.find((c) => c.name === 'Le Chenit');
+  ok(town && town.st === 0, 'town without much to see: no star (min_sehen): ' + JSON.stringify(town && { s: town.score, see: town.sehen }));
+  ok(town.top[0].length === 4, 'top sights with position (as in the country files)');
+}
+
 // ---- version consistency across files
 const v = JSON.parse(fs.readFileSync(path.join(ROOT, 'docs/version.json'), 'utf8')).version;
 const read = p => fs.readFileSync(path.join(ROOT, p), 'utf8');

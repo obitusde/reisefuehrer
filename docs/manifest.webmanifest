@@ -3,7 +3,7 @@
   "short_name": "Reiseführer",
   "description": "Sehenswertes auf der Karte, mit Sternen.",
   "lang": "de",
-  "id": "./",
+  "id": "./reisefuehrer-app",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

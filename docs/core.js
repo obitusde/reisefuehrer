@@ -1,5 +1,5 @@
 /*
- * Reiseführer – core logic (v0.7.2)
+ * Reiseführer – core logic (v0.8.0)
  * Shared by the app (index.html), the diagnostics page (diag.html) and Node tests.
  * No DOM access here. Network access only through the injected fetch function.
  */
@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var CORE_VERSION = '0.7.2';
+  var CORE_VERSION = '0.8.0';
 
   // ---------------------------------------------------------------- helpers
 
@@ -1843,7 +1843,8 @@
     items.forEach(function (x) {
       if (isCityItem(x, cfg)) { if (x.pop >= (v.min_einwohner || 0)) places.push(x); return; }
       var s = sightScore(x, cfg);
-      if (s && s.natur) nature.push({ x: x, s: s.score });
+      // excursions (nature, leisure parks) always: Fort Fun has few language versions, but many readers
+      if (s && (s.natur || (v.ausflug_typen || []).indexOf(s.typ) >= 0)) nature.push({ x: x, s: s.score });
       else if (s && s.score >= (v.aufrufe_ab || 0)) sights.push({ x: x, s: s.score });
     });
     var by = function (a, b) { return b.s - a.s; };
@@ -1887,7 +1888,8 @@
     var kept = mergeCityCands(cands, cfg, sights);
     var near = gridIndex(kept, cell);
     sights.forEach(function (s) {
-      s.st = starsFrom(s.score, s.natur && v.sterne_natur ? v.sterne_natur : v.sterne);
+      var ausflug = s.natur || (v.ausflug_typen || []).indexOf(s.typ) >= 0;
+      s.st = starsFrom(s.score, ausflug && v.sterne_natur ? v.sterne_natur : v.sterne);
       s.alone = s.st >= 2;
       if (s.natur) { s.x.fate = 'Natur ' + s.score; return; }
       var best = null, bestQ = Infinity;
@@ -1915,7 +1917,7 @@
       staedte.push({
         name: k.name, q: k.q, lat: +k.lat.toFixed(4), lon: +k.lon.toFixed(4), score: sum, st: k.st, z: k.st >= 2 ? 0 : k.st ? zr : zn,
         pop: k.pop, sl: k.sl, pv: k.pv, wv: k.wv || undefined, n: k.sights.length, bekannt: round1(fame), sehen: round1(see),
-        top: k.sights.slice(0, 3).map(function (s) { return [s.x.name, s.score]; })
+        top: k.sights.slice(0, 3).map(function (s) { return [s.x.name, +s.x.lat.toFixed(4), +s.x.lon.toFixed(4), s.score]; })
       });
     });
     staedte.sort(function (a, b) { return b.score - a.score; });

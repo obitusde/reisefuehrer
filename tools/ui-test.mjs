@@ -36,6 +36,7 @@ const SPARQL_LU = [
   B('Q14', 'Kanton Luxemburg', 6.13, 49.62, { sl: 50, cls: 'canton of Luxembourg' })];
 
 let fakeVersion = null;
+const SPARQL_CALLS = [];
 let OFFLINE = false, OSM_DELAY = 0;
 const server = http.createServer((req, res) => {
   const u = new URL(req.url, 'http://x');
@@ -58,7 +59,11 @@ async function mockApis(ctx) {
     const u = new URL(route.request().url());
     const lang = u.hostname.split('.')[0];
     let body;
-    if ((u.searchParams.get('prop') || '').includes('extracts')) {
+    if (u.searchParams.get('prop') === 'pageviews') {
+      // v0.8: page views of the synthetic LU places (Luxemburg 500 per day, others 50)
+      const titles = u.searchParams.get('titles').split('|');
+      body = { query: { pages: titles.map((t, i) => ({ pageid: 900 + i, ns: 0, title: t, pageviews: { '2026-11-01': (t === 'Luxemburg' ? 500 : 50) * 30 } })) } };
+    } else if ((u.searchParams.get('prop') || '').includes('extracts')) {
       const titles = u.searchParams.get('titles').split('|');
       const intro = (t) => lang === 'de' ? t + ' ist ein Testort. Zweiter Satz.' : t + ' is a test place. Second sentence.';
       const full = (t) => intro(t) + '\n\n== History ==\n' + Array.from({ length: 400 }, (_, i) => 'Sentence ' + (i + 1) + ' about history.').join(' ') + '\n\n== References ==\nRef.';
@@ -73,8 +78,14 @@ async function mockApis(ctx) {
   });
   await ctx.route(/www\.wikidata\.org/, (route) => {
     if (OFFLINE) return route.abort('internetdisconnected');
-    const ids = (new URL(route.request().url()).searchParams.get('ids') || '').split('|');
-    const entities = {}; ids.forEach((id) => { entities[id] = fx.wikidata.entities[id] || { id, missing: '' }; });
+    const su = new URL(route.request().url()), ids = (su.searchParams.get('ids') || '').split('|');
+    const entities = {};
+    ids.forEach((id) => {
+      const lu = SPARQL_LU.find((b) => b.item.value.endsWith('/' + id));
+      // v0.8: article titles and Wikivoyage of the synthetic LU places (props=sitelinks)
+      if (su.searchParams.get('props') === 'sitelinks' && lu) entities[id] = { id, sitelinks: { dewiki: { site: 'dewiki', title: lu.de.value }, ...(id === 'Q1842' ? { dewikivoyage: { site: 'dewikivoyage', title: 'Luxemburg' } } : {}) } };
+      else entities[id] = fx.wikidata.entities[id] || { id, missing: '' };
+    });
     route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ entities }) });
   });
   await ctx.route(/nominatim\.openstreetmap\.org/, (route) => OFFLINE ? route.abort('internetdisconnected') : route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
@@ -96,9 +107,11 @@ async function mockApis(ctx) {
   await ctx.route(/query\.wikidata\.org\/sparql/, (route) => {
     if (OFFLINE) return route.abort('internetdisconnected');
     const q = new URL(route.request().url()).searchParams.get('query');
-    const m = /Point\(([-\d.]+) ([-\d.]+)\)/.exec(q);
-    const hit = m && +m[1] <= 6.13 && +m[1] + 1 > 6.13 && +m[2] <= 49.61 && +m[2] + 1 > 49.61;
-    route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ results: { bindings: hit ? SPARQL_LU : [] } }) });
+    // only the items inside the asked box (1° tiles for "Neu berechnen", 0.25° tiles for the v0.8 directory)
+    const m = /Point\(([-\d.]+) ([-\d.]+)\)"\^\^geo:wktLiteral; wikibase:cornerNorthEast "Point\(([-\d.]+) ([-\d.]+)\)/.exec(q);
+    const inBox = (b) => { const p = /Point\(([-\d.]+) ([-\d.]+)\)/.exec(b.coord.value); return m && +p[1] >= +m[1] && +p[1] <= +m[3] && +p[2] >= +m[2] && +p[2] <= +m[4]; };
+    SPARQL_CALLS.push(m ? m.slice(1).join(',') : '?');
+    route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ results: { bindings: SPARQL_LU.filter(inBox) } }) });
   });
   await ctx.route(/tile\.openstreetmap\.org/, (route) => route.fulfill({ status: 200, contentType: 'image/png', headers: { 'access-control-allow-origin': '*' }, body: PNG }));
 }
@@ -111,6 +124,8 @@ async function newCtx(browser, opts = {}) {
   });
   await ctx.grantPermissions(['geolocation', 'clipboard-read', 'clipboard-write'], { origin: BASE.slice(0, -1) });
   await mockApis(ctx);
+  // the v0.8 directory loads tiles by itself; only its own test section has it on
+  if (!opts.vz) await ctx.addInitScript(() => { try { const s = JSON.parse(localStorage.getItem('rf.settings') || '{}'); if (s.verzeichnis === undefined) { s.verzeichnis = false; localStorage.setItem('rf.settings', JSON.stringify(s)); } } catch (e) { /* ignore */ } });
   return ctx;
 }
 function watch(page, errs) {
@@ -126,10 +141,14 @@ try {
   if (process.env.DEBUG) { page.on('request', (r) => { if (/extracts|mymemory/.test(r.url())) console.log('REQ', decodeURIComponent(r.url()).slice(0, 160)); }); page.on('requestfailed', (r) => console.log('FAILED', r.url().slice(0, 120), r.failure() && r.failure().errorText)); page.on('console', (m) => console.log('CONSOLE', m.text())); }
   await page.goto(BASE + 'index.html');
   await page.waitForSelector('.empty');
-  ok((await page.textContent('#version')) === 'v0.7.2', 'footer version');
+  ok((await page.textContent('#version')) === 'v0.8.0', 'footer version');
   if (OUT) await page.screenshot({ path: OUT + '/01-start.png' });
 
   await page.click('#btnLocate');
+  // v0.8: "Mein Standort" only moves the map, the search starts with "Hier suchen"
+  await page.waitForFunction(() => /Karte steht beim Standort/.test(document.getElementById('toast').textContent), null, { timeout: 8000 });
+  ok(!(await page.$('.item')), 'v0.8 location: map moved, no search yet');
+  await page.click('#btnHere');
   await page.waitForSelector('.item', { timeout: 10000 });
   const items = await page.$$eval('.item', (els) => els.map((e) => ({ s: e.querySelector('.it-stars').textContent, n: e.querySelector('.it-name').textContent })));
   ok(items.length >= 8, 'list has items: ' + items.length);
@@ -430,10 +449,10 @@ try {
   ok(splitNow && +splitNow > 12, 'split persisted: ' + splitNow);
 
   // update banner (fake newer version, then ?testupdate=1)
-  fakeVersion = '0.7.3';
+  fakeVersion = '0.8.1';
   await page.reload();
   await page.waitForSelector('#banner:not([hidden])');
-  ok((await page.textContent('#bannerText')).includes('v0.7.3'), 'banner shows remote version');
+  ok((await page.textContent('#bannerText')).includes('v0.8.1'), 'banner shows remote version');
   if (OUT) await page.screenshot({ path: OUT + '/05-banner.png' });
   fakeVersion = null;
   await page.click('#bannerBtn');
@@ -527,7 +546,7 @@ try {
   const ctxS = await newCtx(browser, { height: 626, width: 329 });
   const pS = await ctxS.newPage(); const errsS = []; watch(pS, errsS);
   await pS.goto(BASE + 'index.html');
-  await pS.click('#btnLocate'); await pS.waitForSelector('.item');
+  await pS.click('#btnLocate'); await pS.waitForTimeout(300); await pS.click('#btnHere'); await pS.waitForSelector('.item');
   const layS = await pS.evaluate(() => {
     const r = (s) => document.querySelector(s).getBoundingClientRect();
     const sel = [...document.querySelectorAll('.filters select')].map((x) => x.scrollWidth <= x.clientWidth + 1);
@@ -552,7 +571,7 @@ try {
   const ctx2 = await newCtx(browser, { height: 870, dark: true, dpr: OUT ? 2.625 : 1 });
   const p2 = await ctx2.newPage(); const errs2 = []; watch(p2, errs2);
   await p2.goto(BASE + 'index.html');
-  await p2.click('#btnLocate'); await p2.waitForSelector('.item');
+  await p2.click('#btnLocate'); await p2.waitForTimeout(300); await p2.click('#btnHere'); await p2.waitForSelector('.item');
   if (OUT) await p2.screenshot({ path: OUT + '/06-dunkel.png' });
   ok(errs2.length === 0, 'dark: no JS errors ' + errs2.join(' | '));
   await ctx2.close();
@@ -564,9 +583,9 @@ try {
   const swOk = await p3.evaluate(() => navigator.serviceWorker.ready.then((r) => !!r.active)).catch(() => false);
   ok(swOk, 'service worker active');
   const cacheKeys = await p3.evaluate(async () => { await new Promise((r) => setTimeout(r, 800)); return caches.keys(); });
-  ok(cacheKeys.includes('rf-app-0.7.2'), 'app cache with version: ' + cacheKeys.join(','));
-  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.7.2')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
-  ok(cached.some((u) => u.includes('app.js?v=0.7.2')), 'shell precached');
+  ok(cacheKeys.includes('rf-app-0.8.0'), 'app cache with version: ' + cacheKeys.join(','));
+  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.8.0')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
+  ok(cached.some((u) => u.includes('app.js?v=0.8.0')), 'shell precached');
   ok(errs3.length === 0, 'sw: no JS errors ' + errs3.join(' | '));
   await ctx3.close();
 
@@ -594,6 +613,49 @@ try {
   if (OUT) await p4.screenshot({ path: OUT + '/07-diag.png', fullPage: true });
   ok(errs4.length === 0, 'diag: no JS errors ' + errs4.join(' | '));
   await ctx4.close();
+  // ---------------- v0.8: directory – loads the region by itself, three zoom levels, hint line
+  {
+    const c8 = await newCtx(browser, { vz: true });
+    const p8 = await c8.newPage(); const e8 = []; watch(p8, e8);
+    await p8.goto(BASE + 'index.html');
+    await p8.waitForSelector('#zoomHint:not([hidden])');
+    await p8.evaluate(() => window.__rfMap.setView([49.61, 6.13], 8, { animate: false }));
+    await p8.waitForFunction(() => /Zoom 8: nur die großen Ziele/.test(document.getElementById('zoomHint').textContent) && /Gegend laden/.test(document.getElementById('zoomHint').textContent), null, { timeout: 8000 });
+    ok(true, 'v0.8 hint at zoom 8 with "Gegend laden"');
+    ok(await p8.$eval('#btnHere', (b) => b.classList.contains('dim')), 'v0.8 "Hier suchen" greyed when the section is too large');
+    const n0 = SPARQL_CALLS.length;
+    await p8.evaluate(() => window.__rfMap.setView([49.61, 6.13], 10, { animate: false }));
+    await p8.waitForFunction(() => /Lade Gegend/.test(document.getElementById('zoomHint').textContent), null, { timeout: 8000 }).catch(() => {});
+    await p8.waitForFunction(() => /Zoom 10: Orte mit Sternen/.test(document.getElementById('zoomHint').textContent), null, { timeout: 30000 });
+    ok(SPARQL_CALLS.length > n0 && SPARQL_CALLS.slice(n0).every((c) => { const [w, s, e, n] = c.split(',').map(Number); return Math.abs(e - w - 0.25) < 1e-6 && Math.abs(n - s - 0.25) < 1e-6; }),
+      'v0.8 zoom 10 loads 0.25° tiles by itself: ' + SPARQL_CALLS.slice(n0).length);
+    const ix = await p8.evaluate(() => new Promise((res) => { const r = indexedDB.open('reisefuehrer', 1); r.onsuccess = () => { const q = r.result.transaction('kv').objectStore('kv').get('vz:index'); q.onsuccess = () => res(q.result); }; }));
+    ok(ix && Object.keys(ix).length >= 4 && Object.values(ix).some((e) => e.n >= 3), 'v0.8 tiles stored in the phone: ' + JSON.stringify(ix).slice(0, 200));
+    await p8.waitForFunction(() => [...document.querySelectorAll('.ct-lbl')].some((e) => e.textContent === 'Luxemburg'), null, { timeout: 8000 }).catch(() => {});
+    const lbl10 = await p8.$$eval('.ct-lbl', (els) => els.map((e) => e.textContent));
+    ok(lbl10.includes('Luxemburg'), 'v0.8 town with stars from the directory at zoom 10: ' + lbl10.join(', '));
+    if (OUT) await p8.screenshot({ path: OUT + '/13-verzeichnis-zoom10.png' });
+    // zoom 14: all sights of the directory without "Hier suchen"
+    await p8.evaluate(() => window.__rfMap.setView([49.6105, 6.1325], 15, { animate: false }));
+    await p8.waitForFunction(() => /Zoom 15: alle Ziele/.test(document.getElementById('zoomHint').textContent) && document.querySelectorAll('.mk-lbl').length >= 2, null, { timeout: 10000 })
+      .catch(() => {});
+    const lbl15 = await p8.$$eval('.mk-lbl', (els) => els.map((e) => e.textContent));
+    ok(lbl15.some((t) => /Kathedrale/.test(t)) && !(await p8.$('.item')), 'v0.8 zoom 15: sights shown without searching: ' + lbl15.join(', '));
+    ok(!(await p8.$eval('#btnHere', (b) => b.classList.contains('dim'))), 'v0.8 "Hier suchen" normal when zoomed in');
+    await p8.click('.mk.mk1, .mk.mk2, .mk.mk3, .mk.mk0');
+    await p8.waitForSelector('#sheet:not([hidden])');
+    ok((await p8.textContent('#sheetBody')).includes('Hier suchen'), 'v0.8 sight sheet offers "Hier suchen"');
+    if (OUT) await p8.screenshot({ path: OUT + '/14-verzeichnis-ziel.png' });
+    await p8.click('[data-a="cityhere"]');
+    await p8.waitForFunction(() => localStorage.getItem('rf.last') && !document.getElementById('btnHere').disabled, null, { timeout: 15000 });
+    ok(true, 'v0.8 "Hier suchen" from the sight sheet searches');
+    // settings
+    await p8.click('#btnSettings');
+    await p8.waitForFunction(() => /Stücke gespeichert/.test(document.getElementById('sheetBody').textContent));
+    ok((await p8.textContent('#sheetBody')).includes('Verzeichnis (Ziele auf der Karte)'), 'v0.8 settings section');
+    ok(e8.filter((e) => !/Failed to load resource/.test(e)).length === 0, 'v0.8: no JS errors ' + e8.join(' | '));
+    await c8.close();
+  }
 } finally {
   await browser.close();
   server.close();

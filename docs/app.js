@@ -1,8 +1,8 @@
-/* Reiseführer – app (v0.7.2). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.8.0). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.7.2';
+  var VERSION = '0.8.0';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
@@ -187,6 +187,7 @@
     if (last && last.places && last.bbox) drawSearchArea(last.bbox);
     renderAll();
     loadAreas();
+    dirInit();
   }
 
   // ---------------------------------------------------------------- map
@@ -208,6 +209,7 @@
     map.on('moveend', function () {
       scheduleCities();
       scheduleMarkers();
+      scheduleDir();
       var c = map.getCenter();
       LS.set(K.view, { lat: c.lat, lon: c.lng, z: map.getZoom() });
     });
@@ -296,7 +298,19 @@
     var pad = { south: vb.south - dy, north: vb.north + dy, west: vb.west - dx, east: vb.east + dx };
     var shown = visiblePlaces().filter(function (p) {
       return (p.geprueft || p.id === selectedId) && C.inBbox(p, pad); // never pin unverified places
-    }).sort(function (a, b) {
+    });
+    // v0.8: sights of the directory, without "Hier suchen" (those found by the search are shown as places)
+    var dr = dirResult(vb);
+    if (dr && settings.kat !== '__osm') {
+      var have = {};
+      (last && last.places || []).forEach(function (p) { if (p.wikidata) have[p.wikidata] = 1; });
+      dr.orte.forEach(function (x) {
+        if (have[x.q] || !C.inBbox(x, pad) || x.st < settings.minStars) return;
+        if (settings.kat && C.typeInfo(x.typ, cfg).kategorie !== settings.kat) return;
+        shown.push({ id: 'vz:' + x.q, name: x.name, lat: x.lat, lon: x.lon, sterne: x.st, score: x.score, typ: x.typ, vz: x });
+      });
+    }
+    shown = shown.sort(function (a, b) {
       return ((b.id === selectedId) - (a.id === selectedId)) || (b.sterne - a.sterne) || (b.score - a.score);
     }).slice(0, mc.max_sichtbar || 30);
     var boxes = [];
@@ -322,7 +336,8 @@
       });
       m.on('click', function (e) {
         if (e.originalEvent) L.DomEvent.stopPropagation(e);
-        select(p.id, 'map');
+        if (p.vz) openCity({ k: 'o', x: p.vz, s: p.vz.st, vz: true });
+        else select(p.id, 'map');
       });
       markerLayer.addLayer(m);
     });
@@ -330,6 +345,149 @@
 
   var markerTimer = null;
   function scheduleMarkers() { clearTimeout(markerTimer); markerTimer = setTimeout(renderMarkers, 120); }
+
+  // ------------------------------------------------------ directory (v0.8)
+  // Like a printed guide: the phone loads the region in tiles from Wikidata (core.prepareDirectoryTile; about 25 × 28 km,
+  // 5 s each), keeps them cache_tage days (IndexedDB "vz:<tile>", list in "vz:index") and computes towns and sights
+  // with stars for the visible section (core.computeDirectory). Automatic from zoom laden_ab_zoom, further out by button.
+  var DIR = { mem: {}, index: {}, reading: {}, queue: [], job: null, total: 0, done: 0, manual: false, res: null, resKey: '', err: {}, lastErr: '', ready: false, missing: [] };
+  var dcfg = null, dirTimer = null;
+  function DZ() { return cfg.verzeichnis || {}; }
+  function dirOn() { return !!(DZ().aktiv && settings.verzeichnis !== false); }
+  function dirInit() {
+    dcfg = C.directoryConfig(cfg);
+    return withTimeout(IDB.get('vz:index'), 3000, null).then(function (ix) {
+      DIR.index = ix || {}; DIR.ready = true; scheduleDir();
+    });
+  }
+  function padBox(b, f) {
+    var dy = (b.north - b.south) * f, dx = (b.east - b.west) * f;
+    return { south: b.south - dy, north: b.north + dy, west: b.west - dx, east: b.east + dx };
+  }
+  function dirStale(k) { var e = DIR.index[k]; return !e || Date.now() - e.stand > (DZ().cache_tage || 30) * 864e5; }
+  function dirKeyAt(lat, lon) { return C.tileKey(C.directoryTiles({ south: lat, north: lat + 1e-6, west: lon, east: lon + 1e-6 }, cfg)[0]); }
+  function dirCovers(x) { var k = dirKeyAt(x.lat, x.lon); return !!(DIR.mem[k] && DIR.mem[k].items); }
+  function scheduleDir() { clearTimeout(dirTimer); dirTimer = setTimeout(dirEnsure, 400); }
+  function dirEnsure() {
+    if (!map || !DIR.ready || !dirOn()) { DIR.missing = []; renderHint(); return; }
+    var d = DZ(), z = map.getZoom(), tiles = C.directoryTiles(padBox(viewBbox(), 0.1), cfg);
+    var missing = [], reads = [];
+    tiles.forEach(function (t) {
+      var k = C.tileKey(t);
+      if (DIR.index[k] && !DIR.mem[k] && !DIR.reading[k]) reads.push(k);
+      if (dirStale(k) && !(DIR.err[k] && Date.now() - DIR.err[k] < 10 * 60000)) missing.push(t);
+    });
+    if (reads.length) {
+      reads.forEach(function (k) { DIR.reading[k] = 1; });
+      Promise.all(reads.map(function (k) {
+        return IDB.get('vz:' + k).then(function (r) {
+          delete DIR.reading[k];
+          if (r && r.items) DIR.mem[k] = r; else delete DIR.index[k];
+        });
+      })).then(function () { DIR.resKey = ''; scheduleCities(); scheduleMarkers(); });
+    }
+    DIR.missing = missing;
+    if (missing.length && z >= (d.laden_ab_zoom || 10) && missing.length <= (d.max_kacheln_auto || 24) && navigator.onLine !== false) dirQueue(missing, false);
+    renderHint();
+  }
+  function dirQueue(tiles, manual) {
+    if (DIR.manual && !manual) return; // a load by button is running: leave it alone
+    var c = map.getCenter(), running = DIR.job && DIR.job.k;
+    var dist = function (t) { var a = (t.south + t.north) / 2 - c.lat, b = ((t.west + t.east) / 2 - c.lng) * 0.7; return a * a + b * b; };
+    DIR.queue = tiles.filter(function (t) { return C.tileKey(t) !== running; }).sort(function (a, b) { return dist(a) - dist(b); });
+    DIR.manual = !!manual;
+    DIR.total = DIR.queue.length + (DIR.job ? 1 : 0); DIR.done = 0;
+    dirRun();
+  }
+  function dirRun() {
+    if (DIR.job) { renderHint(); return; }
+    if (!DIR.queue.length) { DIR.manual = false; DIR.total = 0; renderHint(); return; }
+    var t = DIR.queue.shift(), k = C.tileKey(t), ctl = { cancelled: false };
+    DIR.job = { k: k, control: ctl };
+    renderHint();
+    C.prepareDirectoryTile(t, dcfg, function (u, o) { return fetch(u, o); }, { control: ctl }).then(function (r) {
+      DIR.mem[k] = r;
+      DIR.index[k] = { stand: r.stand, n: r.items.length, kb: Math.round(JSON.stringify(r).length / 1024) };
+      delete DIR.err[k];
+      return IDB.set('vz:' + k, r).then(function () { return IDB.set('vz:index', DIR.index); });
+    }).catch(function (e) {
+      DIR.err[k] = Date.now(); DIR.lastErr = (e && e.message) || 'Fehler';
+    }).then(function () {
+      DIR.job = null; DIR.done++; DIR.resKey = '';
+      scheduleCities(); scheduleMarkers(); refreshSettings();
+      dirRun();
+    });
+  }
+  function dirCancel() {
+    DIR.queue = []; DIR.manual = false; DIR.total = 0;
+    if (DIR.job) DIR.job.control.cancelled = true;
+    DIR.err = {}; // a later zoom may try again
+    renderHint();
+  }
+  /** Towns and sights of the directory around the section (computed again only when other tiles are involved). */
+  function dirResult(b) {
+    if (!dirOn() || !dcfg) return null;
+    var keys = C.directoryTiles(padBox(b, 0.25), cfg).map(C.tileKey).filter(function (k) { return DIR.mem[k] && DIR.mem[k].items; }).sort();
+    var key = keys.join(';');
+    if (key === DIR.resKey) return DIR.res;
+    var seen = {}, items = [];
+    keys.forEach(function (k) { DIR.mem[k].items.forEach(function (x) { if (!seen[x.q]) { seen[x.q] = 1; items.push(x); } }); });
+    DIR.res = items.length ? C.computeDirectory(items, dcfg, null, { copy: true }) : null;
+    DIR.resKey = key;
+    return DIR.res;
+  }
+  function estText(n) { var s = n * 6; return s < 90 ? 'ca. ' + Math.max(10, Math.round(s / 10) * 10) + ' s' : 'ca. ' + Math.round(s / 60) + ' min'; }
+  // The line above "Hier suchen": what the map shows at this zoom, loading, "Gegend laden"
+  function renderHint() {
+    var el = $('zoomHint');
+    if (!el || !map) return;
+    var z = map.getZoom(), d = DZ(), reg = (d.zoom && d.zoom.region) || 9, nah = (d.zoom && d.zoom.nah) || 12, la = d.laden_ab_zoom || 10;
+    var txt, btn = '';
+    if (DIR.job || DIR.queue.length) {
+      txt = 'Lade Gegend ' + Math.min(DIR.done + 1, DIR.total || 1) + ' von ' + (DIR.total || 1) + ' …';
+      btn = '<button type="button" data-h="cancel" aria-label="Abbrechen">✕</button>';
+    } else if (z < reg) txt = 'Zoom ' + z + ': nur die großen Ziele – für mehr hineinzoomen';
+    else if (z < nah) txt = 'Zoom ' + z + ': Orte mit Sternen und Ausflugsziele – ab Zoom ' + nah + ' alle';
+    else txt = 'Zoom ' + z + ': alle Ziele – „Hier suchen“ für Kurzinfos';
+    var n = DIR.missing.length;
+    if (!btn && dirOn() && n && z < la) {
+      if (n <= (d.max_kacheln_knopf || 150)) btn = '<button type="button" data-h="load">Gegend laden (' + estText(n) + ')</button>';
+      else txt += ' · zum Laden näher heran';
+    }
+    if (!btn && DIR.lastErr && n && z >= la) btn = '<button type="button" data-h="retry">Nochmal laden</button>';
+    el.innerHTML = '<span>' + esc(txt) + '</span>' + btn;
+    el.hidden = false;
+    var tooBig = C.circleFor(viewBbox()).radius > (cfg.suche.max_halbdiagonale_m || 10000);
+    $('btnHere').classList.toggle('dim', tooBig);
+  }
+  function dirMetaHtml() {
+    var d = DZ();
+    if (!d.aktiv) return '';
+    var keys = Object.keys(DIR.index), kb = 0, oldest = Infinity;
+    keys.forEach(function (k) { kb += DIR.index[k].kb || 0; oldest = Math.min(oldest, DIR.index[k].stand); });
+    return '<h3>🗺 Verzeichnis (Ziele auf der Karte)</h3>' +
+      '<p class="small">' + (keys.length ? keys.length + ' Stücke gespeichert (' + (kb >= 1024 ? (Math.round(kb / 102.4) / 10).toString().replace('.', ',') + ' MB' : kb + ' KB') + '), ältestes vom ' + esc(dateText(oldest)) + '.' : 'Noch nichts gespeichert.') +
+      ' Ein Stück ist etwa 25 × 28 km und dauert etwa 5 Sekunden. Ab Zoom ' + (d.laden_ab_zoom || 10) + ' lädt die Karte die Gegend selbst, weiter draußen mit „Gegend laden“. Gespeichert ' + (d.cache_tage || 30) + ' Tage.</p>' +
+      (DIR.job || DIR.queue.length ? '<p class="small">Lädt gerade: ' + Math.min(DIR.done + 1, DIR.total || 1) + ' von ' + (DIR.total || 1) + '.</p>' : '') +
+      (DIR.lastErr ? '<p class="small">Letzter Fehler: ' + esc(DIR.lastErr) + '</p>' : '') +
+      '<label class="opt"><input type="checkbox" id="useDir"' + (settings.verzeichnis !== false ? ' checked' : '') + '> Gegend laden und auf der Karte zeigen</label>' +
+      '<div class="actions"><button class="btn" type="button" data-a="dirreload">Ausschnitt neu laden</button>' +
+      '<button class="btn" type="button" data-a="dirclear">Verzeichnis löschen</button></div>';
+  }
+  function dirReload() {
+    var tiles = C.directoryTiles(viewBbox(), cfg), max = DZ().max_kacheln_knopf || 150;
+    if (tiles.length > max) { toast('Ausschnitt zu groß zum Neuladen – bitte näher heranzoomen.', 3500); return; }
+    DIR.err = {};
+    dirQueue(tiles, true);
+    toast('Lädt ' + tiles.length + ' Stücke neu (' + estText(tiles.length) + ').', 3000);
+  }
+  function dirClear() {
+    if (!confirm('Gespeichertes Verzeichnis löschen?')) return;
+    dirCancel();
+    DIR.mem = {}; DIR.index = {}; DIR.res = null; DIR.resKey = '';
+    IDB.delPrefix('vz:').then(function () { refreshSettings(); scheduleCities(); scheduleMarkers(); scheduleDir(); });
+    toast('Verzeichnis gelöscht');
+  }
 
   // ------------------------------------------------------ city stars (v0.7.0)
   // Zoomed out: cities with stars and big sights outside cities instead of single places (PROJEKT.md 6c).
@@ -374,16 +532,24 @@
     var b = viewBbox(), dy = (b.north - b.south) * 0.1, dx = (b.east - b.west) * 0.1;
     var pad = { south: b.south - dy, north: b.north + dy, west: b.west - dx, east: b.east + dx };
     var list = [], waiting = false, seen = {};
+    // v0.8: the directory (loaded in the phone) where there is one
+    var dr = dirResult(b);
+    if (dr) {
+      dr.staedte.forEach(function (x) { if (x.st && x.z <= z && C.inBbox(x, pad)) { seen[x.q] = 1; list.push({ k: 'c', x: x, s: x.st, vz: true }); } });
+      dr.orte.forEach(function (x) { if (x.z <= z && C.inBbox(x, pad) && !seen[x.q]) { seen[x.q] = 1; list.push({ k: 'o', x: x, s: x.st, vz: true }); } });
+    }
     landsIn(pad).forEach(function (l) {
       var d = cityData[l.code];
       if (!d || d.then) { waiting = true; loadCityLand(l.code).then(scheduleCities); return; }
       (d.staedte || []).forEach(function (x) {
         var st = C.cityStars(x, cfg);
-        if (st >= (big ? 2 : 1) && C.inBbox(x, pad) && !seen[x.q]) { seen[x.q] = 1; list.push({ k: 'c', x: x, s: st }); }
+        if (st >= (big ? 2 : 1) && C.inBbox(x, pad) && !seen[x.q] && !dirCovers(x)) { seen[x.q] = 1; list.push({ k: 'c', x: x, s: st }); }
       });
-      if (!big) (d.orte || []).forEach(function (x) { if (C.inBbox(x, pad) && !seen[x.q]) { seen[x.q] = 1; list.push({ k: 'o', x: x, s: C.ortStars(x.score, cfg) }); } });
+      if (!big) (d.orte || []).forEach(function (x) { if (C.inBbox(x, pad) && !seen[x.q] && !dirCovers(x)) { seen[x.q] = 1; list.push({ k: 'o', x: x, s: C.ortStars(x.score, cfg) }); } });
     });
-    list.sort(function (a, b2) { return (b2.s - a.s) || ((a.k === 'c') ? -1 : 0) - ((b2.k === 'c') ? -1 : 0) || (b2.x.score - a.x.score); });
+    // towns with ★★/★★★ first: their best sight lies at the same spot and must not hide the town name (v0.8)
+    var rank = function (it) { return it.s + (it.k === 'c' && it.s >= 2 ? 10 : 0) + (it.k === 'c' ? 0.5 : 0); };
+    list.sort(function (a, b2) { return (rank(b2) - rank(a)) || (b2.x.score - a.x.score); });
     // v0.7.2: in the visible section at most max_sichtbar markers, the most important first
     var nIn = 0, maxIn = c.max_sichtbar || 40;
     list = list.slice(0, c.max_marker || 160).filter(function (it) { if (!C.inBbox(it.x, b)) return true; return nIn++ < maxIn; });
@@ -393,7 +559,7 @@
       var x = it.x, pt = map.latLngToContainerPoint([x.lat, x.lon]);
       var hw = it.k === 'c' ? (7 + 5 * it.s) : DOT_R_IC[it.s], hh = it.k === 'c' ? 9 : DOT_R_IC[it.s];
       var dot = { x1: pt.x - hw, y1: pt.y - hh, x2: pt.x + hw, y2: pt.y + hh };
-      if (!free(dot) && it.s < 3) return;  // crowded: drop smaller ones entirely
+      if (!free(dot) && (it.s < 3 || it.k === 'o')) return;  // crowded: drop smaller ones entirely (and sights on top of a town)
       var px = it.k === 'c' && it.s >= 2 ? 13 : 12, w = textWidth(x.name, px) + 4;
       var right = { x1: pt.x + hw + 2, y1: pt.y - px * 0.75, x2: pt.x + hw + 2 + w, y2: pt.y + px * 0.75 };
       var left = { x1: pt.x - hw - 2 - w, y1: right.y1, x2: pt.x - hw - 2, y2: right.y2 };
@@ -406,12 +572,12 @@
         : '<span class="mk mk' + it.s + ' ic">' + (iconSvg(C.iconFor(x.typ, cfg)) || iconSvg('denkmal')) + '</span>' + lbl;
       var m = L.marker([x.lat, x.lon], {
         icon: L.divIcon({ className: 'mk-wrap', html: html, iconSize: [36, 36], iconAnchor: [18, 18] }),
-        keyboard: false, title: x.name, zIndexOffset: it.s * 400 + (it.k === 'c' ? 100 : 0)
+        keyboard: false, title: x.name, zIndexOffset: it.s * 400 + (it.k === 'c' ? 1500 : 0)
       });
       m.on('click', function (e) { if (e.originalEvent) L.DomEvent.stopPropagation(e); openCity(it); });
       cityLayer.addLayer(m);
     });
-    if (!list.length && !waiting && !cityHintShown) {
+    if (!list.length && !waiting && !cityHintShown && !dirOn()) {
       var none = landsIn(b).length === 0;
       cityHintShown = true;
       toast(none ? 'Stadt-Sterne gibt es für dieses Land noch nicht.' : 'Noch keine Stadt-Sterne geladen – ⚙ → Stadt-Sterne.', 3500);
@@ -433,13 +599,14 @@
           return '<li><button type="button" data-a="citytop" data-i="' + i + '">' + esc(t[0]) + '</button></li>';
         }).join('') + '</ul>';
     } else {
-      html = '<p class="stars s' + it.s + '">' + C.starsText(it.s) + ' <span class="small">Ausflugsziel außerhalb von Städten · ' + esc(C.typeInfo(x.typ, cfg).label) + (x.unesco ? ' · UNESCO-Welterbe' : '') + '</span></p>';
+      html = '<p class="stars s' + it.s + '">' + (it.s ? C.starsText(it.s) : '·') + ' <span class="small">' + (it.vz ? (x.stadt ? 'in ' + esc(x.stadt) : 'Ausflugsziel') : 'Ausflugsziel außerhalb von Städten') + ' · ' + esc(C.typeInfo(x.typ, cfg).label) + (x.unesco ? ' · UNESCO-Welterbe' : '') + '</span></p>';
     }
     html += '<div class="actions">' +
-        '<button class="btn primary" type="button" data-a="cityzoom">🔍 Hineinzoomen</button>' +
+        (map.getZoom() < ((DZ().zoom && DZ().zoom.nah) || 12) || it.k === 'c' ? '<button class="btn primary" type="button" data-a="cityzoom">🔍 Hineinzoomen</button>' : '<button class="btn primary" type="button" data-a="cityhere">Hier suchen</button>') +
         '<a class="btn" href="' + C.cityWikiUrl(x.q) + '" target="_blank" rel="noopener">Wikipedia</a>' +
       '</div>' +
-      '<p class="small">Stadt-Sterne sind eine Faustregel: Summe der bekanntesten Sehenswürdigkeiten (Wikidata, Sprachversionen und Denkmalstatus)' + (stand ? ', Stand ' + esc(stand) : '') + '.</p>';
+      (it.vz ? '<p class="small">Sterne sind eine Faustregel: wie bekannt es ist (Wikipedia-Sprachversionen, Seitenaufrufe, Wikivoyage) und – bei Orten – was es dort zu sehen gibt. „Hier suchen“ bringt Kurzinfos und „Erzähl mir davon“.</p>'
+        : '<p class="small">Stadt-Sterne sind eine Faustregel: Summe der bekanntesten Sehenswürdigkeiten (Wikidata, Sprachversionen und Denkmalstatus)' + (stand ? ', Stand ' + esc(stand) : '') + '.</p>');
     openSheet(x.name, html);
     $('sheetBody').removeAttribute('data-place');
     $('sheetBody').setAttribute('data-view', 'city');
@@ -771,7 +938,8 @@
       userPos = { lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy };
       drawUser();
       map.setView([userPos.lat, userPos.lon], cfg.suche.standort_zoom || 14, { animate: false });
-      doSearch(viewBbox());
+      // v0.8: only move the map; the search starts with "Hier suchen"
+      toast('Karte steht beim Standort. Ausschnitt einstellen, dann „Hier suchen“ tippen.', 3500);
     }, function (err) {
       $('btnLocate').disabled = false;
       var msg = err.code === 1 ? 'Standortzugriff verweigert. Bitte in den Browser-Einstellungen für diese Seite erlauben.'
@@ -1297,6 +1465,7 @@
       '<div class="actions"><button class="btn primary wide" type="button" data-a="prep"' + (km2 > maxKm2 || prep ? ' disabled' : '') + '>' +
         (prep ? 'Wird gerade vorbereitet …' : 'Kartenausschnitt vorbereiten') + '</button></div>' +
       areasHtml() +
+      dirMetaHtml() +
       cityMetaHtml() +
       fullscreenHtml() +
       '<h3>Karten-App für „In Google Maps“ und „Pin“</h3>' +
@@ -1699,6 +1868,14 @@
   function bindUI() {
     $('btnLocate').addEventListener('click', locate);
     $('btnHere').addEventListener('click', searchHere);
+    $('zoomHint').addEventListener('click', function (e) {
+      var b = e.target.closest && e.target.closest('[data-h]');
+      if (!b) return;
+      var h = b.getAttribute('data-h');
+      if (h === 'cancel') dirCancel();
+      else if (h === 'load') { DIR.err = {}; dirQueue(DIR.missing, true); }
+      else if (h === 'retry') { DIR.err = {}; DIR.lastErr = ''; scheduleDir(); }
+    });
     $('status').addEventListener('click', function (e) {
       var el = e.target.closest('[data-a]');
       if (!el) return;
@@ -1824,6 +2001,12 @@
       } else if (a === 'cityall') {
         cityCompute((SC().laender || []).map(function (l) { return l.code; }));
         refreshSettings();
+      } else if (a === 'cityhere') {
+        closeSheet(); searchHere();
+      } else if (a === 'dirreload') {
+        closeSheet(); dirReload();
+      } else if (a === 'dirclear') {
+        dirClear();
       } else if (a === 'cityzoom' && cityCur) {
         cityZoom(cityCur.x.lat, cityCur.x.lon, cityCur.k === 'c' ? 14 : 15);
       } else if (a === 'citytop' && cityCur) {
@@ -1843,6 +2026,7 @@
       if (e.target.name === 'assistent') { settings.assistent = e.target.value; saveSettings(); refreshSettings(); toast(aiNow().name + ' gewählt'); return; }
       if (e.target.id === 'useOsm') { settings.osm = e.target.checked; saveSettings(); toast('Gilt ab der nächsten Suche'); return; }
       if (e.target.id === 'autoFs') { settings.vollbild = e.target.checked; saveSettings(); return; }
+      if (e.target.id === 'useDir') { settings.verzeichnis = e.target.checked; saveSettings(); DIR.resKey = ''; if (!e.target.checked) dirCancel(); scheduleCities(); scheduleMarkers(); scheduleDir(); return; }
       if (e.target.id === 'showCities') { settings.staedte = e.target.checked; saveSettings(); renderMarkers(); scheduleCities(); return; }
       if (e.target.id === 'hideHeard') { settings.hideHeard = e.target.checked; saveSettings(); renderAll(); return; }
       if (e.target.name === 'kapp') {

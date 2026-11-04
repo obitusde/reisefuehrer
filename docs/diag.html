@@ -105,6 +105,26 @@
 <p><a class="btn secondary" href="index.html">Zur App</a></p>
 
 <!-- ======================= v0.7 ======================= -->
+<section class="card" id="v08">
+  <h2>v0.8 – Verzeichnis, Zoom-Stufen, Installieren</h2>
+  <a class="btn secondary" href="index.html">App öffnen</a>
+  <div id="checklist8"></div>
+  <h2 style="margin-top:16px">Installieren (neue App-Kennung)</h2>
+  <p class="muted">Die App hat jetzt eine neue Kennung. Chrome sollte „App installieren“ wieder anbieten.</p>
+  <div class="results" id="inst8"></div>
+  <label for="v8err">Text der Fehlermeldung (falls eine kam)</label>
+  <input type="text" id="v8err" placeholder="z. B. „App konnte nicht geöffnet werden“" autocomplete="off">
+  <label for="v8note">Notiz (z. B. Ziel fehlt, falsche Sterne)</label>
+  <input type="text" id="v8note" placeholder="z. B. „Arnsberg sollte ★★ haben“" autocomplete="off">
+  <h2 style="margin-top:16px">Zusammenfassung v0.8</h2>
+  <textarea id="v8summary" readonly rows="12"></textarea>
+  <div class="row">
+    <button id="v8copy" type="button">Kopieren</button>
+    <button id="v8share" type="button" class="secondary">Teilen</button>
+  </div>
+  <div class="status" id="v8status"></div>
+</section>
+
 <section class="card" id="v072">
   <h2>v0.7.2 – Gemini</h2>
   <p class="muted">Drei Arten, Gemini mit einem Text zu öffnen. Jeden Knopf antippen, zurück in den Browser wechseln und ankreuzen, was passiert ist.</p>
@@ -319,7 +339,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '0.7.2';
+  var VERSION = '0.8.0';
   var KEY = 'rf.diag.v1';
 
   var TESTS = [
@@ -630,14 +650,14 @@
   init();
 })();
 </script>
-<script src="core.js?v=0.7.2"></script>
+<script src="core.js?v=0.8.0"></script>
 <script>
 /* v0.2 diagnostics: API checks, gold list, manual checklist, summary */
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
   var KEY = 'rf.diag.v2';
-  var DV = '0.7.2';
+  var DV = '0.8.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function load() { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { return {}; } }
@@ -912,7 +932,7 @@
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
-  var KEY = 'rf.diag.v3', DV = '0.7.2';
+  var KEY = 'rf.diag.v3', DV = '0.8.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -989,7 +1009,7 @@
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
-  var KEY = 'rf.diag.v6', DV = '0.7.2';
+  var KEY = 'rf.diag.v6', DV = '0.8.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -1090,7 +1110,7 @@
 /* v0.7 diagnostics: installability, checklist (symbols, city stars) */
 (function () {
   'use strict';
-  var KEY = 'rf.diag.v7', DV = '0.7.2';
+  var KEY = 'rf.diag.v7', DV = '0.8.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -1177,7 +1197,7 @@
 <script>
 /* v0.7.2: how can Gemini be opened with a text? */
 (function () {
-  var KEY = 'rf.diag.v72', DV = '0.7.2';
+  var KEY = 'rf.diag.v72', DV = '0.8.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -1227,6 +1247,56 @@
   $('v72share').addEventListener('click', function () {
     if (navigator.share) navigator.share({ text: $('v72summary').value }).catch(function () {});
   });
+  render();
+})();
+</script>
+<script>
+/* v0.8: acceptance of the directory */
+(function () {
+  var KEY = 'rf.diag.v8', DV = '0.8.0';
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
+  st.checks = st.checks || {};
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) { /* ignore */ } }
+  var CHECKS = [
+    ['z1', 'Sauerland auf Zoom 10: „Lade Gegend …“, danach Orte und Ausflugsziele (z. B. Arnsberg, Burg Bilstein, Kahler Asten)'],
+    ['z2', 'Weiter draußen (Zoom 8–9): Knopf „Gegend laden“ geht'],
+    ['z3', 'Ab Zoom 12: Ziele ohne „Hier suchen“ (z. B. Museen in Le Brassus)'],
+    ['z4', 'Fort Fun erscheint als Ausflugsziel'],
+    ['z5', 'Die Zeile über „Hier suchen“ passt zum Zoom; „Hier suchen“ ist grau, wenn man zu weit draußen ist'],
+    ['z6', '„Mein Standort“ springt nur, gesucht wird erst mit „Hier suchen“'],
+    ['z7', 'Nie zu viele Punkte auf einmal, aber wo wenig ist, alles'],
+    ['z8', '⚙ → Verzeichnis: „Ausschnitt neu laden“ geht']
+  ];
+  var RES = [['ok', 'Installiert, öffnet vom Startbildschirm'], ['fehler', 'Fehlermeldung'], ['schon', 'Wieder „bereits installiert“'], ['nein', 'Nicht versucht']];
+  $('checklist8').innerHTML = CHECKS.map(function (c) {
+    return '<label class="check"><input type="checkbox" data-c8="' + c[0] + '"' + (st.checks[c[0]] ? ' checked' : '') + '> ' + esc(c[1]) + '</label>';
+  }).join('');
+  $('inst8').innerHTML = RES.map(function (r) {
+    return '<label><input type="radio" name="inst8" value="' + r[0] + '"' + (st.inst === r[0] ? ' checked' : '') + '> ' + esc(r[1]) + '</label>';
+  }).join('');
+  $('v8err').value = st.err || '';
+  $('v8note').value = st.note || '';
+  document.addEventListener('change', function (e) {
+    var c = e.target.getAttribute && e.target.getAttribute('data-c8');
+    if (c) { st.checks[c] = e.target.checked; save(); render(); }
+    if (e.target.name === 'inst8') { st.inst = e.target.value; save(); render(); }
+  });
+  $('v8err').addEventListener('input', function () { st.err = this.value; save(); render(); });
+  $('v8note').addEventListener('input', function () { st.note = this.value; save(); render(); });
+  function render() {
+    var L = ['Reiseführer Diagnose v' + DV + ' – Abnahme v0.8', 'Datum: ' + new Date().toLocaleString('de-DE'), 'Gerät: ' + navigator.userAgent, ''];
+    CHECKS.forEach(function (c) { L.push((st.checks[c[0]] ? '[x] ' : '[ ] ') + c[1]); });
+    var r = RES.filter(function (x) { return x[0] === st.inst; })[0];
+    L.push('', 'Installieren: ' + (r ? r[1] : 'nicht angegeben') + (st.err ? ' – „' + st.err + '“' : ''));
+    if (st.note) L.push('Notiz: ' + st.note);
+    $('v8summary').value = L.join('\n');
+  }
+  $('v8copy').addEventListener('click', function () {
+    navigator.clipboard.writeText($('v8summary').value).then(function () { $('v8status').textContent = 'Kopiert.'; }, function () { $('v8status').textContent = 'Kopieren nicht möglich.'; });
+  });
+  $('v8share').addEventListener('click', function () { if (navigator.share) navigator.share({ text: $('v8summary').value }).catch(function () {}); });
   render();
 })();
 </script>

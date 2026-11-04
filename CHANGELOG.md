@@ -1,5 +1,36 @@
 # Changelog
 
+## v0.8.0 – 04.11.2026 – Verzeichnis wie ein Reiseführer
+
+Wunsch Nutzer: Zu wenige Ziele (im ganzen Sauerland nichts); wie ein Reiseführer oder der Michelin auf der Karte: je nach Maßstab sehen, was es gibt und was sich lohnt, auch Ausflugsziele, Freizeitparks (Fort Fun) und lokale Museen. Nicht stundenlang rechnen, sondern bei Bedarf für die Gegend laden. „Mein Standort“ soll auch nicht gleich suchen. Installieren geht nicht.
+
+- **Das Handy lädt die Gegend selbst**: in Stücken von etwa 25 × 28 km (0,25°), etwa 5 Sekunden je Stück. Je Stück holt es von Wikidata alles mit Koordinaten und Wikipedia-Artikel, dazu für die besten Kandidaten Seitenaufrufe (Wikipedia, 30 Tage) und Wikivoyage. Gespeichert werden nur Orte ab 1000 Einwohnern und Sehenswürdigkeiten, etwa 20–30 KB je Stück, 30 Tage lang.
+  - Ab Zoom 10 lädt die Karte selbst (höchstens 24 Stücke auf einmal), weiter draußen mit dem Knopf „Gegend laden“ (bis 150 Stücke, mit Zeitangabe). Abbrechen mit ✕.
+  - ⚙ → „🗺 Verzeichnis“: Zahl und Größe der gespeicherten Stücke, „Ausschnitt neu laden“, „Verzeichnis löschen“, ein Schalter zum Abstellen.
+- **Drei Stufen wie im Reiseführer**:
+  - Zoom ≤ 8: Orte mit ★★/★★★ und Sehenswürdigkeiten mit ★★★ (z. B. Genf, Lausanne, Chillon, Lavaux).
+  - Zoom 9–11: dazu Orte mit ★, Sehenswürdigkeiten mit ★★ und Ausflugsziele mit ★ (Burgen, Klöster, Berge, Seen, Freizeitparks).
+  - Ab Zoom 12: alle Ziele ab 4 Punkten, auch lokale Museen, ohne „Hier suchen“. Antippen zeigt Sterne, Art, Wikipedia und „Hier suchen“ für Kurzinfos und „Erzähl mir davon“.
+- **Wie gerechnet wird**:
+  - Sehenswürdigkeit: Sprachversionen (doppelt gewichtet), Denkmal/UNESCO, Art und Seitenaufrufe. Sterne ab 7,5 / 8,5 / 10,5 Punkten; Natur und Freizeitparks ab 5,5 / 7 / 9.
+  - Ort: wie bekannt er ist (Sprachversionen, Seitenaufrufe, Wikivoyage, Hauptstadt) plus was es zu sehen gibt (die 5 besten Ziele, nur der Teil über 5 Punkten). Sterne ab 16 / 22 / 30. **Ohne Sehenswertes kein Stern**: Thonon oder Brilon sind bekannt, haben aber kaum Ziele.
+  - Ein sehr gutes Ziel (★★ und mehr) bekommt einen eigenen Punkt und zählt für seinen Ort nur zu 60 %. So bekommt ein Dorf nicht drei Sterne, nur weil ein berühmtes Schloss darin steht.
+  - Doppelte (Gebäude und Sammlung, gleicher Name in 500 m) werden zusammengelegt.
+- **Freizeitparks wie Ausflugsziele**: bekommen immer Seitenaufrufe (Fort Fun hat nur 4 Sprachversionen) und die Sterne-Schwellen der Natur.
+- **Zeile über „Hier suchen“**: sagt, was die Karte bei diesem Zoom zeigt („Zoom 9: Orte mit Sternen und Ausflugsziele – ab Zoom 12 alle“), zeigt das Laden und den Knopf „Gegend laden“. „Hier suchen“ ist grau, wenn der Ausschnitt zu groß ist.
+- **„📍 Mein Standort“** springt nur noch zum Standort; gesucht wird erst mit „Hier suchen“.
+- **Installieren**: neue App-Kennung im Manifest (`id`), damit Chrome eine kaputte alte Installation nicht mehr für „bereits installiert“ hält.
+- **Länderdateien aus v0.7** (`docs/staedte/*.json`) bleiben und gelten dort, wo das Verzeichnis noch nichts geladen hat.
+- **Diagnose**: neuer Abschnitt v0.8 mit Checkliste und Feld für das Installieren.
+
+### Annahmen/Abweichungen
+
+- **Korridormodus kommt danach** (PROJEKT.md 6b). Das Verzeichnis war wichtiger (Wunsch Nutzer), und der Korridor baut darauf auf.
+- **Getestet mit echten Daten auf GitHub** (Waadtland, Sauerland, Vallée de Joux), auf dem Handy noch nicht. Sauerland: 10 Stücke in 51 s; Arnsberg ★, Schmallenberg ★, Burg Bilstein, Schloss Berleburg, Kahler Asten. Audemars Piguet Museum und Espace Horloger sind ab Zoom 12 dabei. Fort Fun stand mit 3,9 Punkten knapp unter der Grenze; mit Seitenaufrufen sollte es jetzt darüber liegen (noch nicht mit echten Daten geprüft).
+- **Datenmenge**: Eine Gegend wie das Waadtland sind gut 30 Stücke, etwa 3 Minuten und einige MB Download über Mobilfunk. Gespeichert bleiben etwa 150 KB.
+- **Ob die neue App-Kennung das Installieren repariert, ist nicht sicher.** Falls nicht: Text der Meldung in Diagnose → v0.8.
+- **Rochers de Naye** fehlt weiterhin auf der Stufe Region (zu wenig Punkte als Natur).
+
 ## v0.7.2 – 04.11.2026 – Nicht zu viele Punkte, Freizeitparks, Gemini
 
 Wunsch Nutzer: Auf der Karte nicht zu viele Elemente; wenn viel da ist, nur die wichtigen, wenn wenig da ist (Le Brassus), alles. Freizeitparks wie Fort Fun als Ausflugsziele. In den Einstellungen zwischen Claude und Gemini wählen.

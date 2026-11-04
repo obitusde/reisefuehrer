@@ -333,6 +333,8 @@ score = 3.0 * log10(1 + sprachversionen)
 
 **Stand:** Umgesetzt in v0.7.0, vorgezogen auf Wunsch des Nutzers. Abweichungen: Berechnung je Land als `docs/staedte/<LAND>.json`, zusätzlich im Handy unter ⚙ neu berechenbar; Stadt-Marker bis Zoom 11. Details im CHANGELOG.
 
+**Stand v0.8.0:** Erweitert zum **Verzeichnis wie ein Reiseführer** (Wunsch Nutzer: wie Michelin auf der Karte, je nach Maßstab; auch Ausflugsziele und lokale Museen). Das Handy lädt die Gegend selbst in Stücken von 0,25° (alle Wikidata-Einträge mit Wikipedia-Artikel, Seitenaufrufe und Wikivoyage für die besten Kandidaten), speichert sie 30 Tage und zeigt drei Stufen: Zoom ≤ 8 die großen, 9–11 Orte mit Sternen und Ausflugsziele, ab 12 alle Ziele ohne „Hier suchen“. Die Länderdateien aus v0.7 bleiben für Gegenden, die noch nicht geladen sind. Der Korridormodus (6b) folgt danach. Details im CHANGELOG.
+
 ---
 
 ## 7. UI-Spezifikation (mobil zuerst)
