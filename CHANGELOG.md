@@ -12,7 +12,10 @@ Wunsch Nutzer: Die Strecke nach Genf hat sehr lange gedauert; nur wirklich wicht
 - **Ein Halt je Ort**: Ist ein Ort ein Halt, stehen seine Sehenswürdigkeiten nicht extra in der Liste (sie stehen im Fenster des Ortes). Von einem Ort ohne eigenen Halt nur die beste Sehenswürdigkeit.
 - Listenkopf: Fahrzeit, Zahl der Halte und ab wie vielen Sternen.
 - Die Grenzen stehen in `config.json` → `korridor` (`kmh`, `sterne_ab`, `halte_pro_stunde`, `min_halte`, `max_halte`, `min_sprachen`, `kachel`, `kachel_grad`). Strecken ab 1 Stunde laden in Stücken von 1°.
-- **Geprüft mit echten Daten** (GitHub, vor „ein Halt je Ort“ und den 1°-Stücken): Fahrrad Morges → Genf 36 s statt 2 Minuten (4 Stücke), 5 Halte; Auto Morges → Lyon 4 Minuten statt 9 (22 Stücke), 4 Halte (Lausanne, Genf, Lyon, Fourvière).
+- **Geprüft mit echten Daten** (GitHub, erstes Laden):
+  - Fahrrad Morges → Genf: 11 s statt 2 Minuten (1 Stück), 5 Halte: Genfersee, Fondation Martin Bodmer, Palais des Nations, Musée Ariana, Genf.
+  - Auto Morges → Lyon: 82 s statt 9 Minuten (7 Stücke), 4 Halte: Lausanne, Palais des Nations, Genf, Lyon.
+  - Alle Halte innerhalb ihrer Breite und nach km sortiert. Auf dem Handy noch nicht gemessen.
 
 ## v0.9.1 – 04.11.2026 – Strecke: nichts hinter dem Start
 
