@@ -58,6 +58,9 @@ jobs:
           curl -sSfL -o land.osm.pbf "https://download.geofabrik.de/${LAND}-latest.osm.pbf"
           curl -sSfL -o land.poly "https://download.geofabrik.de/${LAND}.poly"
           STAND=$(osmium fileinfo -g header.option.osmosis_replication_timestamp land.osm.pbf || true)
+          # the real national border (admin_level=2) from the data itself; the .poly is only the fallback
+          osmium tags-filter land.osm.pbf r/admin_level=2 -o grenze.osm.pbf --overwrite
+          osmium export grenze.osm.pbf -f geojson --geometry-types=polygon -o grenze.geojson --overwrite || echo "Grenze: Export mit Fehlern"
           echo "STAND=$STAND" >> "$GITHUB_ENV"
           echo "Datei: $(du -h land.osm.pbf | cut -f1), Stand der Daten: ${STAND:-?}, Laden: $(( $(date +%s) - s )) s"
       - name: Sehenswürdigkeiten filtern
@@ -71,7 +74,8 @@ jobs:
         run: |
           rm -rf "docs/osm/$CODE"
           U=$(echo "$CODE" | tr a-z A-Z)
-          node tools/osm-extract.mjs poi.geojsonseq "docs/osm/$CODE" --poly=land.poly --stand="$STAND" --land="$U" --teil="$TEIL" \
+          node tools/osm-extract.mjs poi.geojsonseq "docs/osm/$CODE" --grenze=grenze.geojson --poly=land.poly --stand="$STAND" --land="$U" --teil="$TEIL" \
+            --karte="5.95,46.10,6.35,46.40;7.40,47.45,7.80,47.70" \
             --quelle="OpenStreetMap-Mitwirkende (ODbL), Auszug Geofabrik $LAND"
           echo "Dateien: $(ls "docs/osm/$CODE" | wc -l), $(du -sh "docs/osm/$CODE" | cut -f1)"
       - name: Speichern

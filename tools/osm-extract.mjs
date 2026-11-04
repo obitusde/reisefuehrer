@@ -78,7 +78,34 @@ function inRing(x, y, pts) {
 function inPoly(x, y, rings) {
   return rings.some((r) => !r.hole && inRing(x, y, r.pts)) && !rings.some((r) => r.hole && inRing(x, y, r.pts));
 }
-const poly = opt.poly ? readPoly(opt.poly) : null;
+// The real national border from the OSM data itself (admin_level=2, exported by osmium as GeoJSON), better than the
+// simplified Geofabrik .poly (first run: tiles in the middle of Geneva were missing). Rings in the same form as readPoly.
+function readBorder(file, iso) {
+  const fc = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const f = (fc.features || []).find((x) => { const p = x.properties || {}; return p['ISO3166-1'] === iso || p['ISO3166-1:alpha2'] === iso; });
+  if (!f || !f.geometry) return null;
+  const polys = f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.type === 'MultiPolygon' ? f.geometry.coordinates : [];
+  const rings = [];
+  polys.forEach((pg) => pg.forEach((ring, i) => rings.push({ hole: i > 0, pts: ring })));
+  return rings.length ? { rings, name: (f.properties || {}).name || iso } : null;
+}
+let poly = null;
+if (opt.grenze) {
+  const b = readBorder(opt.grenze, opt.land || '');
+  if (b) { poly = b.rings; console.log('Grenze aus OSM: ' + b.name + ', ' + b.rings.length + ' Ringe, ' + b.rings.reduce((a, r) => a + r.pts.length, 0) + ' Punkte'); }
+  else console.log('Grenze aus OSM nicht gefunden (' + opt.land + '), nehme .poly');
+}
+if (!poly && opt.poly) { poly = readPoly(opt.poly); console.log('Grenze aus .poly: ' + poly.length + ' Ringe'); }
+// note: a hole of one polygon must not cut another polygon (enclaves): check per outer ring with its own holes
+function inBorder(x, y) {
+  if (!poly) return true;
+  let cur = null;
+  for (const r of poly) {
+    if (!r.hole) { if (cur && cur.in && !cur.inHole) return true; cur = { in: inRing(x, y, r.pts), inHole: false }; }
+    else if (cur && cur.in && inRing(x, y, r.pts)) cur.inHole = true;
+  }
+  return !!(cur && cur.in && !cur.inHole);
+}
 const box = boxArg ? (([w, s, e, n]) => ({ west: w, south: s, east: e, north: n }))(boxArg.split(',').map(Number)) : null;
 
 function centerOf(geom) {
@@ -126,7 +153,7 @@ if (poly) {
   for (let la = Math.floor(s / size) * size; la < n; la += size) {
     for (let lo = Math.floor(w / size) * size; lo < e; lo += size) {
       const pts = [[lo, la], [lo + size, la], [lo, la + size], [lo + size, la + size], [lo + size / 2, la + size / 2]];
-      if (pts.every(([x, y]) => inPoly(x, y, poly))) covered[keyOf(la + size / 2, lo + size / 2)] = 0;
+      if (pts.every(([x, y]) => inBorder(x, y))) covered[keyOf(la + size / 2, lo + size / 2)] = 0;
     }
   }
   for (const k of Object.keys(tiles)) {
@@ -148,6 +175,18 @@ for (const [k, els] of Object.entries(tiles)) {
     const [la, lo] = k.split(',').map(Number);
     if (la < box.north && la + size > box.south && lo < box.east && lo + size > box.west) { sub.tiles++; sub.els += els.length; sub.bytes += b; sub.gz += g; }
   }
+}
+// small map in the log to check the border tiles: # with data, o empty, . not from files (Overpass)
+if (poly && opt.karte) {
+  opt.karte.split(';').forEach((b) => {
+    const [w, s, e, n] = b.split(',').map(Number);
+    console.log('Karte ' + b + ' (# Datei mit Orten, o Datei leer, . Overpass):');
+    for (let la = n - size / 2; la > s; la -= size) {
+      let row = '  ' + (Math.floor(la / size) * size).toFixed(2) + ' ';
+      for (let lo = w + size / 2; lo < e; lo += size) { const k = keyOf(la, lo); row += !(k in covered) ? ' .' : covered[k] ? ' #' : ' o'; }
+      console.log(row);
+    }
+  });
 }
 const nOrte = Object.values(tiles).reduce((a, x) => a + x.length, 0);
 const index = { land: opt.land || '', stand: opt.stand || '', erstellt: new Date().toISOString(), quelle: opt.quelle || 'OpenStreetMap-Mitwirkende (ODbL), Auszug Geofabrik',
