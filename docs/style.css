@@ -348,3 +348,15 @@ details.why summary { min-height: 40px; display: flex; align-items: center; colo
 .status.busy .secs { flex: none; }
 .status.busy .st-btns { flex: none; margin: 0 0 0 auto; gap: 6px; }
 .status.busy .st-btn { min-height: 34px; padding: 0 10px; font-size: 13px; }
+
+/* v0.8.2: one line only for the hint; the list of the directory */
+.zhint { white-space: nowrap; }
+.zhint span { min-width: 0; }
+.vz-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.vz-item .it-stars { flex: 0 0 52px; }
+.vz-main { display: flex; flex-direction: column; min-width: 0; }
+.vz-main b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vz-main .small { color: var(--muted); }
+
+/* v0.8.2: messages centred with left:50% only got half the screen width and wrapped early – use the whole width */
+.toast, .zhint { width: max-content; }

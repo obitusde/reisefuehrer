@@ -1,8 +1,8 @@
-/* Reiseführer – app (v0.8.1). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.8.2). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.8.1';
+  var VERSION = '0.8.2';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
@@ -70,6 +70,7 @@
   var map, markerLayer, searchCircle, userMarker, userAcc, areaLayer;
   // v0.7.1: a search hit only moves the map; the search runs when "Hier suchen" is tapped
   var pendingHit = null, hitMarker = null;
+  var busyQuiet = false;
   var run = null;      // running search {t0, text, phase, control, cancelled, timer}
   var areas = [];      // prepared areas (index; places are in IndexedDB "area:<id>")
   var prep = null;     // running preparation
@@ -342,7 +343,7 @@
   }
 
   var markerTimer = null;
-  function scheduleMarkers() { clearTimeout(markerTimer); markerTimer = setTimeout(renderMarkers, 120); }
+  function scheduleMarkers() { clearTimeout(markerTimer); markerTimer = setTimeout(function () { renderMarkers(); if (!last || !last.places) renderList(); renderHint(); }, 120); }
 
   // ------------------------------------------------------ directory (v0.8)
   // Like a printed guide: the phone loads the region in tiles from Wikidata (core.prepareDirectoryTile; about 25 × 28 km,
@@ -397,7 +398,13 @@
   }
   function dirRun() {
     if (DIR.job) { renderHint(); return; }
-    if (!DIR.queue.length) { DIR.total = 0; renderHint(); return; }
+    if (!DIR.queue.length) {
+      var had = DIR.total;
+      DIR.total = 0; renderHint();
+      if (had && !DIR.cancelled) dirDone(false);
+      DIR.cancelled = false;
+      return;
+    }
     var t = DIR.queue.shift(), k = C.tileKey(t), ctl = { cancelled: false };
     DIR.job = { k: k, control: ctl };
     renderHint();
@@ -415,7 +422,7 @@
     });
   }
   function dirCancel() {
-    DIR.queue = []; DIR.total = 0;
+    DIR.queue = []; DIR.total = 0; DIR.cancelled = true;
     if (DIR.job) DIR.job.control.cancelled = true;
     DIR.err = {}; // a later zoom may try again
     renderHint();
@@ -432,6 +439,27 @@
     DIR.resKey = key;
     return DIR.res;
   }
+  // v0.8.2: everything of the directory in the section, most important first (the map shows the first max_sichtbar)
+  function dirInView(b) {
+    var dr = dirResult(b);
+    if (!dr) return [];
+    var z = map.getZoom(), out = [];
+    dr.staedte.forEach(function (x) { if (x.st && C.inBbox(x, b)) out.push({ k: 'c', x: x, s: x.st, vz: true }); });
+    dr.orte.forEach(function (x) {
+      if (!C.inBbox(x, b) || x.st < settings.minStars) return;
+      if (settings.kat && (settings.kat === '__osm' || C.typeInfo(x.typ, cfg).kategorie !== settings.kat)) return;
+      out.push({ k: 'o', x: x, s: x.st, vz: true });
+    });
+    // what belongs to this zoom first (like the guide), then the rest by stars and points: where there is little, all of it
+    var rank = function (it) { return (it.x.z <= z ? 100 : 0) + it.s * 10 + (it.k === 'c' && it.s >= 2 ? 15 : 0); };
+    return out.sort(function (a, b2) { return (rank(b2) - rank(a)) || (b2.x.score - a.x.score); });
+  }
+  // after loading: a short message, and the list shows what was found
+  function dirDone(already) {
+    var n = dirInView(viewBbox()).length;
+    toast((already ? 'Schon geladen' : 'Fertig') + ': ' + (n ? n + ' Ziele im Ausschnitt' : 'hier nichts gefunden'), 3000);
+    if (!last || !last.places) renderList();
+  }
   function estText(n) { var s = n * 6; return s < 90 ? 'ca. ' + Math.max(10, Math.round(s / 10) * 10) + ' s' : 'ca. ' + Math.round(s / 60) + ' min'; }
   // The line above "Hier suchen": what the map shows at this zoom and what "Hier suchen" will do (v0.8.1)
   function detailOk(b) { return C.circleFor(b).radius <= (cfg.suche.max_halbdiagonale_m || 10000); }
@@ -441,17 +469,20 @@
     var z = map.getZoom(), d = DZ(), reg = (d.zoom && d.zoom.region) || 9, nah = (d.zoom && d.zoom.nah) || 12;
     var b = viewBbox(), n = DIR.missing.length, tooMany = dirOn() && n > (d.max_kacheln_knopf || 150), small = detailOk(b);
     var txt, btn = '';
-    var what = z < reg ? 'nur die großen Ziele' : z < nah ? 'Orte mit Sternen und Ausflugsziele' : 'alle Ziele';
-    if (busy && run && !run.quiet) txt = 'Suche läuft … (Stand in der Zeile unter der Karte)';
+    if (busy && !busyQuiet) txt = 'Suche läuft …';
     else if (DIR.job || DIR.queue.length) {
-      txt = 'Lade Gegend ' + Math.min(DIR.done + 1, DIR.total || 1) + ' von ' + (DIR.total || 1) + ' …';
+      txt = 'Lade Gegend ' + Math.min(DIR.done + 1, DIR.total || 1) + '/' + (DIR.total || 1) + ' …';
       btn = '<button type="button" data-h="cancel" aria-label="Abbrechen">✕</button>';
-    } else if (tooMany && !small) txt = 'Zoom ' + z + ': zu weit draußen zum Suchen – näher heranzoomen';
-    else if (small) txt = 'Zoom ' + z + ': „Hier suchen“ lädt alle Ziele mit Kurzinfos';
-    else if (dirOn() && n) txt = 'Zoom ' + z + ': „Hier suchen“ lädt ' + what + ' (' + estText(n) + ')';
-    else txt = 'Zoom ' + z + ': ' + what + (z < nah ? ' – ab Zoom ' + nah + ' alle' : '');
+    } else if (tooMany && !small) txt = 'Zu weit draußen – näher heranzoomen';
+    else if (dirOn() && n) txt = '„Hier suchen“ lädt die Gegend (' + estText(n) + ')';
+    else if (small && !(last && last.places && C.bboxOverlaps(last.bbox || b, b))) txt = '„Hier suchen“: alle Ziele mit Kurzinfos';
+    else {
+      var cnt = dirOn() ? dirInView(b).length : 0;
+      txt = 'Zoom ' + z + (dirOn() ? ' · ' + (cnt ? cnt + ' Ziele im Ausschnitt' : 'hier nichts gefunden') : '');
+    }
     el.innerHTML = '<span>' + esc(txt) + '</span>' + btn;
     el.hidden = false;
+    if (!busy) $('btnHere').textContent = DIR.job || DIR.queue.length ? 'Lade ' + Math.min(DIR.done + 1, DIR.total || 1) + '/' + (DIR.total || 1) + ' …' : 'Hier suchen';
     $('btnHere').classList.toggle('dim', tooMany && !small);
   }
   function dirMetaHtml() {
@@ -518,11 +549,7 @@
     var pad = { south: b.south - dy, north: b.north + dy, west: b.west - dx, east: b.east + dx };
     var list = [], waiting = false, seen = {};
     // v0.8: the directory (loaded in the phone) where there is one
-    var dr = dirResult(b);
-    if (dr) {
-      dr.staedte.forEach(function (x) { if (x.st && x.z <= z && C.inBbox(x, pad)) { seen[x.q] = 1; list.push({ k: 'c', x: x, s: x.st, vz: true }); } });
-      dr.orte.forEach(function (x) { if (x.z <= z && C.inBbox(x, pad) && !seen[x.q]) { seen[x.q] = 1; list.push({ k: 'o', x: x, s: x.st, vz: true }); } });
-    }
+    dirInView(pad).forEach(function (it) { if (!seen[it.x.q]) { seen[it.x.q] = 1; list.push(it); } });
     landsIn(pad).forEach(function (l) {
       var d = cityData[l.code];
       if (!d || d.then) { waiting = true; loadCityLand(l.code).then(scheduleCities); return; }
@@ -532,9 +559,10 @@
       });
       if (!big) (d.orte || []).forEach(function (x) { if (C.inBbox(x, pad) && !seen[x.q] && !dirCovers(x)) { seen[x.q] = 1; list.push({ k: 'o', x: x, s: C.ortStars(x.score, cfg) }); } });
     });
-    // towns with ★★/★★★ first: their best sight lies at the same spot and must not hide the town name (v0.8)
-    var rank = function (it) { return it.s + (it.k === 'c' && it.s >= 2 ? 10 : 0) + (it.k === 'c' ? 0.5 : 0); };
-    list.sort(function (a, b2) { return (rank(b2) - rank(a)) || (b2.x.score - a.x.score); });
+    // directory first, in its order (dirInView: this zoom's level first, towns with ★★/★★★ before their sights);
+    // the country files only where nothing is loaded
+    var rank = function (it) { return it.vz ? 0 : 1; };
+    list = list.map(function (it, i) { it.i = i; return it; }).sort(function (a, b2) { return (rank(a) - rank(b2)) || (a.vz ? a.i - b2.i : (b2.s - a.s) || (b2.x.score - a.x.score)); });
     // v0.7.2: in the visible section at most max_sichtbar markers, the most important first
     var nIn = 0, maxIn = c.max_sichtbar || 40;
     list = list.slice(0, c.max_marker || 160).filter(function (it) { if (!C.inBbox(it.x, b)) return true; return nIn++ < maxIn; });
@@ -599,7 +627,7 @@
   function cityZoom(lat, lon, z) {
     closeSheet();
     map.setView([lat, lon], z, { animate: false });
-    toast('Ausschnitt einstellen, dann „Hier suchen“ tippen.', 3500);
+    toast('Jetzt „Hier suchen“ tippen', 3000);
   }
 
   // ---- (re)compute in the phone, one country after the other
@@ -752,11 +780,12 @@
   }
 
   function setBusy(b, quiet) {
-    busy = b;
+    busy = b; busyQuiet = b && !!quiet;
+    if (!quiet) {
+      $('btnHere').disabled = b; $('btnLocate').disabled = b;
+      $('btnHere').textContent = b ? 'Suche …' : 'Hier suchen';
+    }
     renderHint();
-    if (quiet) return;
-    $('btnHere').disabled = b; $('btnLocate').disabled = b;
-    $('btnHere').textContent = b ? 'Suche …' : 'Hier suchen';
   }
 
   function secText(ms) { return ms == null ? '' : ms < 1000 ? '<1 s' : Math.round(ms / 1000) + ' s'; }
@@ -805,7 +834,7 @@
     var maxR = cfg.suche.max_halbdiagonale_m || 10000;
     if (circle.radius > maxR) {
       var sz = C.bboxSize(b);
-      toast('Ausschnitt zu groß (' + kmText(sz.w) + ' × ' + kmText(sz.h) + '). Bitte näher heranzoomen.', 4000);
+      toast('Zu groß (' + kmText(sz.w) + ' × ' + kmText(sz.h) + ') – näher heran', 4000);
       return;
     }
     var area = !o.force && findArea(b);
@@ -878,7 +907,7 @@
       if (last.bbox !== b) return; // another search in between
       doSearch(b, { force: true, quiet: true, lateMs: info.ms, onDone: function () {
         var n = last.places.length - before;
-        toast('OpenStreetMap ergänzt' + (n > 0 ? ': ' + n + ' Orte dazu' : ' (keine neuen Orte)') + '.', 4000);
+        toast(n > 0 ? 'OSM: ' + n + ' Orte dazu' : 'OSM: nichts Neues', 4000);
       } });
     })(0);
   }
@@ -925,7 +954,7 @@
       drawUser();
       map.setView([userPos.lat, userPos.lon], cfg.suche.standort_zoom || 14, { animate: false });
       // v0.8: only move the map; the search starts with "Hier suchen"
-      toast('Karte steht beim Standort. Ausschnitt einstellen, dann „Hier suchen“ tippen.', 3500);
+      toast('Standort – jetzt „Hier suchen“', 3000);
     }, function (err) {
       $('btnLocate').disabled = false;
       var msg = err.code === 1 ? 'Standortzugriff verweigert. Bitte in den Browser-Einstellungen für diese Seite erlauben.'
@@ -967,6 +996,18 @@
 
   function renderList() {
     var ul = $('list');
+    var vzl = (!last || !last.places) && map && dirOn() ? dirInView(viewBbox()) : [];
+    if (vzl.length) {
+      DIR.listed = vzl.slice(0, 40);
+      ul.innerHTML = '<li class="empty small">' + vzl.length + ' Ziele' + (vzl.length > 40 ? ' (die 40 wichtigsten)' : '') + ' · Kurzinfos: näher heran</li>' +
+        DIR.listed.map(function (it, i) {
+          var x = it.x, typ = it.k === 'c' ? 'Ort' : C.typeInfo(x.typ, cfg).label;
+          return '<li class="vz-item" data-vz="' + i + '"><span class="it-stars s' + it.s + '">' + (it.s ? C.starsText(it.s) : '·') + '</span>' +
+            '<span class="vz-main"><b>' + esc(x.name) + '</b><span class="small">' + esc(typ) + (x.stadt ? ' · ' + esc(x.stadt) : '') + '</span></span></li>';
+        }).join('');
+      if (!run) setStatus('');
+      return;
+    }
     if (!last || !last.places) {
       ul.innerHTML = '<li class="empty">Schiebe und zoome die Karte an die Gegend, die dich interessiert (oder <b>◎ Mein Standort</b> oder 🔍), dann tippe auf <b>Hier suchen</b>.<br>' +
         'Geladen wird nur der sichtbare Kartenausschnitt, und erst, wenn du tippst.</li>';
@@ -1799,7 +1840,7 @@
         interactive: false, keyboard: false, zIndexOffset: 2500
       }).addTo(map);
     }
-    toast('Karte steht bei „' + h.name + '“. Ausschnitt einstellen, dann „Hier suchen“ tippen.', 4000);
+    toast('Jetzt Ausschnitt wählen, dann „Hier suchen“', 4000);
   }
   /** "Hier suchen": search the visible section; after a sight was searched, open it if it is in the list. */
   function searchHere() {
@@ -1809,12 +1850,12 @@
       DIR.err = {}; DIR.lastErr = '';
       dirEnsure();
       var max = DZ().max_kacheln_knopf || 150;
-      if (DIR.missing.length > max && !small) { toast('Zu weit draußen zum Suchen – bitte näher heranzoomen.', 3500); return; }
+      if (DIR.missing.length > max && !small) { toast('Zu weit draußen – näher heranzoomen', 3500); return; }
       if (DIR.missing.length) dirQueue(DIR.missing.slice(0, max));
     }
     if (!small) {
-      if (!dirOn()) toast('Ausschnitt zu groß. Bitte näher heranzoomen.', 3500);
-      else if (!DIR.missing.length) toast('Diese Gegend ist schon geladen. Für Kurzinfos näher heranzoomen.', 3500);
+      if (!dirOn()) toast('Zu groß – näher heranzoomen', 3500);
+      else if (!DIR.missing.length) dirDone(true);
       return;
     }
     doSearch(b, { onDone: h ? function () {
@@ -1874,6 +1915,8 @@
     });
 
     $('list').addEventListener('click', function (e) {
+      var vz = e.target.closest('.vz-item');
+      if (vz && DIR.listed) { var it = DIR.listed[+vz.getAttribute('data-vz')]; if (it) openCity(it); return; }
       var li = e.target.closest('.item');
       if (!li) return;
       var id = li.getAttribute('data-id');

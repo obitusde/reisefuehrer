@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.8.2 – 04.11.2026 – Bei jedem Zoom genug Ziele, klares Ende, Meldungen in einer Zeile
+
+Wunsch Nutzer: Bei jeder Zoomstufe eine angemessene Anzahl Sehenswürdigkeiten, außer wo es nichts gibt (im Sauerland bei Zoom 10 kamen nur Burg Altena und die Dechenhöhle). Nicht klar, ob die Suche vorbei ist. Besser auf Zeilenumbrüche in Meldungen achten.
+
+- **Bei jedem Zoom die wichtigsten bis zu 40 Ziele im Ausschnitt** (Verzeichnis): zuerst, was zur Zoomstufe gehört (wie bisher: weit draußen die ★★★, dann Orte mit Sternen und Ausflugsziele), dann der Rest nach Sternen und Punkten. Wo wenig ist (Sauerland), kommen auch Ziele ohne Stern dazu (z. B. Burg Klusenstein, Schloss Wocklum, AquaMagis); wo viel ist (Waadtland), bleibt es bei den besten. Der Filter „Alle Orte / ab ★“ gilt auch hier. Orte mit ★★/★★★ stehen vor ihren eigenen Sehenswürdigkeiten.
+- **Klares Ende**: Beim Laden zeigt der Knopf „Lade 3/8 …“, danach kommt „Fertig: 37 Ziele im Ausschnitt“ (oder „hier nichts gefunden“). Die Zeile über dem Knopf zeigt dann „Zoom 10 · 37 Ziele im Ausschnitt“.
+- **Die Liste zeigt das Gefundene**, solange keine Suche mit Kurzinfos da ist: die 40 wichtigsten im Ausschnitt mit Sternen, Art und Ort. Antippen öffnet das Ziel (Wikipedia, „Hier suchen“).
+- **Meldungen in einer Zeile**: Meldungen und die Zeile über „Hier suchen“ nutzen jetzt die ganze Bildschirmbreite (vorher nur die halbe, darum brachen sie fast immer um) und sind kürzer, z. B. „Standort – jetzt „Hier suchen““, „Zu weit draußen – näher heranzoomen“, „OSM: 12 Orte dazu“. Während einer Suche steht „Suche läuft …“.
+
+### Annahmen/Abweichungen
+
+- **Höchstens 40 Punkte je Ausschnitt** (`staedte.max_sichtbar`), dazu fallen Punkte weg, die auf einem wichtigeren liegen. Die Zahl ist ein Startwert.
+- Mit dem Filter „ab ★“ (Voreinstellung) bleiben Ziele ohne Stern weg; im Sauerland erscheint mehr mit „Alle Orte“.
+- Mit echten Daten auf dem Handy noch nicht geprüft, nur mit den Testdaten.
+
 ## v0.8.1 – 04.11.2026 – Nichts lädt von selbst, Teilen statt Auswahl
 
 Wunsch Nutzer: Nichts automatisch laden, immer erst Gegend und Zoom auf der Karte einstellen und erst suchen, wenn ich es sage. „Erzähl mir davon“ immer über Android „Teilen“, ohne Menü für Claude und Gemini. „Warte auf OpenStreetMap“ kürzer und ohne Zeilenumbruch. Unklar war, wann „Hier suchen“ und wann das Menü.
