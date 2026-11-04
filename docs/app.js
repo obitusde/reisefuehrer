@@ -1,8 +1,8 @@
-/* Reiseführer – app (v0.11.1). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.12.0). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.11.1';
+  var VERSION = '0.12.0';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
@@ -46,6 +46,14 @@
       get: function (k) { return tx('readonly', function (s) { return s.get(k); }).catch(function () { return mem[k]; }); },
       set: function (k, v) { return tx('readwrite', function (s) { s.put(v, k); }).catch(function () { mem[k] = v; }); },
       del: function (k) { delete mem[k]; return tx('readwrite', function (s) { s.delete(k); }).catch(function () {}); },
+      // v0.12.0: many entries in one transaction (the country package: ~2000 tiles)
+      setMany: function (entries) {
+        return tx('readwrite', function (s) { entries.forEach(function (e) { s.put(e[1], e[0]); }); }).catch(function () { entries.forEach(function (e) { mem[e[0]] = e[1]; }); });
+      },
+      delMany: function (keys) {
+        keys.forEach(function (k) { delete mem[k]; });
+        return tx('readwrite', function (s) { keys.forEach(function (k) { s.delete(k); }); }).catch(function () {});
+      },
       // deletes all keys that start with the prefix (e.g. "osm:" = OpenStreetMap tiles)
       delPrefix: function (pre) {
         Object.keys(mem).forEach(function (k) { if (k.indexOf(pre) === 0) delete mem[k]; });
@@ -188,6 +196,7 @@
     renderAll();
     loadAreas();
     dirInit();
+    paketInit();
   }
 
   // v0.8.3: the list under the map can be switched off (map on the whole screen)
@@ -216,7 +225,13 @@
     areaLayer = L.layerGroup().addTo(map);
     markerLayer = L.layerGroup().addTo(map);
     cityLayer = L.layerGroup().addTo(map);
-    map.on('zoomend', function () { renderMarkers(); scheduleCities(); });
+    // v0.12.0: zoom and scale bottom right (the instructions and the diagnosis speak of zoom levels)
+    L.control.scale({ metric: true, imperial: false, position: 'bottomright', maxWidth: 90 }).addTo(map);
+    var ZoomLbl = L.Control.extend({ options: { position: 'bottomright' }, onAdd: function () { var d = L.DomUtil.create('div', 'zoomlbl'); d.id = 'zoomLbl'; return d; } });
+    new ZoomLbl().addTo(map);
+    var zoomText = function () { var el = document.getElementById('zoomLbl'); if (el) el.textContent = 'Zoom ' + map.getZoom(); };
+    zoomText();
+    map.on('zoomend', function () { zoomText(); renderMarkers(); scheduleCities(); });
     map.on('moveend', function () {
       scheduleCities();
       scheduleMarkers();
@@ -320,6 +335,8 @@
         shown.push({ id: 'vz:' + x.q, name: x.name, lat: x.lat, lon: x.lon, sterne: x.st, score: x.score, vzScore: x.score, typ: x.typ, vz: x });
       });
     }
+    // v0.12.0: close up, the OSM points of the country package (grey rings), where no search covers the section
+    paketOsmInView(vb, pad, shown, dr).forEach(function (p) { shown.push(p); });
     shown = shown.sort(function (a, b) {
       return ((b.id === selectedId) - (a.id === selectedId)) || placeRank(a, b);
     }).slice(0, mc.max_sichtbar || 30);
@@ -354,6 +371,7 @@
       m.on('click', function (e) {
         if (e.originalEvent) L.DomEvent.stopPropagation(e);
         if (p.vz && p.vz.q) openDirPlace({ k: 'o', x: p.vz, s: p.vz.st, vz: true });
+        else if (p.osmEl) openOsmPlace(p.osmEl);
         else select(p.id, 'map');
       });
       markerLayer.addLayer(m);
@@ -381,7 +399,7 @@
     var dy = (b.north - b.south) * f, dx = (b.east - b.west) * f;
     return { south: b.south - dy, north: b.north + dy, west: b.west - dx, east: b.east + dx };
   }
-  function dirStale(k) { var e = DIR.index[k]; return !e || Date.now() - e.stand > (DZ().cache_tage || 30) * 864e5; }
+  function dirStale(k) { var e = DIR.index[k]; return !e || (!e.p && Date.now() - e.stand > (DZ().cache_tage || 30) * 864e5); } // v0.12.0: package tiles (p) stay
   function dirKeyAt(lat, lon) { return C.tileKey(C.directoryTiles({ south: lat, north: lat + 1e-6, west: lon, east: lon + 1e-6 }, cfg)[0]); }
   function dirCovers(x) { var k = dirKeyAt(x.lat, x.lon); return !!(DIR.mem[k] && DIR.mem[k].items); }
   function scheduleDir() { clearTimeout(dirTimer); dirTimer = setTimeout(dirEnsure, 400); }
@@ -652,7 +670,7 @@
   function detailAsk(b) {
     if (ROUTE || busy || (cfg.suche && cfg.suche.frage_details === false)) return false;
     if (!detailOk(b)) { DETAIL.dismissed = false; return false; }
-    if (DETAIL.dismissed) return false;
+    if (DETAIL.dismissed || paketCovers(b)) return false; // v0.12.0: in the package everything is there already
     var c = { lat: (b.south + b.north) / 2, lon: (b.west + b.east) / 2 };
     return !(last && last.bbox && C.inBbox(c, last.bbox));
   }
@@ -668,7 +686,9 @@
       txt = 'Lade Gegend ' + Math.min(DIR.done + 1, DIR.total || 1) + '/' + (DIR.total || 1) + ' …';
       btn = '<button type="button" data-h="cancel" aria-label="Abbrechen">✕</button>';
     } else if (tooMany && !small) txt = 'Zu weit draußen – näher heranzoomen';
+    else if (PAKET.job) txt = 'Paket ' + PAKET.job.name + ': ' + PAKET.job.text + (PAKET.job.text === 'Lade' ? ' ' + PAKET.job.pct + ' %' : ' …');
     else if (osmPending()) txt = 'OSM lädt noch – es kommt mehr';
+    else if (paketAsk(b)) { var pd = paketAsk(b); txt = 'Paket ' + pd.name + ' ins Handy laden?'; btn = '<button type="button" data-h="pkload" data-land="' + esc(pd.land) + '">Laden</button><button type="button" data-h="pkno" data-land="' + esc(pd.land) + '" aria-label="Nein">✕</button>'; }
     else if (detailAsk(b)) { txt = 'Details laden?'; btn = '<button type="button" data-h="detail">Laden</button><button type="button" data-h="detailx" aria-label="Nicht laden">✕</button>'; }
     else if (regionAsk()) { txt = 'Gegend laden?'; btn = '<button type="button" data-h="detail">Laden</button><button type="button" data-h="regionx" aria-label="Nicht laden">✕</button>'; }
     // v0.8.3: otherwise no hint (wish of the user); v0.9.3: also no „Hier suchen lädt die Gegend“
@@ -682,7 +702,178 @@
     var o = last && !ROUTE && last.src && last.src.osm;
     return !!(o && Date.now() - (last.time || 0) < 20 * 60000 && (o.state === 'timeout' || o.state === 'skip') && !o.lateMs && !(o.late && !o.late.ok));
   }
-  // ------------------------------------------------------ OSM files (v0.11.1)
+  // ------------------------------------------------------ country package (v0.12.0)
+  // Everything the map shows for a country (directory tiles + OSM points) in one file docs/paket/<code>/paket.json,
+  // built by the GitHub Action paket.yml. Stored like loaded tiles (IndexedDB vz:<tile>, osm:<v>:<tile>), so the rest of the
+  // app works as before – only nothing has to be loaded any more. Photos and Wikipedia texts: when a place is opened.
+  var PAKET = { meta: {}, cover: {}, osmMem: {}, osmReading: {}, job: null };
+  function PK() { return cfg.paket || {}; }
+  function paketList() { return PK().laender || []; }
+  function paketInit() {
+    return Promise.all(paketList().map(function (d) {
+      return IDB.get('paket:' + d.land).then(function (m) {
+        if (!m) return;
+        PAKET.meta[d.land] = m;
+        (m.cover || []).forEach(function (k) { PAKET.cover[k] = d.land; });
+      });
+    })).then(function () { scheduleMarkers(); renderHint(); refreshSettings(); }).catch(function () {});
+  }
+  function viewCenter(b) { return { lat: (b.south + b.north) / 2, lon: (b.west + b.east) / 2 }; }
+  // the package whose area contains the middle of the section (installed or not)
+  function paketAt(b) { var c = viewCenter(b); return paketList().filter(function (d) { return d.bbox && C.inBbox(c, d.bbox); })[0] || null; }
+  // the middle of the section is covered by an installed package (its directory tiles)
+  function paketCovers(b) { var c = viewCenter(b), e = DIR.index[dirKeyAt(c.lat, c.lon)]; return !!(e && e.p); }
+  function paketAsk(b) {
+    if (ROUTE || busy || PAKET.job) return null;
+    var d = paketAt(b);
+    if (!d || PAKET.meta[d.land]) return null;
+    var no = LS.get('rf.paketNein', {}) || {};
+    return no[d.land] ? null : d;
+  }
+  function readBody(res, total, onPct) {
+    if (!res.body || !res.body.getReader) return res.text();
+    var reader = res.body.getReader(), chunks = [], got = 0;
+    var dec = new TextDecoder();
+    function pump() {
+      return reader.read().then(function (r) {
+        if (r.done) return chunks.join('') + dec.decode();
+        got += r.value.length;
+        chunks.push(dec.decode(r.value, { stream: true }));
+        if (total) onPct(Math.min(99, Math.round(got / total * 100)));
+        return pump();
+      });
+    }
+    return pump();
+  }
+  // one tap: newest index; same state -> "aktuell", else download, store, show
+  function paketInstall(d) {
+    if (PAKET.job) return;
+    var job = PAKET.job = { land: d.land, name: d.name, pct: 0, text: 'Prüfe …' };
+    var tick = function () { renderHint(); if (!$('sheet').hidden && $('sheetBody').getAttribute('data-view') === 'data') dataSheet(); };
+    tick();
+    fetch(d.pfad + 'index.json?t=' + Date.now(), { cache: 'no-store' }).then(function (r) {
+      if (!r.ok) throw new Error(r.status === 404 ? 'noch kein Paket auf dem Server' : 'HTTP ' + r.status);
+      return r.json();
+    }).then(function (idx) {
+      var cur = PAKET.meta[d.land];
+      if (cur && cur.stand === idx.stand) return { same: true, idx: idx };
+      job.text = 'Lade'; job.mb = ((idx.gzip || idx.bytes || 0) / 1048576).toFixed(1).replace('.', ',');
+      tick();
+      return fetch(d.pfad + (idx.datei || 'paket.json') + '?s=' + encodeURIComponent(idx.stand)).then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        // Pages sends it gzipped: the received bytes are about the gzip size
+        var total = +(r.headers.get('content-length') || 0) || idx.gzip || 0;
+        var lastT = 0;
+        return readBody(r, total, function (pct) { job.pct = pct; if (Date.now() - lastT > 300) { lastT = Date.now(); tick(); } });
+      }).then(function (txt) {
+        job.text = 'Speichere'; job.pct = 100; tick();
+        return { p: JSON.parse(txt), idx: idx };
+      });
+    }).then(function (r) {
+      if (r.same) { toast('Paket ' + d.name + ' ist aktuell (vom ' + dateText(r.idx.stand) + ')', 3500); return; }
+      return paketStore(d, r.p, r.idx).then(function (m) {
+        toast('Paket ' + d.name + ' geladen: ' + (m.ziele || 0).toLocaleString('de-DE') + ' Ziele', 3500);
+      });
+    }).catch(function (e) {
+      toast('Paket ' + d.name + ': ' + (e && e.message || 'Fehler') + (navigator.onLine === false ? ' – kein Internet' : ''), 5000);
+    }).then(function () {
+      PAKET.job = null; tick(); scheduleMarkers(); scheduleCities();
+    });
+  }
+  function paketStore(d, p, idx) {
+    var stand = Date.parse(p.stand) || Date.now(), entries = [], v = (cfg.osm && cfg.osm.version) || 1;
+    var old = PAKET.meta[d.land];
+    Object.keys(p.verzeichnis || {}).forEach(function (k) {
+      var r = { t: k, stand: stand, items: p.verzeichnis[k], paket: d.land };
+      entries.push(['vz:' + k, r]);
+      DIR.mem[k] = r;
+      DIR.index[k] = { stand: stand, n: r.items.length, kb: 0, p: d.land };
+    });
+    (p.osm_cover || []).forEach(function (k) { entries.push(['osm:' + v + ':' + k, { t: Date.now(), s: p.osm_stand, els: (p.osm && p.osm[k]) || [] }]); });
+    var meta = { land: d.land, name: d.name, stand: p.stand, osm_stand: p.osm_stand, installiert: Date.now(), cover: p.osm_cover || [],
+      ziele: idx.verzeichnis && idx.verzeichnis.ziele, orte: idx.verzeichnis && idx.verzeichnis.orte, osm_orte: idx.osm && idx.osm.orte, bytes: idx.bytes, gzip: idx.gzip };
+    entries.push(['vz:index', DIR.index]);
+    entries.push(['paket:' + d.land, meta]);
+    return IDB.setMany(entries).then(function () {
+      PAKET.meta[d.land] = meta;
+      if (old) Object.keys(PAKET.cover).forEach(function (k) { if (PAKET.cover[k] === d.land) delete PAKET.cover[k]; });
+      meta.cover.forEach(function (k) { PAKET.cover[k] = d.land; });
+      PAKET.osmMem = {};
+      DIR.res = null; DIR.resKey = ''; DIR.missing = [];
+      try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* ignore */ }
+      scheduleDir();
+      return meta;
+    });
+  }
+  function paketDelete(d) {
+    var m = PAKET.meta[d.land];
+    if (!m || !confirm('Paket ' + d.name + ' aus dem Handy löschen? Die Karte lädt dann wieder online.')) return;
+    var v = (cfg.osm && cfg.osm.version) || 1, keys = ['paket:' + d.land];
+    Object.keys(DIR.index).forEach(function (k) { if (DIR.index[k].p === d.land) { keys.push('vz:' + k); delete DIR.index[k]; delete DIR.mem[k]; } });
+    (m.cover || []).forEach(function (k) { keys.push('osm:' + v + ':' + k); delete PAKET.cover[k]; });
+    delete PAKET.meta[d.land];
+    PAKET.osmMem = {};
+    IDB.delMany(keys).then(function () { return IDB.set('vz:index', DIR.index); }).then(function () {
+      DIR.res = null; DIR.resKey = ''; dataSheet(); scheduleMarkers(); scheduleCities(); scheduleDir();
+      toast('Paket ' + d.name + ' gelöscht');
+    });
+  }
+  // OSM points of the package in the section (from IndexedDB, kept in memory), without those the directory already has
+  function paketOsmInView(vb, pad, shown, dr) {
+    var z = map.getZoom(), out = [];
+    if (z < (PK().osm_ab_zoom || 15) || !Object.keys(PAKET.cover).length || settings.minStars > 0) return out;
+    var c = viewCenter(vb);
+    if (last && last.bbox && C.inBbox(c, last.bbox)) return out; // the search there has its OSM places already
+    var v = (cfg.osm && cfg.osm.version) || 1, need = [];
+    var keys = C.osmTileKeys([C.circleFor(vb)], cfg, pad);
+    var haveQ = {}, haveN = {};
+    shown.forEach(function (p) { if (p.vz && p.vz.q) haveQ[p.vz.q] = 1; if (p.wikidata) haveQ[p.wikidata] = 1; haveN[String(C.displayName(p.name)).toLowerCase()] = 1; });
+    if (dr) dr.orte.forEach(function (x) { if (C.inBbox(x, pad)) { haveQ[x.q] = 1; haveN[String(C.displayName(x.name)).toLowerCase()] = 1; } });
+    keys.forEach(function (k) {
+      if (!PAKET.cover[k]) return;
+      var els = PAKET.osmMem[k];
+      if (!els) { if (!PAKET.osmReading[k]) need.push(k); return; }
+      els.forEach(function (e) {
+        if (!C.inBbox(e, pad) || (e.wd && haveQ[e.wd]) || haveN[String(C.displayName(e.name)).toLowerCase()]) return;
+        var typ = C.osmTypeOf(e, cfg);
+        if (settings.kat && settings.kat !== '__osm' && C.typeInfo(typ, cfg).kategorie !== settings.kat) return;
+        out.push({ id: 'osm:' + e.id, name: e.name, lat: e.lat, lon: e.lon, sterne: 0, score: 0, typ: typ, quellen: ['O'], osmEl: e });
+      });
+    });
+    if (need.length) {
+      need.forEach(function (k) { PAKET.osmReading[k] = 1; });
+      Promise.all(need.map(function (k) {
+        return IDB.get('osm:' + v + ':' + k).then(function (h) { PAKET.osmMem[k] = (h && h.els) || []; delete PAKET.osmReading[k]; });
+      })).then(scheduleMarkers);
+    }
+    return out;
+  }
+  function openOsmPlace(e) {
+    var p = C.buildOsmPlace(e, null, {}, cfg, map ? { lat: map.getCenter().lat, lon: map.getCenter().lng } : null, null);
+    p.sterne = 0;
+    DIR.places[p.id] = p;
+    selectedId = p.id; renderMarkers();
+    openPlace(p);
+  }
+  function paketSection() {
+    var list = paketList();
+    if (!list.length) return '';
+    return '<h3>📦 Länderpaket</h3>' + list.map(function (d) {
+      var m = PAKET.meta[d.land], job = PAKET.job && PAKET.job.land === d.land ? PAKET.job : null;
+      var head = m
+        ? '<p><b>' + esc(d.name) + '</b>: im Handy, Stand vom <b>' + esc(dateText(m.stand)) + '</b> (OSM vom ' + esc(dateText(m.osm_stand)) + ') · ' +
+          (m.ziele || 0).toLocaleString('de-DE') + ' Ziele, ' + (m.osm_orte || 0).toLocaleString('de-DE') + ' OSM-Punkte.</p>'
+        : '<p><b>' + esc(d.name) + '</b>: noch nicht im Handy. Mit dem Paket sind alle Sehenswürdigkeiten sofort auf der Karte, auch ohne Internet (die Karte selbst und Fotos/Texte brauchen Internet).</p>';
+      var bar = job ? '<p class="small">' + esc(job.text) + (job.text === 'Lade' ? ' (ca. ' + esc(job.mb || '?') + ' MB) ' + job.pct + ' %' : ' …') + '</p><div class="pk-bar"><span style="width:' + (job.pct || 3) + '%"></span></div>' : '';
+      return head + bar + '<div class="actions">' +
+        '<button class="btn primary" type="button" data-a="pkload" data-land="' + esc(d.land) + '"' + (PAKET.job ? ' disabled' : '') + '>' + (m ? 'Aktualisieren' : 'Herunterladen') + '</button>' +
+        (m ? '<button class="btn" type="button" data-a="pkdel" data-land="' + esc(d.land) + '"' + (PAKET.job ? ' disabled' : '') + '>Löschen</button>' : '') + '</div>';
+    }).join('') +
+      '<p class="small">„Aktualisieren“ holt das neueste Paket von der Webseite (ist es schon da, steht „aktuell“). Neu gebaut wird das Paket nur, wenn du es anstößt: ' +
+      (PK().aufbereiten_url ? '<a href="' + esc(PK().aufbereiten_url) + '" target="_blank" rel="noopener">Paket neu aufbereiten ↗</a> (GitHub, „Run workflow“, etwa 20 Minuten), danach hier „Aktualisieren“.' : '') + '</p>';
+  }
+
+  // ------------------------------------------------------ OSM files (v0.12.0)
   // Prepared by the GitHub Action osm-daten.yml (Geofabrik extract, monthly). index.json: {land, stand, erstellt, orte, kacheln: {key: count}}.
   var OSMF = { sets: [], ready: null };
   function osmFilesLoad(force) {
@@ -710,6 +901,11 @@
     return OSMF.ready;
   }
   function osmFileFor(key) {
+    var pl = PAKET.cover[key], pm = pl && PAKET.meta[pl];
+    if (pm) { // v0.12.0: from the country package in the phone
+      var v = (cfg.osm && cfg.osm.version) || 1;
+      return { stand: pm.osm_stand, load: function () { return IDB.get('osm:' + v + ':' + key).then(function (h) { return (h && h.els) || []; }); } };
+    }
     for (var i = 0; i < OSMF.sets.length; i++) {
       var s = OSMF.sets[i], n = s.idx && s.idx.kacheln[key];
       if (n === undefined || !s.idx) continue;
@@ -730,17 +926,17 @@
   }
   function osmFilesReady() { return OSMF.ready ? Promise.race([OSMF.ready, new Promise(function (r) { setTimeout(r, 4000); })]) : Promise.resolve(); }
   function dataSheet() {
-    var sets = OSMF.sets || [];
-    var html = '<h3>🧭 OpenStreetMap</h3>' + (sets.length ? sets.map(function (s) {
+    var sets = (OSMF.sets || []).filter(function (s) { return !PAKET.meta[s.d.land]; }); // with the package its OSM is in it
+    var html = paketSection() + (!sets.length ? '' : '<h3>🧭 OpenStreetMap</h3>' + sets.map(function (s) {
       if (!s.idx) return '<p><b>' + esc(s.d.name) + '</b>: noch keine Daten' + (s.fehler ? ' (' + esc(s.fehler) + ')' : '') + '. Dort fragt die App direkt bei OpenStreetMap (Overpass).</p>';
       return '<p><b>' + esc(s.d.name) + '</b>: Daten vom <b>' + esc(dateText(s.idx.stand)) + '</b> · ' + (s.idx.orte || 0).toLocaleString('de-DE') + ' Orte.<br>' +
         '<span class="small">Im Handy zuletzt geprüft: ' + esc(dateText(s.t)) + ', ' + esc(new Date(s.t).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })) +
         (s.fehler ? ' · Prüfen ging nicht: ' + esc(s.fehler) : '') + '</span></p>';
-    }).join('') : '<p>Keine vorbereiteten OSM-Daten eingestellt.</p>') +
+    }).join('') +
       '<p class="small">Außerhalb dieser Länder fragt die App direkt bei OpenStreetMap (Overpass); das kann dauern. Nichts wird von selbst erneuert: neu aufbereitet wird nur, wenn du es auf GitHub anstößt, und ins Handy kommt es mit „Jetzt prüfen“.</p>' +
       '<div class="actions"><button class="btn primary" type="button" data-a="osmcheck">Jetzt prüfen</button>' +
       ((cfg.osm && cfg.osm.aufbereiten_url) ? '<a class="btn" href="' + esc(cfg.osm.aufbereiten_url) + '" target="_blank" rel="noopener">Neu aufbereiten ↗</a>' : '') + '</div>' +
-      '<p class="small">„Neu aufbereiten“ öffnet GitHub: dort „Run workflow“ tippen. Nach etwa 3 Minuten hier „Jetzt prüfen“.</p>' +
+      '<p class="small">„Neu aufbereiten“ öffnet GitHub: dort „Run workflow“ tippen. Nach etwa 3 Minuten hier „Jetzt prüfen“.</p>') +
       dirMetaHtml();
     openSheet('Daten', html);
     $('sheetBody').setAttribute('data-view', 'data');
@@ -770,6 +966,8 @@
     if (!confirm('Gespeichertes Verzeichnis löschen?')) return;
     dirCancel();
     DIR.mem = {}; DIR.index = {}; DIR.res = null; DIR.resKey = '';
+    paketList().forEach(function (d) { delete PAKET.meta[d.land]; IDB.del('paket:' + d.land); });
+    PAKET.cover = {}; PAKET.osmMem = {};
     IDB.delPrefix('vz:').then(function () { refreshSettings(); scheduleCities(); scheduleMarkers(); scheduleDir(); });
     toast('Verzeichnis gelöscht');
   }
@@ -1301,17 +1499,25 @@
   function renderList() {
     var ul = $('list');
     if (ROUTE) { ul.innerHTML = routeListHtml(); if (!run) setStatus(''); return; }
-    var vzl = (!last || !last.places) && map && dirOn() ? dirInView(viewBbox()) : [];
+    // v0.12.0: the list follows the map – the directory of the section, unless a search covers its middle
+    var vbl = map ? viewBbox() : null, searched = last && last.places && last.bbox && vbl && C.inBbox(viewCenter(vbl), last.bbox);
+    var vzl = !searched && map && dirOn() ? dirInView(vbl) : [];
     if (vzl.length) {
       DIR.listed = vzl.slice(0, 40);
-      ul.innerHTML = '<li class="empty small">' + vzl.length + ' Ziele' + (vzl.length > 40 ? ' (die 40 wichtigsten)' : '') + ' · Kurzinfos: näher heran</li>' +
+      var topN = (cfg.marker && cfg.marker.top) || 5;
+      ul.innerHTML = '<li class="empty small">' + vzl.length + ' Ziele im Ausschnitt' + (vzl.length > 40 ? ' (die 40 wichtigsten)' : '') + ' · antippen für mehr</li>' +
         DIR.listed.map(function (it, i) {
-          var x = it.x, typ = it.k === 'c' ? 'Ort' : C.typeInfo(x.typ, cfg).label;
-          return '<li class="vz-item" data-vz="' + i + '"><span class="it-stars s' + it.s + '">' + (it.s ? C.starsText(it.s) : '·') + '</span>' +
-            '<span class="vz-main"><b>' + esc(C.displayName(x.name)) + '</b><span class="small">' + esc(typ) + (x.stadt ? ' · ' + esc(x.stadt) : '') + '</span></span></li>';
+          return (i === 0 ? '<li class="list-sec">Lohnt am meisten</li>' : i === topN ? '<li class="list-sec">Weitere</li>' : '') + vzRow(it, i);
         }).join('');
       if (!run) setStatus('');
       return;
+    }
+    function vzRow(it, i) {
+      return (function () {
+          var x = it.x, typ = it.k === 'c' ? 'Ort' : C.typeInfo(x.typ, cfg).label;
+          return '<li class="vz-item" data-vz="' + i + '"><span class="it-stars s' + it.s + '">' + (it.s ? C.starsText(it.s) : '·') + '</span>' +
+            '<span class="vz-main"><b>' + esc(C.displayName(x.name)) + '</b><span class="small">' + esc(typ) + (x.stadt ? ' · ' + esc(x.stadt) : '') + '</span></span></li>';
+      })();
     }
     if (!last || !last.places) {
       ul.innerHTML = '<li class="empty">Schiebe und zoome die Karte an die Gegend, die dich interessiert (oder <b>☰ → Mein Standort</b> / <b>Ort suchen</b>), dann tippe in der Zeile über der Karte auf <b>Laden</b>.<br>' +
@@ -2229,6 +2435,8 @@
       else if (h === 'detail') searchHere();
       else if (h === 'detailx') { DETAIL.dismissed = true; renderHint(); }
       else if (h === 'regionx') { REGION.dismissed = regionAsk(); renderHint(); }
+      else if (h === 'pkload') { var pd = paketList().filter(function (d) { return d.land === b.getAttribute('data-land'); })[0]; if (pd) paketInstall(pd); }
+      else if (h === 'pkno') { var no = LS.get('rf.paketNein', {}) || {}; no[b.getAttribute('data-land')] = 1; LS.set('rf.paketNein', no); renderHint(); toast('Später: ☰ → Daten', 2500); }
 
     });
     $('status').addEventListener('click', function (e) {
@@ -2376,6 +2584,9 @@
         dirClear();
       } else if (a === 'osmcheck') {
         osmCheck();
+      } else if (a === 'pkload' || a === 'pkdel') {
+        var pd2 = paketList().filter(function (d) { return d.land === el.getAttribute('data-land'); })[0];
+        if (pd2) { if (a === 'pkload') paketInstall(pd2); else paketDelete(pd2); }
       } else if (a === 'cityzoom' && cityCur) {
         cityZoom(cityCur.x.lat, cityCur.x.lon, cityCur.k === 'c' ? 14 : 15);
       } else if (a === 'citytop' && cityCur) {

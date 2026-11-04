@@ -1,5 +1,5 @@
 /*
- * Reiseführer – core logic (v0.11.1)
+ * Reiseführer – core logic (v0.12.0)
  * Shared by the app (index.html), the diagnostics page (diag.html) and Node tests.
  * No DOM access here. Network access only through the injected fetch function.
  */
@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var CORE_VERSION = '0.11.1';
+  var CORE_VERSION = '0.12.0';
 
   // ---------------------------------------------------------------- helpers
 
@@ -2206,7 +2206,7 @@
     buildPlaces: buildPlaces, sortPlaces: sortPlaces, loadPlaces: loadPlaces,
     reverseGeocode: reverseGeocode, languagesFor: languagesFor, localLanguage: localLanguage,
     searchPlaces: searchPlaces, isLatin: isLatin, pickNames: pickNames,
-    shortLabel: shortLabel, mapLabel: mapLabel, setOsmStatic: setOsmStatic, displayName: displayName, isDescriptiveName: isDescriptiveName, osmTileKeys: osmTileKeys, dropNationalPrefix: dropNationalPrefix, stripLocation: stripLocation, firstSentence: firstSentence,
+    shortLabel: shortLabel, mapLabel: mapLabel, setOsmStatic: setOsmStatic, buildOsmPlace: buildOsmPlace, osmTypeOf: osmTypeOf, displayName: displayName, isDescriptiveName: isDescriptiveName, osmTileKeys: osmTileKeys, dropNationalPrefix: dropNationalPrefix, stripLocation: stripLocation, firstSentence: firstSentence,
     dropLocation: dropLocation, shortInfo: shortInfo, splitSentences: splitSentences,
     articleFor: articleFor, loadIntros: loadIntros, translate: translate,
     cleanArticle: cleanArticle, cutAtSentence: cutAtSentence, loadArticle: loadArticle,

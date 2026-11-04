@@ -45,6 +45,12 @@
   "dauer_min": { "3": 90, "2": 60, "1": 30, "0": 0 },
   "dauer_text": { "3": "ab 1,5 Std.", "2": "ca. 1 Std.", "1": "ca. 30 Min.", "0": "" },
 
+  "paket": {
+    "_hinweis": "v0.12.0: Länderpaket – alles, was die Karte an Sehenswürdigkeiten zeigt (Verzeichnis + OSM-Punkte), einmal ins Handy. Gebaut von der GitHub Action paket.yml (nur von Hand). Im Paketgebiet lädt die Karte nichts mehr nach; Fotos und Wikipedia-Texte kommen beim Antippen. osm_ab_zoom: ab diesem Zoom die grauen OSM-Ringe aus dem Paket.",
+    "laender": [{ "land": "CH", "name": "Schweiz", "pfad": "paket/ch/", "bbox": { "south": 45.81, "west": 5.95, "north": 47.81, "east": 10.5 } }],
+    "aufbereiten_url": "https://github.com/obitusde/reisefuehrer/actions/workflows/paket.yml",
+    "osm_ab_zoom": 15
+  },
   "marker": { "_hinweis": "v0.7.2: im sichtbaren Ausschnitt höchstens max_sichtbar Punkte, die wichtigsten zuerst; wo wenig ist, alle.", "max_sichtbar": 30, "top": 5, "mit_name": 15, "_hinweis_stufen": "v0.10.0: im Ausschnitt die besten top groß mit fettem Namen, bis mit_name mit Namen, bis max_sichtbar nur als kleiner Punkt. Reine OSM-Einträge (ohne Wikipedia) nur als grauer Ring ohne Namen, nie mit Stern.", "beschriftung_max_zeichen": 16, "beschriftung_zeilen": 2, "_hinweis_beschriftung": "v0.9.3: Namen auf der Karte in bis zu 2 Zeilen zu je etwa 16 Zeichen, ohne vorangestelltes Deutsches/Bayerisches, wenn danach noch ein Name bleibt." },
 
   "uebersetzung": {

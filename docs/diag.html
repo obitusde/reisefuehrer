@@ -106,7 +106,7 @@
 
 <!-- ======================= v0.7 ======================= -->
 <section class="card" id="v08">
-  <h2>v0.8/v0.9 – Verzeichnis, Zoom-Stufen, Strecke, Namen (v0.11.1)</h2>
+  <h2>v0.8/v0.9 – Verzeichnis, Zoom-Stufen, Strecke, Namen (v0.12.0)</h2>
   <a class="btn secondary" href="index.html">App öffnen</a>
   <div id="checklist8"></div>
   <h2 style="margin-top:16px">Installieren (neue App-Kennung)</h2>
@@ -324,7 +324,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '0.11.1';
+  var VERSION = '0.12.0';
   var KEY = 'rf.diag.v1';
 
   var TESTS = [
@@ -635,14 +635,14 @@
   init();
 })();
 </script>
-<script src="core.js?v=0.11.1"></script>
+<script src="core.js?v=0.12.0"></script>
 <script>
 /* v0.2 diagnostics: API checks, gold list, manual checklist, summary */
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
   var KEY = 'rf.diag.v2';
-  var DV = '0.11.1';
+  var DV = '0.12.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function load() { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { return {}; } }
@@ -917,7 +917,7 @@
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
-  var KEY = 'rf.diag.v3', DV = '0.11.1';
+  var KEY = 'rf.diag.v3', DV = '0.12.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -994,7 +994,7 @@
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
-  var KEY = 'rf.diag.v6', DV = '0.11.1';
+  var KEY = 'rf.diag.v6', DV = '0.12.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -1095,7 +1095,7 @@
 /* v0.7 diagnostics: installability, checklist (symbols, city stars) */
 (function () {
   'use strict';
-  var KEY = 'rf.diag.v7', DV = '0.11.1';
+  var KEY = 'rf.diag.v7', DV = '0.12.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -1182,7 +1182,7 @@
 <script>
 /* v0.8: acceptance of the directory */
 (function () {
-  var KEY = 'rf.diag.v8', DV = '0.11.1';
+  var KEY = 'rf.diag.v8', DV = '0.12.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -1224,7 +1224,14 @@
     ['o2', 'v0.11.0 Schweiz auch bei Zoom 12: OSM-Ringe kommen (kein „OSM erst näher dran“)'],
     ['o3', 'v0.11.0 Menü → Daten: „Schweiz: Daten vom …“; „Jetzt prüfen“ meldet „aktuell“ oder „Neue OSM-Daten vom …“'],
     ['o4', 'v0.11.0 „Neu aufbereiten ↗“ öffnet GitHub; nach „Run workflow“ und etwa 3 Minuten meldet „Jetzt prüfen“ neue Daten'],
-    ['o5', 'v0.11.1 Nichts erneuert sich von selbst: ohne „Jetzt prüfen“ bleibt der Stand unter Menü → Daten gleich']
+    ['o5', 'v0.11.1 Nichts erneuert sich von selbst: ohne „Jetzt prüfen“ bleibt der Stand unter Menü → Daten gleich'],
+    ['p1', 'v0.12.0 In der Schweiz fragt die Zeile einmal „Paket Schweiz ins Handy laden?“ – „Laden“ lädt es mit Fortschritt'],
+    ['p2', 'v0.12.0 Nach dem Laden: in der Schweiz bei jedem Zoom sofort Ziele, keine Frage „Details laden?“ oder „Gegend laden?“'],
+    ['p3', 'v0.12.0 Ab Zoom 15 die grauen OSM-Ringe sofort; Antippen eines Ziels zeigt Wikipedia-Text und Bild (online)'],
+    ['p4', 'v0.12.0 Die Liste zeigt den Kartenausschnitt („Lohnt am meisten“, „Weitere“) und folgt beim Verschieben'],
+    ['p5', 'v0.12.0 Menü → Daten: „Schweiz: im Handy, Stand vom …“; „Aktualisieren“ meldet „aktuell“ oder lädt das neue Paket'],
+    ['p6', 'v0.12.0 Unten rechts stehen Zoom und Maßstab'],
+    ['p7', 'v0.12.0 Flugmodus: Ziele auf der Karte bleiben da (nur die Kartenbilder fehlen, wo noch nicht angesehen)']
   ];
   var RES = [['ok', 'Installiert, öffnet vom Startbildschirm'], ['fehler', 'Fehlermeldung'], ['schon', 'Wieder „bereits installiert“'], ['nein', 'Nicht versucht']];
   $('checklist8').innerHTML = CHECKS.map(function (c) {

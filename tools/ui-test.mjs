@@ -169,7 +169,7 @@ try {
   if (process.env.DEBUG) { page.on('request', (r) => { if (/extracts|mymemory/.test(r.url())) console.log('REQ', decodeURIComponent(r.url()).slice(0, 160)); }); page.on('requestfailed', (r) => console.log('FAILED', r.url().slice(0, 120), r.failure() && r.failure().errorText)); page.on('console', (m) => console.log('CONSOLE', m.text())); }
   await page.goto(BASE + 'index.html');
   await page.waitForSelector('.empty');
-  ok((await page.textContent('#version')) === 'v0.11.1', 'footer version');
+  ok((await page.textContent('#version')) === 'v0.12.0', 'footer version');
   if (OUT) await page.screenshot({ path: OUT + '/01-start.png' });
 
   await menuClick(page, '#btnLocate');
@@ -480,10 +480,10 @@ try {
   ok(splitNow && +splitNow > 12, 'split persisted: ' + splitNow);
 
   // update banner (fake newer version, then ?testupdate=1)
-  fakeVersion = '0.11.2';
+  fakeVersion = '0.12.1';
   await page.reload();
   await page.waitForSelector('#banner:not([hidden])');
-  ok((await page.textContent('#bannerText')).includes('v0.11.2'), 'banner shows remote version');
+  ok((await page.textContent('#bannerText')).includes('v0.12.1'), 'banner shows remote version');
   if (OUT) await page.screenshot({ path: OUT + '/05-banner.png' });
   fakeVersion = null;
   await page.click('#bannerBtn');
@@ -616,9 +616,9 @@ try {
   const swOk = await p3.evaluate(() => navigator.serviceWorker.ready.then((r) => !!r.active)).catch(() => false);
   ok(swOk, 'service worker active');
   const cacheKeys = await p3.evaluate(async () => { await new Promise((r) => setTimeout(r, 800)); return caches.keys(); });
-  ok(cacheKeys.includes('rf-app-0.11.1'), 'app cache with version: ' + cacheKeys.join(','));
-  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.11.1')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
-  ok(cached.some((u) => u.includes('app.js?v=0.11.1')), 'shell precached');
+  ok(cacheKeys.includes('rf-app-0.12.0'), 'app cache with version: ' + cacheKeys.join(','));
+  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.12.0')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
+  ok(cached.some((u) => u.includes('app.js?v=0.12.0')), 'shell precached');
   ok(errs3.length === 0, 'sw: no JS errors ' + errs3.join(' | '));
   await ctx3.close();
 
@@ -646,6 +646,76 @@ try {
   if (OUT) await p4.screenshot({ path: OUT + '/07-diag.png', fullPage: true });
   ok(errs4.length === 0, 'diag: no JS errors ' + errs4.join(' | '));
   await ctx4.close();
+  // ---------------- v0.12.0: country package – one tap, then the map has everything without loading
+  {
+    const PK_STAND = '2026-11-05T02:00:00.000Z';
+    const it = (q, name, lat, lon, o) => ({ q, name, lat, lon, sl: o.sl || 5, pop: o.pop || 0, km2: o.km2 || 0, land: ['Q32'], cap: o.cap, pv: o.pv, _c: !!o.c, _s: o.c ? null : { score: o.score, typ: o.typ } });
+    const osmKey = (la, lo) => (Math.floor(la / 0.05 + 1e-9) * 0.05).toFixed(3) + ',' + (Math.floor(lo / 0.05 + 1e-9) * 0.05).toFixed(3);
+    const ok1 = osmKey(49.6080, 6.1365);
+    const PKG = { format: 1, land: 'LU', name: 'Testland', stand: PK_STAND, osm_stand: '2026-11-04T21:00:00Z', verzeichnis: {
+      '49.5,6,49.75,6.25': [it('Q1842', 'Luxemburg', 49.6116, 6.1319, { c: 1, sl: 200, pop: 134000, km2: 51, cap: true, pv: 500 }),
+        it('Q10', 'Altstadt Luxemburg', 49.611, 6.133, { score: 12.2, typ: 'welterbe', sl: 60 }),
+        it('Q11', 'Kathedrale Unserer Lieben Frau', 49.6097, 6.1307, { score: 8.7, typ: 'kathedrale', sl: 40 })],
+      '49.5,5.75,49.75,6': [], '49.5,6.25,49.75,6.5': [], '49.25,6,49.5,6.25': [], '49.75,6,50,6.25': [] },
+      osm: { [ok1]: [{ id: 'node/77', lat: 49.6080, lon: 6.1365, name: 'Testbrunnen', names: {}, wd: '', wp: '', k: 'historic=monument', x: {} }] }, osm_cover: [ok1] };
+    const PKIDX = { format: 1, land: 'LU', name: 'Testland', stand: PK_STAND, osm_stand: PKG.osm_stand, datei: 'paket.json', bytes: JSON.stringify(PKG).length, gzip: 2000,
+      verzeichnis: { kacheln: 5, eintraege: 3, ziele: 2, orte: 1 }, osm: { kacheln: 1, orte: 1 } };
+    const c12 = await newCtx(browser, { vz: true });
+    await c12.route(/\/config\.json(\?|$)/, async (route) => {
+      const r = await route.fetch(); const j = await r.json();
+      j.paket.laender = [{ land: 'LU', name: 'Testland', pfad: 'paket/lu/', bbox: { south: 49.44, west: 5.73, north: 50.19, east: 6.53 } }];
+      route.fulfill({ response: r, body: JSON.stringify(j), headers: { 'content-type': 'application/json' } });
+    });
+    let pkDownloads = 0;
+    await c12.route(/\/paket\/lu\//, (route) => {
+      const u = new URL(route.request().url());
+      if (u.pathname.endsWith('/index.json')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(PKIDX) });
+      if (u.pathname.endsWith('/paket.json')) { pkDownloads++; return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(PKG) }); }
+      return route.fulfill({ status: 404, body: 'nf' });
+    });
+    const p12 = await c12.newPage(); const e12 = []; watch(p12, e12);
+    p12.on('dialog', (d) => d.accept());
+    await p12.goto(BASE + 'index.html');
+    await p12.waitForSelector('#btnMenu');
+    await p12.evaluate(() => window.__rfMap.setView([49.6105, 6.1325], 12, { animate: false }));
+    await p12.waitForFunction(() => /^Paket Testland ins Handy laden\?Laden✕$/.test(document.getElementById('zoomHint').textContent), null, { timeout: 8000 }).catch(() => {});
+    ok(/^Paket Testland ins Handy laden\?Laden✕$/.test(await p12.textContent('#zoomHint')), 'v0.12.0 the line offers the package: ' + await p12.textContent('#zoomHint'));
+    ok((await p12.textContent('#zoomLbl')) === 'Zoom 12', 'v0.12.0 zoom shown on the map: ' + await p12.textContent('#zoomLbl'));
+    const sq0 = SPARQL_CALLS.length;
+    await p12.click('#zoomHint [data-h="pkload"]');
+    await p12.waitForFunction(() => /^Paket Testland geladen: 2 Ziele$/.test(document.getElementById('toast').textContent), null, { timeout: 10000 }).catch(() => {});
+    ok(/^Paket Testland geladen: 2 Ziele$/.test(await p12.textContent('#toast')) && pkDownloads === 1, 'v0.12.0 one tap loads the package: ' + await p12.textContent('#toast'));
+    await p12.waitForTimeout(800);
+    ok(await p12.$eval('#zoomHint', (e) => e.hidden), 'v0.12.0 inside the package: no question (no "Details laden?", no "Gegend laden?"): ' + await p12.textContent('#zoomHint'));
+    const vz12 = await p12.$$eval('.vz-item b', (els) => els.map((e) => e.textContent));
+    ok(vz12.includes('Altstadt Luxemburg') && (await p12.$$eval('.list-sec', (els) => els.map((e) => e.textContent)))[0] === 'Lohnt am meisten', 'v0.12.0 list of the section from the package: ' + vz12.join(', '));
+    await p12.evaluate(() => window.__rfMap.setView([49.6105, 6.1325], 15, { animate: false }));
+    await p12.waitForFunction(() => document.querySelector('.mk.t-osm'), null, { timeout: 8000 }).catch(() => {});
+    const lb12 = await p12.$$eval('.mk-wrap', (els) => els.map((e) => e.title));
+    ok(lb12.includes('Kathedrale Unserer Lieben Frau') && lb12.includes('Testbrunnen') && (await p12.$$('.mk.t-osm')).length === 1, 'v0.12.0 zoom 15: sights and OSM ring from the package at once: ' + lb12.join(', '));
+    ok(await p12.$eval('#zoomHint', (e) => e.hidden) && SPARQL_CALLS.length === sq0, 'v0.12.0 nothing loaded from Wikidata, no question at zoom 15');
+    await p12.click('.mk-wrap[title="Testbrunnen"]');
+    await p12.waitForSelector('#sheet:not([hidden])');
+    ok((await p12.textContent('#sheetTitle')) === 'Testbrunnen', 'v0.12.0 OSM ring opens its place');
+    await p12.evaluate(() => history.back());
+    await p12.waitForSelector('#sheet', { state: 'hidden' });
+    await p12.reload(); await p12.waitForSelector('#btnMenu');
+    await p12.waitForFunction(() => document.querySelectorAll('.mk-wrap').length >= 2, null, { timeout: 8000 }).catch(() => {});
+    ok((await p12.$$eval('.mk-wrap', (els) => els.map((e) => e.title))).includes('Altstadt Luxemburg') && await p12.$eval('#zoomHint', (e) => e.hidden), 'v0.12.0 after a reload the package is still there');
+    await menuClick(p12, '#btnData');
+    await p12.waitForSelector('#sheetBody [data-a="pkload"]');
+    const d12 = await p12.textContent('#sheetBody');
+    ok(/Testland: im Handy, Stand vom 5\.11\.26 \(OSM vom 4\.11\.26\) · 2 Ziele, 1 OSM-Punkte/.test(d12) && /Aktualisieren/.test(d12) && /Löschen/.test(d12), 'v0.12.0 "Daten": package state: ' + d12.slice(0, 200));
+    if (OUT) await p12.screenshot({ path: OUT + '/19-paket.png' });
+    await p12.click('#sheetBody [data-a="pkload"]');
+    await p12.waitForFunction(() => /ist aktuell/.test(document.getElementById('toast').textContent), null, { timeout: 8000 }).catch(() => {});
+    ok(/^Paket Testland ist aktuell \(vom 5\.11\.26\)$/.test(await p12.textContent('#toast')) && pkDownloads === 1, 'v0.12.0 "Aktualisieren" with the same state: no download');
+    await p12.click('#sheetBody [data-a="pkdel"]');
+    await p12.waitForFunction(() => /gelöscht/.test(document.getElementById('toast').textContent), null, { timeout: 8000 }).catch(() => {});
+    ok(/Paket Testland gelöscht/.test(await p12.textContent('#toast')) && /noch nicht im Handy/.test(await p12.textContent('#sheetBody')), 'v0.12.0 package deleted');
+    ok(e12.length === 0, 'v0.12.0 no JS errors ' + e12.join(' | '));
+    await c12.close();
+  }
   // ---------------- v0.11.0: OSM from prepared files – no Overpass where they exist; "Daten" shows the state
   {
     OSMFILES = true; OSM_CALLS = 0;

@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.12.0 – 05.11.2026 – Länderpaket Schweiz: Sehenswürdigkeiten sofort, ohne Nachladen
+
+Wunsch Nutzer: Die Karte kommt online, aber alles, was darüber liegt (Sehenswürdigkeiten), liegt im Handy und ist sofort da. Fotos und Wikipedia-Texte dürfen beim Antippen geladen werden. Paket mit einem Klick herunterladen und aktualisieren. Zoom anzeigen. Keine Offline-Vektorkarte.
+
+- **Länderpaket** (`docs/paket/ch/paket.json`, gebaut von der GitHub Action „Länderpaket aufbereiten“, `.github/workflows/paket.yml`, nur von Hand):
+  - Verzeichnis: alle 0,25°-Stücke, die die Schweiz berühren. Darin steht dasselbe, was das Handy sonst bei „Gegend laden“ holt: Wikidata, Seitenaufrufe, Wikivoyage, Sterne-Punkte. Bei Grenzstücken auch der ausländische Teil, Genf sieht also auch Frankreich.
+  - OSM-Punkte aus dem Geofabrik-Auszug, wie in v0.11.
+  - Messwerte: siehe unten.
+- **App**:
+  - In der Schweiz fragt die Zeile über der Karte einmal: „Paket Schweiz ins Handy laden?“ (Laden / ✕).
+  - Menü → Daten zeigt Stand, Größe und die Knöpfe „Herunterladen“, „Aktualisieren“ und „Löschen“. „Aktualisieren“ ist ein Tipp: Ist das Paket auf der Webseite gleich, steht „aktuell“, sonst lädt es mit Fortschritt.
+  - Im Paketgebiet gibt es keine Frage „Details laden?“ oder „Gegend laden?“ mehr. Die Karte zeigt bei jedem Zoom sofort, was lohnt; ab Zoom 15 auch die grauen OSM-Ringe aus dem Paket.
+  - Antippen lädt Wikipedia-Text und Bild (online). Ein OSM-Ring öffnet seinen Ort.
+  - Die Liste folgt dem Kartenausschnitt („Lohnt am meisten“, „Weitere“), solange keine Suche die Kartenmitte abdeckt.
+  - Die Stücke des Pakets veralten nicht (keine 30-Tage-Grenze). Das Handy bittet Chrome, den Speicher dauerhaft zu behalten.
+  - „Hier suchen“ (im Menü) gibt es weiter, für Kurzinfos in der Liste und für Orte außerhalb des Pakets.
+- **Zoom und Maßstab** unten rechts auf der Karte („Zoom 13“).
+
+### Annahmen/Abweichungen
+
+- Punkt 2 deiner Nachricht („Liebe offl8ne Vektor Karte“) habe ich als „lieber keine Offline-Vektorkarte“ gelesen, weil du die Karte online willst. Die Karte bleibt online.
+- Kurzinfos stehen nicht im Paket, sie kommen wie Wikipedia-Texte beim Antippen (du hattest „on demand“ erlaubt). Die Liste zeigt im Paketgebiet darum Name, Art und Ort ohne Kurzinfo.
+- Außerhalb der Schweiz bleibt alles wie in v0.11.1.
+
 ## v0.11.1 – 04.11.2026 – OSM-Daten nur von Hand erneuern
 
 Wunsch Nutzer: kein automatisches Update, nur wenn er es anstößt.
