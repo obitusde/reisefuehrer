@@ -169,7 +169,7 @@ try {
   if (process.env.DEBUG) { page.on('request', (r) => { if (/extracts|mymemory/.test(r.url())) console.log('REQ', decodeURIComponent(r.url()).slice(0, 160)); }); page.on('requestfailed', (r) => console.log('FAILED', r.url().slice(0, 120), r.failure() && r.failure().errorText)); page.on('console', (m) => console.log('CONSOLE', m.text())); }
   await page.goto(BASE + 'index.html');
   await page.waitForSelector('.empty');
-  ok((await page.textContent('#version')) === 'v0.11.0', 'footer version');
+  ok((await page.textContent('#version')) === 'v0.11.1', 'footer version');
   if (OUT) await page.screenshot({ path: OUT + '/01-start.png' });
 
   await menuClick(page, '#btnLocate');
@@ -480,10 +480,10 @@ try {
   ok(splitNow && +splitNow > 12, 'split persisted: ' + splitNow);
 
   // update banner (fake newer version, then ?testupdate=1)
-  fakeVersion = '0.11.1';
+  fakeVersion = '0.11.2';
   await page.reload();
   await page.waitForSelector('#banner:not([hidden])');
-  ok((await page.textContent('#bannerText')).includes('v0.11.1'), 'banner shows remote version');
+  ok((await page.textContent('#bannerText')).includes('v0.11.2'), 'banner shows remote version');
   if (OUT) await page.screenshot({ path: OUT + '/05-banner.png' });
   fakeVersion = null;
   await page.click('#bannerBtn');
@@ -616,9 +616,9 @@ try {
   const swOk = await p3.evaluate(() => navigator.serviceWorker.ready.then((r) => !!r.active)).catch(() => false);
   ok(swOk, 'service worker active');
   const cacheKeys = await p3.evaluate(async () => { await new Promise((r) => setTimeout(r, 800)); return caches.keys(); });
-  ok(cacheKeys.includes('rf-app-0.11.0'), 'app cache with version: ' + cacheKeys.join(','));
-  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.11.0')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
-  ok(cached.some((u) => u.includes('app.js?v=0.11.0')), 'shell precached');
+  ok(cacheKeys.includes('rf-app-0.11.1'), 'app cache with version: ' + cacheKeys.join(','));
+  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.11.1')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
+  ok(cached.some((u) => u.includes('app.js?v=0.11.1')), 'shell precached');
   ok(errs3.length === 0, 'sw: no JS errors ' + errs3.join(' | '));
   await ctx3.close();
 
@@ -671,6 +671,12 @@ try {
     await p11.click('#sheetBody [data-a="osmcheck"]');
     await p11.waitForFunction(() => /aktuell/.test(document.getElementById('toast').textContent), null, { timeout: 8000 }).catch(() => {});
     ok(/OSM-Daten sind aktuell \(vom 1\.12\.26\)/.test(await p11.textContent('#toast')), 'v0.11.0 second check: up to date');
+    // v0.11.1: no automatic update – after a reload the phone keeps its state until "Jetzt prüfen"
+    OSMFILES_STAND = '2027-01-05T03:00:00Z';
+    await p11.reload(); await p11.waitForSelector('#btnMenu');
+    await menuClick(p11, '#btnData');
+    await p11.waitForSelector('#sheetBody [data-a="osmcheck"]');
+    ok(/Daten vom 1\.12\.26/.test(await p11.textContent('#sheetBody')), 'v0.11.1 no automatic update after a reload: ' + (await p11.textContent('#sheetBody')).slice(0, 80));
     ok(e11.length === 0, 'v0.11.0 no JS errors ' + e11.join(' | '));
     OSMFILES = false; OSMFILES_STAND = '2026-11-04T21:21:02Z';
     await c11.close();

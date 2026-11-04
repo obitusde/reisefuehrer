@@ -1,8 +1,8 @@
-/* Reiseführer – app (v0.11.0). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.11.1). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.11.0';
+  var VERSION = '0.11.1';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
@@ -682,11 +682,12 @@
     var o = last && !ROUTE && last.src && last.src.osm;
     return !!(o && Date.now() - (last.time || 0) < 20 * 60000 && (o.state === 'timeout' || o.state === 'skip') && !o.lateMs && !(o.late && !o.late.ok));
   }
-  // ------------------------------------------------------ OSM files (v0.11.0)
+  // ------------------------------------------------------ OSM files (v0.11.1)
   // Prepared by the GitHub Action osm-daten.yml (Geofabrik extract, monthly). index.json: {land, stand, erstellt, orte, kacheln: {key: count}}.
   var OSMF = { sets: [], ready: null };
   function osmFilesLoad(force) {
-    var list = (cfg.osm && cfg.osm.dateien) || [], maxAge = ((cfg.osm && cfg.osm.dateien_pruefen_h) || 24) * 3600000;
+    // v0.11.1: no automatic update (dateien_pruefen_h 0): only the very first time, then only with "Jetzt prüfen"
+    var h = cfg.osm && cfg.osm.dateien_pruefen_h, list = (cfg.osm && cfg.osm.dateien) || [], maxAge = h ? h * 3600000 : Infinity;
     var store = LS.get('rf.osmdateien', {}) || {};
     OSMF.ready = Promise.all(list.map(function (d) {
       var have = store[d.pfad];
@@ -736,7 +737,7 @@
         '<span class="small">Im Handy zuletzt geprüft: ' + esc(dateText(s.t)) + ', ' + esc(new Date(s.t).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })) +
         (s.fehler ? ' · Prüfen ging nicht: ' + esc(s.fehler) : '') + '</span></p>';
     }).join('') : '<p>Keine vorbereiteten OSM-Daten eingestellt.</p>') +
-      '<p class="small">Außerhalb dieser Länder fragt die App direkt bei OpenStreetMap (Overpass); das kann dauern. Neu aufbereitet wird automatisch jeden Monat.</p>' +
+      '<p class="small">Außerhalb dieser Länder fragt die App direkt bei OpenStreetMap (Overpass); das kann dauern. Nichts wird von selbst erneuert: neu aufbereitet wird nur, wenn du es auf GitHub anstößt, und ins Handy kommt es mit „Jetzt prüfen“.</p>' +
       '<div class="actions"><button class="btn primary" type="button" data-a="osmcheck">Jetzt prüfen</button>' +
       ((cfg.osm && cfg.osm.aufbereiten_url) ? '<a class="btn" href="' + esc(cfg.osm.aufbereiten_url) + '" target="_blank" rel="noopener">Neu aufbereiten ↗</a>' : '') + '</div>' +
       '<p class="small">„Neu aufbereiten“ öffnet GitHub: dort „Run workflow“ tippen. Nach etwa 3 Minuten hier „Jetzt prüfen“.</p>' +

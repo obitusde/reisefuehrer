@@ -1,10 +1,9 @@
 # OpenStreetMap-Sehenswürdigkeiten aus dem Geofabrik-Auszug aufbereiten (v0.11.0), statt sie im Handy über Overpass zu fragen
 # (die Server sind oft überlastet). Schreibt docs/osm/<code>/ (Kacheln + index.json mit dem Stand der Daten) nach main.
-# Automatisch jeden Monat; vom Handy: github.com → Actions → „OSM-Daten aufbereiten“ → „Run workflow“ (dauert etwa 2–3 Minuten).
+# Nur von Hand (Wunsch Nutzer, v0.11.1: kein automatisches Update): github.com → Actions → „OSM-Daten aufbereiten“ → „Run workflow“
+# (dauert etwa 2–3 Minuten). Danach in der App: Menü → Daten → „Jetzt prüfen“.
 name: OSM-Daten aufbereiten
 on:
-  schedule:
-    - cron: '23 2 3 * *'
   workflow_dispatch:
     inputs:
       land:
@@ -36,7 +35,7 @@ jobs:
       LAND: ${{ inputs.land || 'europe/switzerland' }}
       CODE: ${{ inputs.code || 'ch' }}
       TEIL: ${{ inputs.teil }}
-      SPEICHERN: ${{ github.event_name == 'schedule' || inputs.speichern }}
+      SPEICHERN: ${{ inputs.speichern }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

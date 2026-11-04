@@ -1,5 +1,5 @@
 /*
- * Reiseführer – core logic (v0.11.0)
+ * Reiseführer – core logic (v0.11.1)
  * Shared by the app (index.html), the diagnostics page (diag.html) and Node tests.
  * No DOM access here. Network access only through the injected fetch function.
  */
@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var CORE_VERSION = '0.11.0';
+  var CORE_VERSION = '0.11.1';
 
   // ---------------------------------------------------------------- helpers
 

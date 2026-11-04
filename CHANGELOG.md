@@ -1,17 +1,25 @@
 # Changelog
 
+## v0.11.1 – 04.11.2026 – OSM-Daten nur von Hand erneuern
+
+Wunsch Nutzer: kein automatisches Update, nur wenn er es anstößt.
+
+- Die GitHub Action „OSM-Daten aufbereiten“ läuft nicht mehr jeden Monat, nur noch von Hand (github.com → Actions → „OSM-Daten aufbereiten“ → „Run workflow“, oder Menü → Daten → „Neu aufbereiten ↗“).
+- Die App schaut nicht mehr von selbst nach neuen Daten (`osm.dateien_pruefen_h: 0`). Nur beim allerersten Start holt sie den Stand einmal, danach nur mit Menü → Daten → „Jetzt prüfen“.
+- Die Schweiz wurde einmal aufbereitet (siehe unten).
+
 ## v0.11.0 – 04.11.2026 – OSM für die Schweiz als Dateien (ohne Overpass), Menü „Daten“
 
 Wunsch Nutzer: Die OSM-Server sind ständig überlastet; erst nur die Schweiz; im Menü sehen, von wann die Daten sind, und aktualisieren können.
 
 - **OSM für die Schweiz aus Dateien**: Die GitHub Action „OSM-Daten aufbereiten“ (`.github/workflows/osm-daten.yml`) holt den Schweiz-Auszug von Geofabrik und filtert die Sehenswürdigkeiten mit denselben Filtern wie die App (`config.json` → `osm.filter`). Sie legt Kacheln wie im App-Speicher ab: `docs/osm/ch/<kachel>.json` plus `index.json` mit dem Stand der Daten.
   - Im Messlauf dauerte das für die ganze Schweiz etwa 1 Minute: 25 528 Orte, 3,9 MB, gezippt 1,1 MB; Waadt 4176 Orte, 0,7 MB.
-  - Läuft automatisch jeden Monat (am 3.) und von Hand: github.com → Actions → „OSM-Daten aufbereiten“ → „Run workflow“.
+  - Läuft von Hand: github.com → Actions → „OSM-Daten aufbereiten“ → „Run workflow“ (in v0.11.0 zuerst auch monatlich, seit v0.11.1 nicht mehr).
   - Nur Kacheln, die ganz in der Schweiz liegen (Grenze von Geofabrik), kommen aus Dateien. Kacheln über die Grenze (Genf–Frankreich, Basel) lädt die App wie bisher über Overpass.
 - **App**:
   - Für die Schweiz fragt sie kein Overpass mehr. OSM ist nach Sekunden da, auch bei Zoom 12 (die Grenze `osm.max_kacheln` gilt nur noch für Kacheln ohne Datei).
   - Gespeicherte Kacheln gelten, solange der Stand gleich ist. Kommen neue Daten, lädt sie die App beim nächsten Mal nach.
-  - Ob es neue Daten gibt, schaut die App höchstens einmal am Tag nach (`osm.dateien_pruefen_h`).
+  - Ob es neue Daten gibt, schaute die App in v0.11.0 einmal am Tag nach (seit v0.11.1 nur mit „Jetzt prüfen“).
 - **Menü → „Daten“**:
   - zeigt „Schweiz: Daten vom … · N Orte“ und wann das Handy zuletzt geprüft hat;
   - „Jetzt prüfen“ holt den neuesten Stand;
