@@ -681,16 +681,16 @@ try {
     await p8.click('[data-a="rtgo"]');
     await p8.waitForFunction(() => /Halte? entlang der Strecke/.test(document.getElementById('toast').textContent), null, { timeout: 30000 });
     const rt = await p8.$$eval('.vz-item', (els) => els.map((e) => e.querySelector('b').textContent + ' | ' + e.querySelector('.small').textContent));
-    ok(rt.length === 3 && rt.slice(0, 2).some((t) => /^Luxemburg \| km 0/.test(t)) && /^Burg Vianden \| km \d+/.test(rt[2]) && !rt.some((t) => /Kanton/.test(t)),
-      'v0.9.2 short drive (~30 min): 3 stops, best ones, in order along the route with km and detour: ' + rt.join(' / '));
-    ok(/3 Halte, ab ★/.test(await p8.textContent('.rt-head')), 'v0.9.2 header: stops and stars: ' + await p8.textContent('.rt-head'));
+    ok(rt.length === 2 && /^Luxemburg \| km 0/.test(rt[0]) && /^Burg Vianden \| km \d+/.test(rt[1]) && !rt.some((t) => /Kanton|Altstadt/.test(t)),
+      'v0.9.2 short drive: best stops, one per town (Luxemburg stands for its old town), in order with km and detour: ' + rt.join(' / '));
+    ok(/2 Halte, ab ★/.test(await p8.textContent('.rt-head')), 'v0.9.2 header: stops and stars: ' + await p8.textContent('.rt-head'));
     const kms = rt.map((t) => +(/km (\d+)/.exec(t) || [0, 0])[1]);
     ok(kms.every((k, i) => i === 0 || k >= kms[i - 1]), 'v0.9 sorted by km from start: ' + kms.join(','));
     ok((await p8.textContent('.rt-head')).includes('Luxemburg → Vianden') && (await p8.textContent('.rt-head')).includes('Luftlinie'), 'v0.9 route header');
     ok(await p8.evaluate(() => document.querySelectorAll('.leaflet-overlay-pane path').length >= 1), 'v0.9 route line on the map');
     await p8.waitForFunction(() => document.querySelectorAll('.ct, .mk').length >= 2, null, { timeout: 5000 }).catch(() => {});
     const rtMarks = await p8.$$eval('.ct-lbl, .mk-lbl', (els) => els.map((e) => e.textContent));
-    ok(rtMarks.includes('Luxemburg') && rtMarks.includes('Burg Vianden'), 'v0.9 route: sights along it on the map: ' + rtMarks.join(', '));
+    ok(rtMarks.includes('Luxemburg') && rtMarks.includes('Burg Vianden') && !rtMarks.includes('Altstadt Luxemburg'), 'v0.9 route: stops on the map: ' + rtMarks.join(', '));
     ok(await p8.$eval('#zoomHint', (el) => el.hidden), 'v0.9 no "Hier suchen" hint with a route');
     if (OUT) await p8.screenshot({ path: OUT + '/16-strecke.png' });
     await p8.click('[data-a="rtend2"]');

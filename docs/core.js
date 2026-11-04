@@ -2037,7 +2037,19 @@
     };
     (res && res.staedte || []).forEach(function (x) { take('c', x); });
     (res && res.orte || []).forEach(function (x) { take('o', x); });
-    // v0.9.2: only as many stops as fit the travel time – the best ones (stars, then points)
+    // v0.9.2: one stop per town – the town stands for its sights (Genf, not Genf + four of its museums);
+    // of a town without a stop only its best sight
+    if (plan) {
+      var towns = {}, best = {};
+      out.forEach(function (it) { if (it.k === 'c') towns[it.x.name] = 1; });
+      out.sort(function (a, b) { return (b.s - a.s) || ((b.x.score || 0) - (a.x.score || 0)); });
+      out = out.filter(function (it) {
+        if (it.k === 'c' || !it.x.stadt) return true;
+        if (towns[it.x.stadt] || best[it.x.stadt]) return false;
+        best[it.x.stadt] = 1; return true;
+      });
+    }
+    // only as many stops as fit the travel time – the best ones (stars, then points)
     if (plan && out.length > plan.maxStops) {
       out = out.sort(function (a, b) { return (b.s - a.s) || ((b.x.score || 0) - (a.x.score || 0)); }).slice(0, plan.maxStops);
     }
@@ -2055,7 +2067,8 @@
     var steps = k.sterne_ab || [{ bis_h: 1, sterne: 1 }, { bis_h: 3, sterne: 2 }, { sterne: 3 }];
     var minStars = steps.filter(function (st) { return st.bis_h == null || hours <= st.bis_h; })[0].sterne;
     var maxStops = Math.max(k.min_halte || 3, Math.min(k.max_halte || 15, Math.ceil(hours * (k.halte_pro_stunde || 2))));
-    var minSl = (k.min_sprachen || { 1: 4, 2: 7, 3: 12 })[minStars] || 1, deg = k.kachel || 0.5;
+    var minSl = (k.min_sprachen || { 1: 4, 2: 7, 3: 12 })[minStars] || 1;
+    var deg = ((k.kachel_grad || {})[minStars]) || k.kachel || 0.5; // longer routes: fewer, bigger tiles (the query is lighter there)
     var rcfg = directoryConfig(cfg);
     rcfg.staedte.min_sprachversionen = minSl;
     return { km: round1(km), hours: Math.round(hours * 10) / 10, minStars: minStars, maxStops: maxStops, minSl: minSl, deg: deg,

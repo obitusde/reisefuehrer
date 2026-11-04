@@ -607,7 +607,7 @@ eq(core.classify(['Q4830453'], ['company', 'museum'], [''], ['Firma X'], cfg), '
   // v0.9.2: the longer the route, the more important the stops
   const pb = core.routePlan([morges, genf], 'fahrrad', cfg), pc = core.routePlan([morges, lyon], 'auto', cfg), pw = core.routePlan([morges, { lat: 46.515, lon: 6.53 }], 'fuss', cfg);
   ok(pb.minStars === 2 && pb.maxStops === 5 && pb.hours > 2 && pb.hours < 3, 'bike Morges → Genf (~2,4 h): from ★★, 5 stops: ' + JSON.stringify({ h: pb.hours, s: pb.minStars, n: pb.maxStops }));
-  ok(pc.minStars === 2 && pc.maxStops === 4 && pc.tiles.length < 25, 'car Morges → Lyon (~1,9 h): from ★★, 4 stops, few big tiles: ' + JSON.stringify({ h: pc.hours, s: pc.minStars, n: pc.maxStops, t: pc.tiles.length }));
+  ok(pc.minStars === 2 && pc.maxStops === 4 && pc.tiles.length < 12 && pc.deg === 1, 'car Morges → Lyon (~1,9 h): from ★★, 4 stops, few big tiles: ' + JSON.stringify({ h: pc.hours, s: pc.minStars, n: pc.maxStops, t: pc.tiles.length }));
   ok(pw.minStars === 1 && pw.maxStops === 3 && pw.rcfg.staedte.min_sprachversionen === 4, 'short walk: from ★, at least 3 stops, light query: ' + JSON.stringify({ h: pw.hours, s: pw.minStars, n: pw.maxStops }));
   ok(core.routePlan([morges, { lat: 43.3, lon: 5.37 }], 'auto', cfg).minStars === 3, 'long drive (> 3 h): only ★★★');
   const pk = core.corridorPick(res, [morges, genf], 'fahrrad', cfg, { minStars: 2, maxStops: 1 });

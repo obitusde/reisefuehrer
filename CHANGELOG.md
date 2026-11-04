@@ -9,8 +9,10 @@ Wunsch Nutzer: Die Strecke nach Genf hat sehr lange gedauert; nur wirklich wicht
   - etwa 2 Halte je Stunde Fahrzeit, mindestens 3, höchstens 15; bei mehr Kandidaten die mit den meisten Sternen und Punkten.
   - Beispiele: Fahrrad Morges → Genf (ca. 2,5 Std.) ab ★★, 5 Halte; Auto Morges → Lyon (ca. 2 Std.) ab ★★, 4 Halte.
 - **Schneller laden**: Die Strecke fragt nur bekannte Einträge ab (ab 4/7/12 Sprachversionen für ★/★★/★★★), in großen Stücken (0,5°). Gespeichert 30 Tage; was „Hier suchen“ schon geladen hat, wird mitbenutzt. Fortschritt „Lade Strecke 2/9 …“, ✕ bricht ab (dann gilt, was schon da ist).
+- **Ein Halt je Ort**: Ist ein Ort ein Halt, stehen seine Sehenswürdigkeiten nicht extra in der Liste (sie stehen im Fenster des Ortes). Von einem Ort ohne eigenen Halt nur die beste Sehenswürdigkeit.
 - Listenkopf: Fahrzeit, Zahl der Halte und ab wie vielen Sternen.
-- Die Grenzen stehen in `config.json` → `korridor` (`kmh`, `sterne_ab`, `halte_pro_stunde`, `min_halte`, `max_halte`, `min_sprachen`, `kachel`).
+- Die Grenzen stehen in `config.json` → `korridor` (`kmh`, `sterne_ab`, `halte_pro_stunde`, `min_halte`, `max_halte`, `min_sprachen`, `kachel`, `kachel_grad`). Strecken ab 1 Stunde laden in Stücken von 1°.
+- **Geprüft mit echten Daten** (GitHub, vor „ein Halt je Ort“ und den 1°-Stücken): Fahrrad Morges → Genf 36 s statt 2 Minuten (4 Stücke), 5 Halte; Auto Morges → Lyon 4 Minuten statt 9 (22 Stücke), 4 Halte (Lausanne, Genf, Lyon, Fourvière).
 
 ## v0.9.1 – 04.11.2026 – Strecke: nichts hinter dem Start
 
