@@ -26,7 +26,7 @@ Wunsch Nutzer: Zu wenige Ziele (im ganzen Sauerland nichts); wie ein Reiseführe
 ### Annahmen/Abweichungen
 
 - **Korridormodus kommt danach** (PROJEKT.md 6b). Das Verzeichnis war wichtiger (Wunsch Nutzer), und der Korridor baut darauf auf.
-- **Getestet mit echten Daten auf GitHub** (Waadtland, Sauerland, Vallée de Joux), auf dem Handy noch nicht. Sauerland: 10 Stücke in 51 s; Arnsberg ★, Schmallenberg ★, Burg Bilstein, Schloss Berleburg, Kahler Asten. Audemars Piguet Museum und Espace Horloger sind ab Zoom 12 dabei. Fort Fun stand mit 3,9 Punkten knapp unter der Grenze; mit Seitenaufrufen sollte es jetzt darüber liegen (noch nicht mit echten Daten geprüft).
+- **Getestet mit echten Daten auf GitHub** (Waadtland, Sauerland, Vallée de Joux), auf dem Handy noch nicht. Sauerland: 10 Stücke in 51 s; Arnsberg ★, Schmallenberg ★, Burg Bilstein, Schloss Berleburg, Kahler Asten. Audemars Piguet Museum und Espace Horloger sind ab Zoom 12 dabei. Fort Fun hatte ohne Seitenaufrufe 3,9 Punkte; mit Seitenaufrufen jetzt 6,1 Punkte, also ★ ab Zoom 9 (geprüft mit echten Daten).
 - **Datenmenge**: Eine Gegend wie das Waadtland sind gut 30 Stücke, etwa 3 Minuten und einige MB Download über Mobilfunk. Gespeichert bleiben etwa 150 KB.
 - **Ob die neue App-Kennung das Installieren repariert, ist nicht sicher.** Falls nicht: Text der Meldung in Diagnose → v0.8.
 - **Rochers de Naye** fehlt weiterhin auf der Stufe Region (zu wenig Punkte als Natur).
