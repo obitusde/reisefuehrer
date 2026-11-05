@@ -1,0 +1,28 @@
+# Test: Was findet man zu einem Punkt ohne Wikipedia-Artikel? (Wikidata, Wikipedia-Suche, Commons-Fotos, Wikivoyage)
+# Schreibt nichts, nur das Protokoll. Eingabe: "Name|Q-Nummer oder leer|Breite|Länge" mit ; getrennt.
+name: Info-Test (Punkt)
+on:
+  workflow_dispatch:
+    inputs:
+      punkte:
+        description: 'Name|Q-Nummer (oder leer)|Breite|Länge; weitere nach ;'
+        required: true
+        default: 'Crêt des Alouettes|Q22425950|46.69597|6.34803;Pigeonnier de Paderewski||46.503212|6.482224;Dent du Requin|Q3023323|45.8878|6.9175'
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PUNKTE: ${{ inputs.punkte }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Eingabe prüfen
+        run: |
+          if ! [[ "$PUNKTE" =~ ^[^[:cntrl:]]{1,600}$ ]]; then echo "Ungültig"; exit 1; fi
+      - name: Abfragen
+        run: node tools/info-probe.mjs
