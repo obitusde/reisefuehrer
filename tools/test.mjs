@@ -540,7 +540,36 @@ eq(core.iconFor('sonstiges', cfg), '', 'other: plain dot');
   eq(core.sightScore(it('Q5', 'Flughafen', 0, 0, 64, ['international airport']), cfg), null, 'an airport is no sight');
   ok(core.sightScore(it('Q64436', 'Triumphbogen', 0, 0, 86, ['triumphal arch']), cfg).score > 5, 'triumphal arch counts (extra word list)');
   const louvre = core.sightScore(it('Q19675', 'Louvre', 0, 0, 170, ['art museum'], { p31: ['Q207694'] }), cfg);
-  ok(louvre.typ === 'museum' && louvre.score === 9.7 && !louvre.natur, 'Louvre: museum 9.7');
+  ok(louvre.typ === 'museum' && louvre.score === 11.2 && !louvre.natur, 'Louvre: museum 9.7 + 1.5 (art museum, v0.16.0 profile)');
+  // ---- v0.16.0: interest profile (art/history museums up, little-known science museums down, viewpoints, castles; near twins)
+  {
+    const noProfile = JSON.parse(JSON.stringify(cfg)); delete noProfile.verzeichnis.profil;
+    const dl = (x) => { const a = core.sightScore(Object.assign({}, x), cfg), b = core.sightScore(Object.assign({}, x), noProfile); return { d: Math.round((a.score - b.score) * 10) / 10, a }; };
+    const M = (name, cls, sl) => it('Qm', name, 0, 0, sl, cls, { p31: ['Q33506'] });
+    eq(dl(M('Kunsthaus', ['art museum', 'museum'], 6)).d, 1.5, 'v0.16.0 art museum +1.5');
+    eq(dl(M('Galerie Mackintosh', ['art gallery'], 2)).d, 0, 'v0.16.0 a private art gallery gets nothing');
+    eq(dl(M('Stadtgeschichte', ['history museum'], 4)).d, 1.5, 'v0.16.0 history museum +1.5');
+    eq(dl(M('Jüdisches Museum', ['Jewish museum', 'museum collection'], 8)).d, 1.5, 'v0.16.0 Jewish museum counts as history');
+    eq(dl(M('Naturhistorisches', ['natural history museum', 'science museum'], 11)).d, -1.5, 'v0.16.0 natural history museum is no history museum (and little known: −1.5)');
+    eq(dl(M('Zoologie-Museum', ['science museum'], 6)).d, -1.5, 'v0.16.0 little-known science museum −1.5');
+    eq(dl(M('Olympisches Museum', ['sports museum', 'science museum'], 36)).d, 0, 'v0.16.0 a well-known museum (36 languages) keeps its points');
+    eq(dl(M('Heimatmuseum', ['museum'], 3)).d, 0, 'v0.16.0 a plain museum without a class: no change');
+    eq(dl(it('Qb', 'Burg Test', 0, 0, 10, ['castle'], { p31: ['Q23413'] })).d, 1, 'v0.16.0 castle +1');
+    eq(dl(it('Qk', 'Kirche Test', 0, 0, 10, ['church building'], { p31: ['Q16970'] })).d, 0, 'v0.16.0 plain church: no change');
+    const tw = dl(it('Qt', 'Aussichtsturm Test', 0, 0, 5, ['observation tower']));
+    ok(tw.d === 2 && tw.a.av === true, 'v0.16.0 viewpoint class +2, marked (so that the OSM join does not add it again): ' + JSON.stringify(tw));
+    ok(dl(it('Qg', 'Spalentor', 0, 0, 5, ['city gate', 'tower'], { p31: ['Q12518'] })).d === 1, 'v0.16.0 city gate (tower) +1');
+    const vi = [{ q: 'Q9', _s: { score: 2.5, typ: 'turm' } }, { q: 'Q8', _s: { score: 3, typ: 'turm', av: true } }, { q: 'Q7', _s: { score: 4, typ: 'turm' } }];
+    const nv = core.applyViewpoints(vi, [{ k: 'tourism=viewpoint', wd: 'Q9' }, { k: 'tourism=viewpoint', wd: 'Q8' }, { k: 'tourism=museum', wd: 'Q7' }, { k: 'tourism=viewpoint' }], cfg);
+    ok(nv === 1 && vi[0]._s.score === 4.5 && vi[0]._s.av && vi[1]._s.score === 3 && vi[2]._s.score === 4, 'v0.16.0 OSM viewpoint with Wikidata number lifts the entry once (not twice, not other kinds): ' + JSON.stringify(vi));
+    const dc = core.directoryConfig(cfg);
+    const mk = (q, n, lat, lon, cls) => it(q, n, lat, lon, 12, cls, { p31: ['Q33506'] });
+    const names = (l) => core.computeDirectory(l, dc, null, { copy: true }).orte.map((o) => o.name).sort().join(' | ');
+    eq(names([mk('Q1', 'Fondation de l’Hermitage', 46.52814, 6.63723, ['art museum']), mk('Q2', 'Hermitage Foundation collection', 46.52819, 6.63723, ['art collection'])]), 'Fondation de l’Hermitage',
+      'v0.16.0 near twins (6 m, long word "hermitage" in common): one entry');
+    eq(names([mk('Q3', 'Museum der Kulturen Basel', 47.5543, 7.5917, ['ethnographic museum']), mk('Q4', 'Naturhistorisches Museum Basel', 47.5546, 7.5917, ['science museum'])]),
+      'Museum der Kulturen Basel | Naturhistorisches Museum Basel', 'v0.16.0 two museums 37 m apart without a long word in common stay two');
+  }
   ok(core.sightScore(it('Q1374', 'Matterhorn', 0, 0, 100, ['mountain'], { p31: ['Q8502'] }), cfg).natur, 'mountain is nature');
   const items = [
     it('Q90', 'Paris', 48.8575, 2.3514, 366, ['national capital', 'metropolis'], { pop: 2103778, km2: 105.4, cap: true }),
@@ -561,7 +590,7 @@ eq(core.iconFor('sonstiges', cfg), '', 'other: plain dot');
   ok(byName.Paris.n === 3 && byName.Paris.unesco && byName.Paris.top[0][0] === 'Notre-Dame', 'Paris gets Louvre, Notre-Dame, Eiffel tower: ' + JSON.stringify(byName.Paris.top));
   ok(byName['Boulogne-Billancourt'].score === 5.4, 'one sight only: no language-version bonus: ' + byName['Boulogne-Billancourt'].score);
   ok(byName['Boulogne-Billancourt'] && byName['Boulogne-Billancourt'].n === 1, 'garden next to Boulogne (small radius from area) goes to Boulogne');
-  eq(byName.Paris.score, Math.round((9.7 + 12.3 + 7.8 + 3 + 1 + 36.6) * 10) / 10, 'Paris score = sum of sights + UNESCO + capital + 0.1 × language versions');
+  eq(byName.Paris.score, Math.round((11.2 + 12.3 + 9.8 + 3 + 1 + 36.6) * 10) / 10, 'Paris score = sum of sights + UNESCO + capital + 0.1 × language versions');
   ok(res.orte.some((o) => o.name === 'Schloss Versailles') && res.orte.some((o) => o.name === 'Mont Test'), 'castle outside cities and mountain are excursions: ' + res.orte.map((o) => o.name).join(', '));
   ok(!res.orte.some((o) => o.name === 'Brüsseler Platz'), 'excursions only of the own country');
   eq(core.cityStars(byName.Paris, cfg), 3, 'Paris ★★★ via Notre-Dame (UNESCO, 12.3) although the sample sum is only 33.8');

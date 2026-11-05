@@ -106,7 +106,7 @@
 
 <!-- ======================= v0.7 ======================= -->
 <section class="card" id="v08">
-  <h2>v0.8/v0.9 – Verzeichnis, Zoom-Stufen, Strecke, Namen (v0.15.0)</h2>
+  <h2>v0.8/v0.9 – Verzeichnis, Zoom-Stufen, Strecke, Namen (v0.16.0)</h2>
   <a class="btn secondary" href="index.html">App öffnen</a>
   <div id="checklist8"></div>
   <h2 style="margin-top:16px">Installieren (neue App-Kennung)</h2>
@@ -324,7 +324,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '0.15.0';
+  var VERSION = '0.16.0';
   var KEY = 'rf.diag.v1';
 
   var TESTS = [
@@ -635,14 +635,14 @@
   init();
 })();
 </script>
-<script src="core.js?v=0.15.0"></script>
+<script src="core.js?v=0.16.0"></script>
 <script>
 /* v0.2 diagnostics: API checks, gold list, manual checklist, summary */
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
   var KEY = 'rf.diag.v2';
-  var DV = '0.15.0';
+  var DV = '0.16.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function load() { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { return {}; } }
@@ -917,7 +917,7 @@
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
-  var KEY = 'rf.diag.v3', DV = '0.15.0';
+  var KEY = 'rf.diag.v3', DV = '0.16.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -994,7 +994,7 @@
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
-  var KEY = 'rf.diag.v6', DV = '0.15.0';
+  var KEY = 'rf.diag.v6', DV = '0.16.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -1095,7 +1095,7 @@
 /* v0.7 diagnostics: installability, checklist (symbols, city stars) */
 (function () {
   'use strict';
-  var KEY = 'rf.diag.v7', DV = '0.15.0';
+  var KEY = 'rf.diag.v7', DV = '0.16.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -1182,7 +1182,7 @@
 <script>
 /* v0.8: acceptance of the directory */
 (function () {
-  var KEY = 'rf.diag.v8', DV = '0.15.0';
+  var KEY = 'rf.diag.v8', DV = '0.16.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -1246,12 +1246,17 @@
     ['q12', 'v0.13.4 Der Text klingt beim Vorlesen anschaulich und interessant; Fachbegriffe (z. B. Jugendstil, Kulturgut von nationaler Bedeutung) werden kurz erklärt; Zahlen ausgesprochen; keine Rückfrage am Ende'],
     ['q13', 'v0.13.5 „Erzähl mir davon“ (Maison de l\'Estérel): Reihenfolge erst Außen mit Seh-Anweisungen, dann Geschichte, dann Innen und ob man hinein darf; Behauptungen einer einzelnen Quelle mit „laut …“; keine Prospektwörter'],
     ['q14', 'v0.13.5 „👍 Lohnt sich der Besuch?“: Antwort beginnt mit der Überschrift, nur zwei Abschnitte (Urteil, Tipps), „nicht gefunden“ statt Erfindungen, keine Rückfrage am Ende'],
-    ['l1', 'v0.15.0 Menü → Daten: Liste „Im Handy“, „Fertig gebaut – zum Herunterladen“ und „Weiteres Land bauen lassen“'],
-    ['l2', 'v0.15.0 Ein Land mit „Bauen ↗“ bauen lassen (GitHub: Run workflow, Land wählen); danach „Liste prüfen“: das Land steht unter „Fertig gebaut“'],
-    ['l3', 'v0.15.0 „Herunterladen“ lädt das Land mit Fortschritt in Teilen; danach sind seine Ziele sofort auf der Karte (auch im Flugmodus)'],
-    ['l4', 'v0.15.0 „Aktualisieren“ meldet „aktuell“ oder lädt den neuen Stand; „Löschen“ entfernt das Land'],
-    ['l5', 'v0.15.0 Genf (Zoom 15): Ziele und graue OSM-Ringe sofort, keine Frage „Details laden?“, kein „OSM lädt noch“'],
-    ['l6', 'v0.15.0 Basel (Zoom 15): ebenso; mit Deutschland und Frankreich im Handy auch die Ringe jenseits der Grenze']
+    ['l1', 'v0.14.0 Menü → Daten: Liste „Im Handy“, „Fertig gebaut – zum Herunterladen“ und „Weiteres Land bauen lassen“'],
+    ['l2', 'v0.14.0 Ein Land mit „Bauen ↗“ bauen lassen (GitHub: Run workflow, Land wählen); danach „Liste prüfen“: das Land steht unter „Fertig gebaut“'],
+    ['l3', 'v0.14.0 „Herunterladen“ lädt das Land mit Fortschritt in Teilen; danach sind seine Ziele sofort auf der Karte (auch im Flugmodus)'],
+    ['l4', 'v0.14.0 „Aktualisieren“ meldet „aktuell“ oder lädt den neuen Stand; „Löschen“ entfernt das Land'],
+    ['l5', 'v0.14.0 Genf (Zoom 15): Ziele und graue OSM-Ringe sofort, keine Frage „Details laden?“, kein „OSM lädt noch“'],
+    ['l6', 'v0.14.0 Basel (Zoom 15): ebenso; mit Deutschland und Frankreich im Handy auch die Ringe jenseits der Grenze'],
+    ['p1', 'v0.15.0 Menü → Daten → ganz unten „Bauen per Knopf“: Adresse und PIN eintragen, „Speichern und testen“ meldet „Verbunden ✔“; mit falscher PIN „PIN falsch“'],
+    ['p2', 'v0.15.0 Bei einem Land „Bauen“ tippen: Fortschritt „Wird gestartet“ → „Wird gebaut seit N Min.“ → „Gebaut, wird veröffentlicht“ → „<Land> ist fertig gebaut“ (Herunterladen-Knopf)'],
+    ['f1', 'v0.16.0 Lausanne neu bauen (Menü → Daten → Schweiz → Neu bauen), laden: Art Brut, Photo Elysée, Beaux-Arts mindestens ★★; Zoologie- und Geologiemuseum höchstens ★; Olympisches Museum ★★; „Lucy Mackintosh“ ohne Stern'],
+    ['f2', 'v0.16.0 Lausanne: Fondation de l’Hermitage nur einmal in der Liste (nicht zusätzlich „Hermitage Foundation collection“)'],
+    ['f3', 'v0.16.0 Basel: Kunstmuseum, Münster, Tinguely ★★★; Naturhistorisches Museum höchstens ★★; Jüdisches Museum und Papiermuseum ★ oder mehr']
   ];
   var RES = [['ok', 'Installiert, öffnet vom Startbildschirm'], ['fehler', 'Fehlermeldung'], ['schon', 'Wieder „bereits installiert“'], ['nein', 'Nicht versucht']];
   $('checklist8').innerHTML = CHECKS.map(function (c) {

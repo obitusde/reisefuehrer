@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.16.0 – 05.11.2026 – Interessenprofil: Kunst, Geschichte, Aussicht; keine Doppelten
+
+Wunsch Nutzer: Ich mag Museen, Aussichtspunkte, Geschichtliches, Kunstmuseen und UNESCO-Stätten. Die Sterne sollen das widerspiegeln. Festes Profil im Code (keine Regler), erst gemessen (Lausanne, Basel), dann eingebaut.
+
+- **Profil** (`config.json` → `verzeichnis.profil`, wird zu den Punkten eines Ziels addiert; die Klassen sind die englischen Wikidata-Bezeichnungen):
+  - Kunstmuseum +1,5 (Klasse „art museum“, Fotografie-, Design-, Kunstsammlung; **private Galerien („art gallery“) bekommen nichts**).
+  - Geschichtsmuseum +1,5 (Geschichte, Archäologie, Völkerkunde, Jüdisches Museum, Heimatmuseum, Militär, Freilicht …). „Natural history museum“ zählt **nicht** als Geschichte.
+  - Spezialmuseum −1,5 (Naturkunde, Zoologie, Geologie, Botanik, Technik, Comics, Spielzeug, Auto, Feuerwehr …), **nur bei weniger als 15 Sprachversionen**; bekannte wie das Olympische Museum (36) behalten ihre Punkte. Ein einfaches „Museum“ ohne weitere Klasse bleibt unverändert.
+  - Burg, Schloss, Kloster, Herrenhaus, Ausgrabung und Stadttor (Turm mit Klasse „city gate“) +1.
+  - Aussichtspunkt +2 (Klasse viewpoint/observation tower/…). Aus OSM kommt es beim Länderbau dazu: Ein OSM-Aussichtspunkt mit Wikidata-Nummer hebt den Verzeichniseintrag mit dieser Nummer um +2 (nur einmal; `core.applyViewpoints`, aufgerufen von `tools/paket.mjs`).
+  - UNESCO und die Seitenaufrufe bleiben wie bisher.
+- **Doppelte**: Zwei Einträge im Abstand von höchstens 60 m (`doppelt_nah_m`) mit einem gemeinsamen langen Wort (7+ Buchstaben, ohne Allerweltswörter wie „Museum“, `doppelt_ignorieren`) gelten als ein Ort, der niedrigere fällt weg. Beispiel: „Fondation de l’Hermitage“ und „Hermitage Foundation collection“ (6 m).
+- **Kirchen**: keine Sonderregel (in der Messung hat sie nichts bewirkt; Denkmalstatus trennt in der Schweiz fast nichts).
+
+### Gemessen (GitHub Actions, Wikidata live, 3 km um die Stadtmitte; Messprogramme `tools/rang-probe.mjs`, `tools/profil-probe.mjs`)
+
+- **Lausanne**: Sterne 0/1/2/3 von 135/5/5/1 auf 129/5/9/3. Art Brut ★★★ (11,1), Photo Elysée, Beaux-Arts, mudac, Hermitage ★★; Archäologisches Museum, Schloss Ouchy, Beaulieu ★★; Historisches Museum, Römermuseum ★. Zoologiemuseum ★ → 0. Olympisches Museum bleibt ★★ (10,2).
+- **Basel**: Sterne 0/1/2/3 von 558/8/9/3 auf 557/7/8/6 (der Test rechnete den Zoo mit falscher Schwelle; im Bau bleibt er ★★★). Kunstmuseum, Tinguely, Kunsthalle, Antikenmuseum ★★★.
+- **Seitenaufrufe** sind bereits im Rang (Gewicht 1,5 × log₁₀(Aufrufe/Tag + 1), 30 Tage, für die besten Kandidaten je Kachel). Fehlende Messungen würden in Lausanne keinem Ziel einen Stern bringen (Gewinn höchstens +2,7 Punkte, ein Stern braucht 7,5).
+- **Wikivoyage** (Lausanne, de/en/fr): nur etwa 15 bis 35 Einträge, die meisten schon im Verzeichnis, kaum Text. Nicht eingebaut.
+
+### Annahmen/Abweichungen
+
+- **Ältere Kacheln**: Das Verzeichnis im Handy und die Länderpakete tragen die Punkte, mit denen sie gebaut wurden. Das Profil wirkt erst für neu geladene Kacheln und neu gebaute Pakete. **Die Schweiz muss neu gebaut werden** (Menü → Daten → Schweiz → „Neu bauen“, dann „Aktualisieren“).
+- Aussichtspunkte **ohne** Wikidata-Nummer (Esplanade de Montbenon, Pfalz in Basel) bekommen keinen Rang; es fehlt jedes Signal. Sie bleiben graue OSM-Ringe. Auch der Sauvabelin-Turm (6,1 Punkte) bekommt dadurch keinen Stern (Schwelle 7,5).
+- „Art Brut“ und „Château de Beaulieu“ (40 m) sind vermutlich dasselbe Gebäude, werden aber nicht zusammengelegt (kein gemeinsames Wort). Kunstmuseum Basel mit Hauptbau und Neubau werden zusammengelegt, wenn sie innerhalb von 60 m liegen.
+- Das Profil ist ein Startwert aus drei Messungen (Lausanne, Basel); die Klassenlisten sind aus den Wikidata-Bezeichnungen dieser beiden Städte abgeleitet und können in anderen Ländern Lücken haben (z. B. nicht-englische Bezeichnungen). Anpassen in `config.json`.
+- Der Test mit den Schweizer Daten der echten App steht noch aus: erst nach dem Neubau der Schweiz zu prüfen (diag.html f1–f3).
+- Ein GitHub-Pages-Deployment hing am 5.11. (Zeitüberschreitung bei GitHub), betraf nur Tests/Workflows, nicht die App.
+
 ## v0.15.0 – 05.11.2026 – Bauen per Knopf in der App
 
 Wunsch Nutzer: Länder nicht mehr über die GitHub-Seite bauen lassen, sondern „alles per Knopfdruck“; den GitHub-Schlüssel irgendwo sicher ablegen (Skripteigenschaften bei Google Apps Script).

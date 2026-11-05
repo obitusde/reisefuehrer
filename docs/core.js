@@ -1,5 +1,5 @@
 /*
- * Reiseführer – core logic (v0.15.0)
+ * Reiseführer – core logic (v0.16.0)
  * Shared by the app (index.html), the diagnostics page (diag.html) and Node tests.
  * No DOM access here. Network access only through the injected fetch function.
  */
@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var CORE_VERSION = '0.15.0';
+  var CORE_VERSION = '0.16.0';
 
   // ---------------------------------------------------------------- helpers
 
@@ -1740,6 +1740,37 @@
     var uq = cfg.score.unesco_qids || [];
     return !!x.u || (x.h || []).some(function (q) { return uq.indexOf(q) >= 0; });
   }
+  // ------------------------------------------------------- personal interest profile (v0.16.0)
+  // Added to the points of a sight (config verzeichnis.profil): art and history museums up, little-known science/technology museums down,
+  // viewpoints like museums, castles/monasteries/manors a little up. The classes are the Wikidata labels of the item (x.cls).
+  function clsHas(joined, words) {
+    return (words || []).some(function (w) { return joined.indexOf(String(w).toLowerCase()) >= 0; });
+  }
+  function profileDelta(x, typ, cfg) {
+    var p = cfg.verzeichnis && cfg.verzeichnis.profil, out = { d: 0, av: false };
+    if (!p) return out;
+    var s = (x.cls || []).join(' | ').toLowerCase();
+    if (typ === 'museum') {
+      if (clsHas(s, p.kunst_klassen)) out.d += p.kunstmuseum || 0;
+      else if (clsHas(s.replace(/natural history( museum)?/g, ''), p.geschichte_klassen)) out.d += p.geschichtsmuseum || 0;
+      else if (clsHas(s, p.spezial_klassen) && (x.sl || 0) < (p.spezial_bis_sprachen || 0)) out.d += p.spezialmuseum || 0;
+    }
+    if ((p.geschichte_typen || []).indexOf(typ) >= 0 || (typ === 'turm' && clsHas(s, p.geschichte_klassen_turm))) out.d += p.geschichte || 0;
+    if (typ === 'aussicht' || clsHas(s, p.aussicht_klassen)) { out.d += p.aussicht || 0; out.av = true; }
+    return out;
+  }
+
+  /** Directory items (stored form, with _s) whose Wikidata number belongs to an OSM viewpoint get the `aussicht` bonus once (not if their class said so already). Returns the count. */
+  function applyViewpoints(items, osmEls, cfg) {
+    var p = cfg.verzeichnis && cfg.verzeichnis.profil, bonus = (p && p.aussicht) || 0, views = {}, n = 0;
+    if (!bonus) return 0;
+    (osmEls || []).forEach(function (e) { if (e.k === 'tourism=viewpoint' && e.wd) views[e.wd] = true; });
+    (items || []).forEach(function (x) {
+      if (x.q && views[x.q] && x._s && !x._s.av) { x._s.score = round1(x._s.score + bonus); x._s.av = true; n++; }
+    });
+    return n;
+  }
+
   function sightScore(x, cfg) {
     var c = cfg.staedte;
     var typ = classify(x.p31, x.cls, [x.desc], [x.name_en || x.name], cfg);
@@ -1760,10 +1791,12 @@
     if (c.gewicht_sprachen != null) s += (c.gewicht_sprachen - (cfg.score.gewichte.sprachversionen || 0)) * log10p(x.sl);
     if (c.gewicht_aufrufe) s += c.gewicht_aufrufe * log10p(x.pv);
     if (x.wv && c.bonus_wikivoyage_ort) s += c.bonus_wikivoyage_ort;
+    var pd = profileDelta(x, typ, cfg);
+    s += pd.d;
     s = round1(s);
     // nature (mountains, lakes, glaciers …) never counts for a city: big mountain municipalities would collect dozens of peaks
     var natur = typ === 'natur' || anyHeadEnds(x.cls, c.natur_woerter || []);
-    return s > 0 ? { score: s, typ: typ, natur: natur } : null;
+    return s > 0 ? { score: s, typ: typ, natur: natur, av: pd.av || undefined } : null;
   }
 
   function gridIndex(list, cell) {
@@ -1974,6 +2007,12 @@
     }).then(function () { return { requests: jobs.length, failed: failed, ms: Date.now() - t0 }; });
   }
 
+  // a long word in common ("hermitage"), apart from generic ones ("museum"): two entries a few metres apart are then one place
+  function shareWord(a, b, stop) {
+    var wa = norm(a).split(' ').filter(function (w) { return w.length >= 7 && (stop || []).indexOf(w) < 0; });
+    return norm(b).split(' ').some(function (w) { return wa.indexOf(w) >= 0; });
+  }
+
   function sameNameKey(name) {
     return norm(String(name || '').replace(/\([^)]*\)/g, ' ')).replace(/^ (the|le|la|les|l|il|der|die|das) /, ' ');
   }
@@ -2028,6 +2067,7 @@
     var seen = {}, uniq = [];
     sights.forEach(function (s) {
       var k = sameNameKey(s.x.name), dup = (seen[k] || []).filter(function (o) { return haversine(o.x.lat, o.x.lon, s.x.lat, s.x.lon) < (v.doppelt_m || 500); })[0];
+      if (!dup && v.doppelt_nah_m) dup = uniq.filter(function (o) { return haversine(o.x.lat, o.x.lon, s.x.lat, s.x.lon) < v.doppelt_nah_m && shareWord(o.x.name, s.x.name, v.doppelt_ignorieren); })[0];
       if (dup) { s.x.fate = 'doppelt zu ' + dup.x.name; return; }
       (seen[k] = seen[k] || []).push(s);
       uniq.push(s);
@@ -2108,7 +2148,7 @@
           keep.push({
             q: x.q, name: x.name, lat: x.lat, lon: x.lon, sl: x.sl, pop: x.pop || 0, km2: x.km2 || 0, land: x.land.slice(0, 1),
             u: isUnesco(x, dcfg) || undefined, cap: x.cap || undefined, pv: x.pv || undefined, wv: x.wv || undefined,
-            _c: isC, _s: s ? { score: s.score, typ: s.typ, natur: s.natur || undefined } : null
+            _c: isC, _s: s ? { score: s.score, typ: s.typ, natur: s.natur || undefined, av: s.av } : null
           });
         });
         return { t: tileKey(t), stand: Date.now(), items: keep, roh: r.items.length, ms: Date.now() - t0, abfragen: r.queries + pv.requests, fehler: pv.failed };
@@ -2265,6 +2305,6 @@
     tripadvisorUrl: tripadvisorUrl, merkZeile: merkZeile,
     iconFor: iconFor, cityTiles: cityTiles, tileKey: tileKey, splitTile: splitTile, citySparql: citySparql, parseCityRows: parseCityRows,
     loadCityTiles: loadCityTiles, isCityItem: isCityItem, cityRadius: cityRadius, sightScore: sightScore,
-    computeCities: computeCities, loadPageviews: loadPageviews, loadSitelinks: loadSitelinks, directoryCandidates: directoryCandidates, computeDirectory: computeDirectory, lineDistance: lineDistance, routePlan: routePlan, lineLength: lineLength, corridorWidths: corridorWidths, corridorTiles: corridorTiles, corridorPick: corridorPick, directoryConfig: directoryConfig, prepareDirectoryTile: prepareDirectoryTile, directoryTiles: directoryTiles, cityStars: cityStars, ortStars: ortStars, loadCountryCities: loadCountryCities, bboxOf: bboxOf, cityWikiUrl: cityWikiUrl
+    profileDelta: profileDelta, applyViewpoints: applyViewpoints, computeCities: computeCities, loadPageviews: loadPageviews, loadSitelinks: loadSitelinks, directoryCandidates: directoryCandidates, computeDirectory: computeDirectory, lineDistance: lineDistance, routePlan: routePlan, lineLength: lineLength, corridorWidths: corridorWidths, corridorTiles: corridorTiles, corridorPick: corridorPick, directoryConfig: directoryConfig, prepareDirectoryTile: prepareDirectoryTile, directoryTiles: directoryTiles, cityStars: cityStars, ortStars: ortStars, loadCountryCities: loadCountryCities, bboxOf: bboxOf, cityWikiUrl: cityWikiUrl
   };
 });

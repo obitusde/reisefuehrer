@@ -1,8 +1,8 @@
-/* Reiseführer – app (v0.15.0). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.16.0). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.15.0';
+  var VERSION = '0.16.0';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage

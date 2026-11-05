@@ -93,6 +93,13 @@ if (osmDir && fs.existsSync(path.join(osmDir, 'index.json'))) {
 }
 const osmCover = osmIdx ? Object.keys(osmIdx.kacheln) : [], osmRand = new Set(osmIdx && osmIdx.rand ? osmIdx.rand : []);
 
+// ---- v0.16.0: OSM viewpoints with a Wikidata number lift that directory entry (profile `aussicht`), if its class did not say "viewpoint" already
+{
+  const els = Object.values(osm).flat(), nViews = new Set(els.filter((e) => e.k === 'tourism=viewpoint' && e.wd).map((e) => e.wd)).size;
+  const n = core.applyViewpoints(Object.values(verzeichnis).flat(), els, dcfg);
+  console.log('Aussichtspunkte aus OSM: ' + nViews + ' mit Wikidata-Nummer, ' + n + ' Ziele angehoben');
+}
+
 // ---- one line per Wikidata item (description, height), asked in batches from the Wikidata query service
 const qs = new Set();
 Object.values(verzeichnis).flat().forEach((x) => { if (x.q) qs.add(x.q); });
