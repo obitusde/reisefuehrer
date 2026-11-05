@@ -196,12 +196,12 @@ eq(artF.url, 'https://en.wikipedia.org/wiki/Manchester_Town_Hall', 'article url'
 const pK = core.buildPrompt(th, { article: artK, level: 'kurz', schwerpunkt: '', distance: 120 }, cfg);
 ok(pK.text.startsWith('Du bist mein Reiseführer. Erzähle mir gleich etwas über diesen Ort.'), 'prompt starts with template');
 ok(pK.text.includes('Ort: Manchester Town Hall (deutsch: Rathaus Manchester)') && pK.text.includes('Wo: 53.47940, -2.24460, etwa 120 m von mir entfernt'), 'prompt place and distance');
-ok(pK.text.includes('Länge: etwa dreißig Sekunden') && pK.text.includes('Schwerpunkt: keiner, ein guter Überblick'), 'prompt length and focus');
+ok(pK.text.includes('Länge: etwa eine Minute, ca. 150 Wörter') && pK.text.includes('Schwerpunkt: keiner, ein guter Überblick'), 'prompt length and focus');
 ok(pK.text.includes('Quelltext (Englisch, Wikipedia):\nManchester Town Hall is a test place') && !pK.text.includes('Reisetipp') && !pK.text.includes('\n\n\n'), 'prompt source, no empty Wikivoyage line');
 ok(pK.text.endsWith('Weitere Infos: https://en.wikipedia.org/wiki/Manchester_Town_Hall'), 'prompt ends with link');
 const pN = core.buildPrompt(th, { article: artF, level: 'normal', schwerpunkt: 'Architektur', distance: null }, cfg);
 ok(pN.truncated && pN.text.includes('Wikipedia – an einer Satzgrenze gekürzt') && pN.text.includes('Schwerpunkt: Architektur') && pN.text.includes('Wo: 53.47940, -2.24460\n'), 'normal: truncated, focus, no distance');
-const srcN = pN.text.split('):\n')[1].split('\n\nWeitere Infos')[0];
+const srcN = pN.text.split('gekürzt):\n')[1].split('\n\nWeitere Infos')[0];
 ok(srcN.length <= 3000 && /[.!?]$/.test(srcN), 'normal source <= 3000 and ends at sentence: ' + srcN.length);
 const pA = core.buildPrompt(th, { article: artF, level: 'ausfuehrlich', schwerpunkt: '', distance: 50 }, cfg);
 ok(pA.length <= 12000 && pA.length > 9000, 'ausführlich within 12000: ' + pA.length);
@@ -212,6 +212,10 @@ ok(pNone.text.includes('keinen Wikipedia-Text') && pNone.text.includes('Quelltex
 const pOsm = core.buildPrompt(Object.assign({}, th, { osm: { x: { artist_name: 'Glyn Hughes', start_date: '2001' } } }), { article: null, level: 'kurz' }, cfg);
 ok(pOsm.text.includes('Quelltext (OpenStreetMap, kein Wikipedia-Artikel):') && pOsm.text.includes('Angaben aus OpenStreetMap: Künstler: Glyn Hughes; Entstehung: 2001'), 'prompt uses OSM facts');
 ok(pK.text.includes('Quelltext (Englisch, Wikipedia):'), 'prompt source label with Wikipedia');
+// v0.13.4: more detail – the app may search the web; for reading aloud; explain terms; vivid; no follow-up question
+ok(pK.text.includes('nur die Grundlage') && pK.text.includes('im Internet nach verlässlichen Informationen') && !pK.text.includes('Verwende nur Informationen aus dem Quelltext'), 'v0.13.4 narration prompt: source is only the basis, web search allowed');
+ok(pK.text.includes('wird mir vorgelesen') && pK.text.includes('ohne Listen, Überschriften') && pK.text.includes('Fachbegriffe') && pK.text.includes('anschaulich und lebendig') && pK.text.includes('neunzehnhundertvier') && pK.text.includes('Erfinde nichts') && pK.text.includes('keine Rückfrage'), 'v0.13.4 narration prompt: spoken text, explains terms, vivid, no inventing, no follow-up question');
+ok(core.buildPrompt(th, { article: artF, level: 'ausfuehrlich' }, cfg).text.includes('Länge: etwa sieben Minuten, ca. 1000 Wörter') && core.buildPrompt(th, { article: artF, level: 'normal' }, cfg).text.includes('Länge: etwa drei Minuten, ca. 450 Wörter'), 'v0.13.4 narration lengths');
 eq(core.nameSimilarity('Manchester Cathedral', 'Manchester Cathedral'), 1, 'similarity equal');
 ok(core.nameSimilarity('Musée Alexis-Forel', 'Musee Alexis Forel') === 1, 'similarity ignores accents and dashes');
 ok(core.nameSimilarity('Town Hall', 'Manchester Town Hall') < 0.85, 'different names stay apart');

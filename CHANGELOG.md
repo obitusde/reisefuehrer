@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.13.4 – 05.11.2026 – „Erzähl mir davon“: mehr Details, mit Websuche, anschaulich zum Vorlesen
+
+Beobachtung Nutzer (Maison de l'Estérel, Lausanne): „Erzähl mir davon“ lieferte wenig, weil der Wikipedia-Text kurz war und der Prompt nur den Quelltext erlaubte; Google (KI-Modus) fand mit Websuche viel mehr. Die KI-Apps des Nutzers dürfen ins Internet.
+
+- **Neuer Prompt** (`config.json` → `erzaehlen.vorlage`, gilt für alle drei Stufen):
+  - Der Quelltext ist nur die Grundlage. Die KI soll zusätzlich im Internet nach verlässlichen Informationen suchen (Wikipedia in anderen Sprachen, Denkmal- und Kulturgüterverzeichnisse, offizielle Website, lokale Geschichtsseiten) und die interessantesten Details bringen: Baujahr, die Menschen dahinter, Hintergründe, Geschichten, was man anschauen kann.
+  - Bei Widersprüchen oder Unsicherheit: weglassen oder „angeblich“; nichts erfinden.
+  - Zum Vorlesen: gesprochener Text in ganzen Sätzen, keine Listen, Überschriften, Klammern. Anschaulich und lebendig wie ein guter Stadtführer, mit Vergleichen und Bildern, nicht wie ein Lexikon. Beginn mit einem Satz, der hilft zu erkennen, was man vor sich hat.
+  - Schwer verständliche Fachbegriffe, Stilbezeichnungen und fremde Wörter werden beim ersten Vorkommen kurz in einfachen Worten erklärt. Zahlen und Jahreszahlen so, wie man sie spricht.
+  - Am Ende keine Quellen und keine Rückfrage.
+- **Längen** (mehr Details): kurz etwa 1 Minute (ca. 150 Wörter, vorher 30 Sekunden/80), normal etwa 3 Minuten (ca. 450, vorher 300), ausführlich etwa 7 Minuten (ca. 1000, vorher 750).
+- **Ohne Wikipedia-Artikel**: der Prompt sagt jetzt „Suche selbst im Internet; findest du nichts Verlässliches, sage das offen und erfinde nichts“ (vorher nur „sage das offen“).
+
+### Annahmen/Abweichungen
+
+- Ob die KI-App wirklich sucht, hängt von der App und ihrer Einstellung ab (der Nutzer sagt: sie darf). Bei Orten ohne Netzfund bleibt es bei dem, was im Quelltext steht.
+- Nicht gebaut: den Quelltext verbessern. Bei Orten aus dem Paket oder aus OSM nimmt die App die erste vorhandene Sprache (de, en, fr, it, es, nl), nicht die längste; bei „Hier suchen“-Treffern wählt sie die längste. Das lässt sich noch angleichen.
+- Prüfung hier nur am Prompt-Text (Tests); wie gut die Antwort auf dem Handy klingt, zeigt erst der Test dort.
+
 ## v0.13.3 – 05.11.2026 – Schlankes Ortsfenster, „Lohnt sich der Besuch?“
 
 Wunsch Nutzer (nach Test auf dem Pixel): Name per langem Tippen kopieren, Knöpfe niedriger, weniger Knöpfe und Blöcke, der Besuchs-Prompt nur noch für „lohnt es sich?“ und praktische Tipps.
