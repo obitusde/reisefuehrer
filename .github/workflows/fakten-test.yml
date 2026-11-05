@@ -1,0 +1,53 @@
+# Einmaliger Faktencheck zu einem Ort: Wikipedia-Volltext, Wikidata, Webseiten/PDFs, Commons-Fotos (als base64 im Protokoll).
+# Schreibt nichts ins Repository, nur das Protokoll.
+name: Faktencheck (Ort)
+on:
+  workflow_dispatch:
+    inputs:
+      wiki:
+        description: 'Wikipedia-Artikel: sprache:Titel; weitere nach ;'
+        required: false
+        default: "fr:Maison de l'Estérel;de:Maison de l'Estérel;en:Maison de l'Estérel"
+      wd:
+        description: 'Wikidata-Suchbegriff'
+        required: false
+        default: "Maison de l'Estérel"
+      seiten:
+        description: 'Seiten/PDFs (erlaubte Hosts), getrennt mit ;'
+        required: false
+        default: 'https://data.geo.admin.ch/ch.babs.kulturgueter/PDF/KGS_11682_GSK-f.pdf;https://dominikgehl.com/lausanne-maison-de-lesterel'
+      kategorie:
+        description: 'Commons-Kategorie (ohne Category:)'
+        required: false
+        default: "Maison de l'Estérel"
+      fotos:
+        description: 'Anzahl Fotos (höchstens 5)'
+        required: false
+        default: '3'
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      WIKI: ${{ inputs.wiki }}
+      WD: ${{ inputs.wd }}
+      SEITEN: ${{ inputs.seiten }}
+      KATEGORIE: ${{ inputs.kategorie }}
+      FOTOS: ${{ inputs.fotos }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Eingaben prüfen
+        run: |
+          for v in "$WIKI" "$WD" "$SEITEN" "$KATEGORIE"; do
+            if ! [[ "$v" =~ ^[^[:cntrl:]]{0,900}$ ]]; then echo "Ungültig"; exit 1; fi
+          done
+          if ! [[ "$FOTOS" =~ ^[0-9]$ ]]; then echo "Ungültige Fotozahl"; exit 1; fi
+      - name: PDF-Werkzeug
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils > /dev/null
+      - name: Abfragen
+        run: node tools/fakten-probe.mjs
