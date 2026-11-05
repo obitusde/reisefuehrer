@@ -7,7 +7,7 @@ Wunsch Nutzer: Wer einen Punkt wie „Crêt des Alouettes“ antippt, soll erfah
 - **Paket mit Beschreibungen** (`info` in `paket.json`, gebaut von `tools/paket.mjs`): zu jeder Wikidata-Nummer im Paket (Verzeichnis und OSM-Punkte) eine Zeile aus Wikidata, auf Deutsch, sonst Englisch, plus die Höhe (P2044), z. B. „Berg in der Schweiz · 1 054 m“. Das Paket muss dafür neu gebaut werden (Action „Länderpaket aufbereiten“), danach in der App „Aktualisieren“.
 - **Anzeige**:
   - Liste im Kartenausschnitt: unter dem Namen eine graue Zeile mit dieser Beschreibung (nur wo es eine gibt, auch ohne Internet).
-  - Ortsfenster: ist kein Wikipedia-Text da, steht dort dieselbe Zeile; bei OSM-Punkten die Beschreibung aus OSM und die Höhe aus dem OSM-Tag `ele` (kommt mit dem nächsten Bau der OSM-Daten).
+  - Ortsfenster: ist kein Wikipedia-Text da, steht dort dieselbe Zeile; bei OSM-Punkten die Beschreibung aus OSM und die Höhe aus dem OSM-Tag `ele` (6826 OSM-Punkte haben eine).
   - Weiß weder das Paket noch Wikipedia etwas, steht dort „Keine Beschreibung gefunden.“, statt einer leeren Fläche.
 - **Google-Knöpfe im Ortsfenster** (immer): „✨ Google fragen“ öffnet Googles KI-Modus mit der Frage „Was ist „Name“ in Ort (Kanton)? Antworte kurz in höchstens 6 Sätzen auf Deutsch. Stelle am Ende keine Rückfrage und mache keine Vorschläge.“ und „🖼 Bilder“ die Google-Bildersuche mit Name, Ort und Kanton. Ort und Kanton holt das Fenster beim Öffnen mit einer Anfrage an Nominatim (wie bei „Hier suchen“); ohne Internet stehen die Koordinaten in der Frage. Frage und Auftrag stehen in `config.json` unter `google`. Hat der Ort keinen Wikipedia-Artikel, stehen die Knöpfe direkt unter dem Text, sonst weiter unten bei den anderen Knöpfen.
 - **Fenster zum Schließen**: Google- und Wikipedia-Knöpfe sind normale Links mit `target="_blank"`. Auf Android öffnet das ein Chrome-Fenster über der App (✕ oder Zurück schließt es, die App ist wieder da); als normaler Chrome-Tab bleibt der neue Tab offen. Auf dem Handy noch nicht geprüft.
@@ -20,7 +20,13 @@ Wunsch Nutzer: Wer einen Punkt wie „Crêt des Alouettes“ antippt, soll erfah
 - Die Wikipedia-Suche nach dem Namen habe ich nicht eingebaut (gemessen: falsche Treffer, z. B. ein anderes „Crêt des Alouettes“ in Frankreich). Commons-Fotos aus der Umgebung auch nicht (sie zeigten die Orbe-Quelle, nicht den Berg).
 - „Lage zur nächsten Stadt“ gibt es nicht (dein Wunsch).
 - Die Zeile kommt nur zu Punkten mit Wikidata-Nummer (oder OSM-Beschreibung); reine OSM-Punkte ohne beides bekommen „Keine Beschreibung gefunden.“.
-- Die Größe des Pakets nimmt zu (Messwert siehe unten, nach dem Bau).
+- Das Paket ist größer geworden: 10,7 MB (vorher 8,7 MB), beim Herunterladen gezippt 1,9 MB (vorher 1,5 MB). Davon sind 1,8 MB die Beschreibungen.
+
+### Gemessen (GitHub, 5.11.2026)
+
+- Bau: 12 Minuten. 114 Verzeichnis-Stücke ohne Fehler, 30 048 Ziele und 1695 Orte, 20 979 OSM-Punkte.
+- Beschreibungen: 32 278 von 33 496 Wikidata-Nummern haben eine Beschreibung oder Höhe (32 059 Beschreibungen, 15 272 Höhen), 0 Abfragen ohne Antwort. Im Verzeichnis haben 31 726 von 32 820 Einträgen eine Zeile, bei den OSM-Punkten mit Wikidata-Nummer 8128 von 8316.
+- Mit dem echten Paket in Chromium (ohne Wikipedia, Wikidata und Nominatim): Crêt des Alouettes zeigt in der Liste und im Fenster „Berg in der Schweiz · 1 068 m“, dazu beide Google-Knöpfe; ohne Ortsnamen enthält die Frage die Koordinaten. Die Höhe 1068 m stammt aus dem normierten Wert in Wikidata; Google nennt in deinem Screenshot dieselbe Zahl.
 
 ## v0.12.0 – 05.11.2026 – Länderpaket Schweiz: Sehenswürdigkeiten sofort, ohne Nachladen
 
