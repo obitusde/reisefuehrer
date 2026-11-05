@@ -1,8 +1,8 @@
-/* Reiseführer – app (v0.13.1). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.13.2). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.13.1';
+  var VERSION = '0.13.2';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
@@ -708,7 +708,7 @@
   // built by the GitHub Action paket.yml. Stored like loaded tiles (IndexedDB vz:<tile>, osm:<v>:<tile>), so the rest of the
   // app works as before – only nothing has to be loaded any more. Photos and Wikipedia texts: when a place is opened.
   var PAKET = { meta: {}, cover: {}, osmMem: {}, osmReading: {}, job: null, info: {} };
-  // v0.13.1: [description, height] per Wikidata item, from the package (works without internet)
+  // v0.13.2: [description, height] per Wikidata item, from the package (works without internet)
   function infoRec(q) {
     if (!q) return null;
     var lands = Object.keys(PAKET.info);
@@ -1653,7 +1653,7 @@
     var k = kurzStore[p.id];
     if (k && k.t && !(k.orig && p.kurz && !p.kurzOrig)) return k.t;
     if (p.kurz) return p.kurz;   // stored with a prepared area (v0.6)
-    // v0.13.1: Wikidata description and height from the package (also OSM description and height tag), works without internet
+    // v0.13.2: Wikidata description and height from the package (also OSM description and height tag), works without internet
     var inf = C.infoLine(infoRec(p.wikidata) || (p.osmOnly && p.beschreibung ? [p.beschreibung] : null), p.osm && p.osm.x && p.osm.x.ele);
     if (inf) return inf;
     if (p.osmOnly) return p.beschreibung || '';
@@ -1864,7 +1864,7 @@
     googleLocate(p);
   }
 
-  // v0.13.1: what the window says when neither the package nor Wikipedia has a text; and the Google buttons.
+  // v0.13.2: what the window says when neither the package nor Wikipedia has a text; and the Google buttons.
   // The links open in their own window (target _blank: on Android a window above the app that closes with ✕ / Back).
   var NODESC = 'Keine Beschreibung gefunden.', GLOC = {};
   function plDescSet(p) {

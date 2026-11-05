@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.13.2 – 05.11.2026 – Google-Frage: kurz, nur „Keine Rückfrage am Ende“
+
+Wunsch Nutzer: Der lange Auftrag war zu lang (man musste scrollen). Endgültiges Format: „Was ist „Parc Pidoux“ in Chavannes-près-Renens (Waadt)? Keine Rückfrage am Ende“. Aufbau und Länge der Antwort entscheidet Google.
+
+- `config.json` → `google.auftrag` ist jetzt nur noch „Keine Rückfrage am Ende“.
+
+### Annahmen/Abweichungen
+
+- Ob Google bei dieser kurzen Frage die Meldung „Mit dieser Suche fortfahren?“ zeigt, ist nicht geklärt (nicht getestet).
+- Das Ergebnis der „Bilder“-Suche ändert sich nicht.
+
 ## v0.13.1 – 05.11.2026 – Google-Frage: gegliederte Übersicht statt Fließtext
 
 Wunsch Nutzer: Die Frage bleibt „Was ist „Name“ in Ort (Kanton)?“, die Antwort soll eine gute Übersicht sein, kein Fließtext, ohne Rückfrage am Ende.

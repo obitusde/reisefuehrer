@@ -50,7 +50,7 @@
     "sprache": "de",
     "ki_param": "udm=50",
     "frage": "Was ist „{name}“{ort}?",
-    "auftrag": "Antworte auf Deutsch als gut gegliederte Übersicht: kurze Zwischenüberschriften (z. B. Art, Lage, Besonderheiten, Besuch) mit knappen Stichpunkten, kein Fließtext, insgesamt nicht länger als ein Bildschirm. Stelle am Ende keine Rückfrage und mache keine Vorschläge."
+    "auftrag": "Keine Rückfrage am Ende"
   },
 
   "paket": {
