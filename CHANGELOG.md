@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.13.5 – 05.11.2026 – Neue Prompts nach bewährten Regeln: „Erzähl mir davon“ und „Lohnt sich der Besuch?“
+
+Wunsch Nutzer: Die Prompts sollen allgemein gelten, möglichst kurz sein und gut funktionieren. Anlass: Test mit der Maison de l'Estérel (Lausanne). Der Prompt aus v0.13.4 erzeugte schon einen guten Hörtext; die Prüfung der Antworten (Wikipedia, Wikidata, Fotos, Suchtreffer) zeigte Verbesserungen bei Reihenfolge, Quellenvermerk und Ausschmückung.
+
+- **Erzähl mir davon** (`erzaehlen.vorlage`; ohne Quelltext etwa so lang wie in v0.13.4, trotz der neuen Regeln für Quellen und Reihenfolge):
+  - Rolle und Aufgabe zuerst, „du“, der Text wird vorgelesen.
+  - Daten (Ort, Wo, Art, Länge, Schwerpunkt) getrennt von den Regeln. Länge ist ein Höchstwert („lieber kürzer als aufgefüllt“).
+  - Quellen: Quelltext nur Grundlage, Websuche erlaubt; nur sagen, was in einer Quelle steht (auch zum Aussehen); Namen, Schreibweisen und Schutzstatus genau übernehmen, nichts steigern; „laut …“, wenn nur eine Quelle etwas behauptet oder etwas als einmalig bezeichnet; Unsicheres weglassen.
+  - Feste Reihenfolge: 1. ein Satz, was es ist; 2. alles von außen, jeweils mit Seh-Anweisung; 3. Geschichte (wer, wann, warum) mit einem überraschenden Detail, das in einer Quelle steht; 4. Inneres und ob man hinein darf.
+  - Stil positiv formuliert: kurze Sätze (höchstens 20 Wörter), jeder Satz bringt eine Tatsache, Zahl, einen Namen, eine Geschichte oder eine Seh-Anweisung; sachlich, ohne Prospektsprache (Verbotsliste nur beispielhaft); Fachbegriffe in eigenen Worten erklären; Zahlen ausgesprochen; kein Schlussappell, keine Rückfrage, keine Quellenliste.
+  - Quelltext am Ende, danach die Startanweisung „Beginne jetzt direkt mit dem gesprochenen Text.“ Kein Beispielsatz mehr (die KI schrieb ihn sonst ab).
+  - Längenangaben: kurz etwa 1 Minute (ca. 150 Wörter), normal etwa 3 Minuten (ca. 450), ausführlich etwa 7 Minuten (ca. 1000).
+- **Lohnt sich der Besuch?** (`besucher.vorlage`): gleiche Regeln für Quellen und Stil, feste Gliederung mit genau zwei Abschnitten (Urteil Ja/Bedingt/Eher nicht mit kurzer Begründung; praktische Tipps in 5–8 Stichpunkten), „nicht gefunden“ statt Erfindungen, Quelle bei Zahlen und Urteilen, Stand bei Öffnungszeiten und Preisen, keine Rückfrage, Startanweisung mit der ersten Überschrift.
+
+### Geprüft: Maison de l'Estérel (Lausanne)
+
+- Die französische Wikipedia hat nur einen Stummel (zwei Sätze), deutsch und englisch gibt es nicht. Die Details kamen aus anderen Quellen (Inventar der Kulturgüter, notreHistoire mit Zitat aus einem Fachbuch über Treppenhäuser, 24heures, Fotograf, AGORHA). Deshalb ist die Websuche im Prompt der entscheidende Teil.
+- Zwei Fotos (Wikimedia Commons) bestätigen: Schmiedeeisengitter an den Balkonen, Fensterrahmungen und Bauschmuck, Eckerker, Läden im Erdgeschoss.
+- Neues Hilfsmittel: GitHub-Workflow „Faktencheck (Ort)“ (`tools/fakten-probe.mjs`, nur von Hand): holt Wikipedia-Volltext, Wikidata, Webseiten/PDFs und Commons-Fotos in das Protokoll.
+
+### Annahmen/Abweichungen
+
+- Die Wirkung der neuen Prompts auf die Antwort der KI-App ist nicht von hier prüfbar; hier geprüft ist nur der erzeugte Prompt-Text (Tests). Die Abnahme steht in `diag.html` (q13, q14).
+- Die KI-App kann bei einzelnen Punkten trotzdem abweichen; „laut …“ und „weglassen“ sind Regeln, keine Garantie.
+- Der Prompt für die Google-Frage (v0.13.2) bleibt, wie er ist.
+
 ## v0.13.4 – 05.11.2026 – „Erzähl mir davon“: mehr Details, mit Websuche, anschaulich zum Vorlesen
 
 Beobachtung Nutzer (Maison de l'Estérel, Lausanne): „Erzähl mir davon“ lieferte wenig, weil der Wikipedia-Text kurz war und der Prompt nur den Quelltext erlaubte; Google (KI-Modus) fand mit Websuche viel mehr. Die KI-Apps des Nutzers dürfen ins Internet.

@@ -196,9 +196,9 @@ eq(artF.url, 'https://en.wikipedia.org/wiki/Manchester_Town_Hall', 'article url'
 const pK = core.buildPrompt(th, { article: artK, level: 'kurz', schwerpunkt: '', distance: 120 }, cfg);
 ok(pK.text.startsWith('Du bist mein Reiseführer. Erzähle mir gleich etwas über diesen Ort.'), 'prompt starts with template');
 ok(pK.text.includes('Ort: Manchester Town Hall (deutsch: Rathaus Manchester)') && pK.text.includes('Wo: 53.47940, -2.24460, etwa 120 m von mir entfernt'), 'prompt place and distance');
-ok(pK.text.includes('Länge: etwa eine Minute, ca. 150 Wörter') && pK.text.includes('Schwerpunkt: keiner, ein guter Überblick'), 'prompt length and focus');
+ok(pK.text.includes('Länge: höchstens etwa eine Minute (ca. 150 Wörter), lieber kürzer als aufgefüllt') && pK.text.includes('Schwerpunkt: keiner, ein guter Überblick'), 'prompt length and focus');
 ok(pK.text.includes('Quelltext (Englisch, Wikipedia):\nManchester Town Hall is a test place') && !pK.text.includes('Reisetipp') && !pK.text.includes('\n\n\n'), 'prompt source, no empty Wikivoyage line');
-ok(pK.text.endsWith('Weitere Infos: https://en.wikipedia.org/wiki/Manchester_Town_Hall'), 'prompt ends with link');
+ok(pK.text.includes('Weitere Infos: https://en.wikipedia.org/wiki/Manchester_Town_Hall') && pK.text.endsWith('Beginne jetzt direkt mit dem gesprochenen Text.'), 'prompt ends with link and the start instruction');
 const pN = core.buildPrompt(th, { article: artF, level: 'normal', schwerpunkt: 'Architektur', distance: null }, cfg);
 ok(pN.truncated && pN.text.includes('Wikipedia – an einer Satzgrenze gekürzt') && pN.text.includes('Schwerpunkt: Architektur') && pN.text.includes('Wo: 53.47940, -2.24460\n'), 'normal: truncated, focus, no distance');
 const srcN = pN.text.split('gekürzt):\n')[1].split('\n\nWeitere Infos')[0];
@@ -213,9 +213,12 @@ const pOsm = core.buildPrompt(Object.assign({}, th, { osm: { x: { artist_name: '
 ok(pOsm.text.includes('Quelltext (OpenStreetMap, kein Wikipedia-Artikel):') && pOsm.text.includes('Angaben aus OpenStreetMap: Künstler: Glyn Hughes; Entstehung: 2001'), 'prompt uses OSM facts');
 ok(pK.text.includes('Quelltext (Englisch, Wikipedia):'), 'prompt source label with Wikipedia');
 // v0.13.4: more detail – the app may search the web; for reading aloud; explain terms; vivid; no follow-up question
-ok(pK.text.includes('nur die Grundlage') && pK.text.includes('im Internet nach verlässlichen Informationen') && !pK.text.includes('Verwende nur Informationen aus dem Quelltext'), 'v0.13.4 narration prompt: source is only the basis, web search allowed');
-ok(pK.text.includes('wird mir vorgelesen') && pK.text.includes('ohne Listen, Überschriften') && pK.text.includes('Fachbegriffe') && pK.text.includes('anschaulich und lebendig') && pK.text.includes('neunzehnhundertvier') && pK.text.includes('Erfinde nichts') && pK.text.includes('keine Rückfrage'), 'v0.13.4 narration prompt: spoken text, explains terms, vivid, no inventing, no follow-up question');
-ok(core.buildPrompt(th, { article: artF, level: 'ausfuehrlich' }, cfg).text.includes('Länge: etwa sieben Minuten, ca. 1000 Wörter') && core.buildPrompt(th, { article: artF, level: 'normal' }, cfg).text.includes('Länge: etwa drei Minuten, ca. 450 Wörter'), 'v0.13.4 narration lengths');
+ok(pK.text.includes('nur die Grundlage') && pK.text.includes('Suche zusätzlich im Internet nach verlässlichen Angaben') && !pK.text.includes('Verwende nur Informationen aus dem Quelltext'), 'v0.13.5 narration prompt: source is only the basis, web search allowed');
+ok(pK.text.includes('Sprich mich mit „du“ an') && pK.text.includes('Der Text wird mir vorgelesen') && pK.text.includes('keine Listen, Überschriften oder Klammern') && pK.text.includes('Fachbegriffe') && pK.text.includes('Prospektsprache') && pK.text.includes('neunzehnhundertvier') && pK.text.includes('keine Rückfrage'), 'v0.13.5 narration prompt: du, spoken text, short sentences, explains terms, no marketing language, no follow-up question');
+ok(pK.text.includes('Sage nur, was du in einer Quelle gefunden hast') && pK.text.includes('Schutzstatus genau') && pK.text.includes('„laut …“') && pK.text.includes('Unsicheres lass weg') && pK.text.includes('in dieser Reihenfolge') && pK.text.includes('Seh-Anweisung') && pK.text.includes('ob man hinein darf') && pK.text.includes('überraschenden Detail, das in einer Quelle steht'), 'v0.13.5 narration prompt: only sourced facts, laut-rule, fixed order, access, detail only from a source');
+ok(!pK.text.includes('Jugendstil') && !/zum Beispiel: „/.test(pK.text), 'v0.13.5 narration prompt: no example sentence to copy');
+ok(core.buildPrompt(th, { article: artF, level: 'ausfuehrlich' }, cfg).text.includes('Länge: höchstens etwa sieben Minuten (ca. 1000 Wörter)') && core.buildPrompt(th, { article: artF, level: 'normal' }, cfg).text.includes('Länge: höchstens etwa drei Minuten (ca. 450 Wörter)'), 'v0.13.5 narration lengths');
+ok(pK.text.length < 1850, 'v0.13.5 narration prompt is short (' + pK.text.length + ')');
 eq(core.nameSimilarity('Manchester Cathedral', 'Manchester Cathedral'), 1, 'similarity equal');
 ok(core.nameSimilarity('Musée Alexis-Forel', 'Musee Alexis Forel') === 1, 'similarity ignores accents and dashes');
 ok(core.nameSimilarity('Town Hall', 'Manchester Town Hall') < 0.85, 'different names stay apart');
@@ -243,9 +246,9 @@ ok(core.osmandIntentUrl(pin, 'net.osmand.plus').startsWith('intent://osmand.net/
   core.osmandIntentUrl(pin).endsWith(';end'), 'osmand intent url');
 ok(core.claudeNewUrl('a b?').startsWith('claude://claude.ai/new?q=a%20b%3F'), 'claude url');
 const rv = core.buildReviewPrompt(th, cfg);
-ok(rv.text.startsWith('Lohnt sich ein Besuch?') && rv.text.includes('Ort: Manchester Town Hall (deutsch: Rathaus Manchester)') &&
+ok(rv.text.startsWith('Du bist mein Reiseführer. Sag mir, ob sich ein Besuch lohnt') && rv.text.includes('Ort: Manchester Town Hall (deutsch: Rathaus Manchester)') &&
   rv.text.includes('Google Maps, Tripadvisor') && rv.text.includes('## Praktische Tipps für den Besuch') && rv.text.includes('Wikipedia: https://en.wikipedia.org/wiki/Manchester_Town_Hall'), 'review prompt');
-ok(rv.text.includes('nicht zum Vorlesen') && rv.text.includes('## Lohnt sich der Besuch?') && !rv.text.includes('Tabelle mit zwei Spalten') && rv.text.includes('Stelle am Ende keine Rückfrage') && rv.length < 2000, 'v0.13.3 visit prompt: only "worth it?" and practical tips, no follow-up question (' + rv.length + ')');
+ok(rv.text.includes('Ich lese die Antwort auf dem Handy') && rv.text.includes('## Lohnt sich der Besuch?') && rv.text.includes('Erfinde nichts') && rv.text.includes('nicht gefunden') && !rv.text.includes('Tabelle mit zwei Spalten') && rv.text.includes('am Ende keine Rückfrage') && rv.text.includes('Beginne direkt mit der Überschrift') && rv.length < 1800, 'v0.13.5 visit prompt: only "worth it?" and practical tips, sourced, no follow-up question (' + rv.length + ')');
 ok(cfg.besucher.knopf === '👍 Lohnt sich der Besuch?', 'v0.13.3 button text');
 
 // ---- languages
