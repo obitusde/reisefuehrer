@@ -7,7 +7,8 @@ Wunsch Nutzer: Die Karte kommt online, aber alles, was darüber liegt (Sehenswü
 - **Länderpaket** (`docs/paket/ch/paket.json`, gebaut von der GitHub Action „Länderpaket aufbereiten“, `.github/workflows/paket.yml`, nur von Hand):
   - Verzeichnis: alle 0,25°-Stücke, die die Schweiz berühren. Darin steht dasselbe, was das Handy sonst bei „Gegend laden“ holt: Wikidata, Seitenaufrufe, Wikivoyage, Sterne-Punkte. Bei Grenzstücken auch der ausländische Teil, Genf sieht also auch Frankreich.
   - OSM-Punkte aus dem Geofabrik-Auszug, wie in v0.11.
-  - Messwerte: siehe unten.
+  - **Gemessen** (GitHub, 5.11.2026): 114 Verzeichnis-Stücke ohne einen Fehler, 30 044 Ziele (★★★ 34, ★★ 157, ★ 376) und 1694 Orte, dazu 20 979 OSM-Punkte. Das Paket ist 8,3 MB groß, gezippt beim Herunterladen 1,5 MB. Der Bau dauert 8–16 Minuten.
+  - Die besten Ziele: Reichenau, Pfahlbauten, Fürstabtei St. Gallen, Le Corbusier, Lavaux, Schloss Habsburg, Schloss Chillon, Palais des Nations, Bundeshaus, Fondation Beyeler.
 - **App**:
   - In der Schweiz fragt die Zeile über der Karte einmal: „Paket Schweiz ins Handy laden?“ (Laden / ✕).
   - Menü → Daten zeigt Stand, Größe und die Knöpfe „Herunterladen“, „Aktualisieren“ und „Löschen“. „Aktualisieren“ ist ein Tipp: Ist das Paket auf der Webseite gleich, steht „aktuell“, sonst lädt es mit Fortschritt.
@@ -18,8 +19,15 @@ Wunsch Nutzer: Die Karte kommt online, aber alles, was darüber liegt (Sehenswü
   - „Hier suchen“ (im Menü) gibt es weiter, für Kurzinfos in der Liste und für Orte außerhalb des Pakets.
 - **Zoom und Maßstab** unten rechts auf der Karte („Zoom 13“).
 
+- **Geprüft mit dem echten Paket** (Chromium, ohne Wikipedia/Wikidata/OSM): Laden und Speichern 0,5 s am PC. Bei Zoom 9, 12 und 15 in Lausanne, Morges, Genf, Le Brassus, Bern und Zürich sofort die Ziele, null Anfragen ins Internet, keine Fehler.
+  - Beispiele: Lausanne Zoom 12 Kathedrale, Olympisches Museum, Art Brut; Morges Zoom 12 Schloss Vufflens, Schloss Morges; Le Brassus Espace Horloger, Audemars Piguet Museum; Bern Bundeshaus, Münster.
+  - Gefunden und behoben: Bei Zoom 9 fragte die Zeile noch „Gegend laden?“ wegen des ausländischen Rands; im Paketgebiet kommt jetzt keine Frage.
+
 ### Annahmen/Abweichungen
 
+- In Städten sind bei Zoom 15 die 30 Plätze meist mit Wikipedia-Zielen belegt, die grauen OSM-Ringe erscheinen dann kaum (in Morges 6, in Lausanne 0). So ist es gewollt (Wikipedia vor OSM, nicht zu viel). Auf dem Dorf füllen die Ringe auf.
+- Genf und Basel: Das Verzeichnis enthält auch den ausländischen Teil; nur die OSM-Ringe fehlen dort in Grenzstücken (wie besprochen „erstmal lassen“).
+- Auf dem Handy noch nicht gemessen: Herunterladen (1,5 MB) und Speichern dürften einige Sekunden dauern.
 - Punkt 2 deiner Nachricht („Liebe offl8ne Vektor Karte“) habe ich als „lieber keine Offline-Vektorkarte“ gelesen, weil du die Karte online willst. Die Karte bleibt online.
 - Kurzinfos stehen nicht im Paket, sie kommen wie Wikipedia-Texte beim Antippen (du hattest „on demand“ erlaubt). Die Liste zeigt im Paketgebiet darum Name, Art und Ort ohne Kurzinfo.
 - Außerhalb der Schweiz bleibt alles wie in v0.11.1.

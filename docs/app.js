@@ -664,6 +664,7 @@
   // v0.10.0: the region (directory) is not loaded yet: ask too (Laden / ✕ until the missing part changes)
   function regionAsk() {
     if (ROUTE || busy || !dirOn() || !DIR.missing.length) return '';
+    if (paketCovers(viewBbox())) return ''; // v0.12.0: the middle is in the package – no question for the foreign edge
     var k = DIR.missing.map(C.tileKey).join(';');
     return REGION.dismissed === k ? '' : k;
   }
