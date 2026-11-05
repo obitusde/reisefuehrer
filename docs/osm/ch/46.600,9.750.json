@@ -1,1 +1,1 @@
-[{"id":"node/446188401","lat":46.622856,"lon":9.795942,"name":"Piz Darlux","names":{},"wd":"Q22385195","wp":"","k":"natural=peak","x":{}},{"id":"node/7096735154","lat":46.601794,"lon":9.781158,"name":"Piz Muot","names":{},"wd":"Q22387554","wp":"","k":"natural=peak","x":{}}]
+[{"id":"node/446188401","lat":46.622856,"lon":9.795942,"name":"Piz Darlux","names":{},"wd":"Q22385195","wp":"","k":"natural=peak","x":{"ele":"2642"}},{"id":"node/7096735154","lat":46.601794,"lon":9.781158,"name":"Piz Muot","names":{},"wd":"Q22387554","wp":"","k":"natural=peak","x":{"ele":"2670"}}]

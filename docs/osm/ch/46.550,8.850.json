@@ -1,1 +1,1 @@
-[{"id":"node/1458176568","lat":46.573043,"lon":8.862948,"name":"Cima della Bianca","names":{},"wd":"Q5120067","wp":"","k":"natural=peak","x":{}},{"id":"node/12040710435","lat":46.554193,"lon":8.860465,"name":"Sasso","names":{},"wd":"","wp":"","k":"natural=peak","x":{}}]
+[{"id":"node/1458176568","lat":46.573043,"lon":8.862948,"name":"Cima della Bianca","names":{},"wd":"Q5120067","wp":"","k":"natural=peak","x":{"ele":"2893"}},{"id":"node/12040710435","lat":46.554193,"lon":8.860465,"name":"Sasso","names":{},"wd":"","wp":"","k":"natural=peak","x":{"ele":"2213"}}]

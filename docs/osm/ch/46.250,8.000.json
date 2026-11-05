@@ -1,1 +1,1 @@
-[{"id":"node/1244932660","lat":46.262386,"lon":8.020399,"name":"Staldhorn","names":{},"wd":"Q22376586","wp":"","k":"natural=peak","x":{}},{"id":"node/1373151323","lat":46.256508,"lon":8.000748,"name":"Tochuhorn","names":{},"wd":"Q3647524","wp":"","k":"natural=peak","x":{}}]
+[{"id":"node/1244932660","lat":46.262386,"lon":8.020399,"name":"Staldhorn","names":{},"wd":"Q22376586","wp":"","k":"natural=peak","x":{"ele":"2463"}},{"id":"node/1373151323","lat":46.256508,"lon":8.000748,"name":"Tochuhorn","names":{},"wd":"Q3647524","wp":"","k":"natural=peak","x":{"ele":"2661"}}]

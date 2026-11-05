@@ -1,1 +1,1 @@
-[{"id":"node/3444686308","lat":47.353049,"lon":9.021529,"name":"Schlosshöchi","names":{},"wd":"Q22545166","wp":"","k":"natural=peak","x":{}},{"id":"node/7102317707","lat":47.389061,"lon":9.002964,"name":"Hamberg","names":{},"wd":"Q22591451","wp":"","k":"natural=peak","x":{}}]
+[{"id":"node/3444686308","lat":47.353049,"lon":9.021529,"name":"Schlosshöchi","names":{},"wd":"Q22545166","wp":"","k":"natural=peak","x":{"ele":"1033"}},{"id":"node/7102317707","lat":47.389061,"lon":9.002964,"name":"Hamberg","names":{},"wd":"Q22591451","wp":"","k":"natural=peak","x":{"ele":"935"}}]

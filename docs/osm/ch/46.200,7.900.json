@@ -1,1 +1,1 @@
-[{"id":"node/474773674","lat":46.220494,"lon":7.940902,"name":"Ochsehorn","names":{},"wd":"Q3647264","wp":"","k":"natural=peak","x":{}},{"id":"node/2538564407","lat":46.24836,"lon":7.938409,"name":"Rothorn","names":{},"wd":"Q22467368","wp":"","k":"natural=peak","x":{}}]
+[{"id":"node/474773674","lat":46.220494,"lon":7.940902,"name":"Ochsehorn","names":{},"wd":"Q3647264","wp":"","k":"natural=peak","x":{"ele":"2912"}},{"id":"node/2538564407","lat":46.24836,"lon":7.938409,"name":"Rothorn","names":{},"wd":"Q22467368","wp":"","k":"natural=peak","x":{"ele":"2338"}}]
