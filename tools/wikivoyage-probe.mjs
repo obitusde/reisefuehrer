@@ -45,7 +45,11 @@ for (const lang of SPR) {
     const names = {}; tp.forEach((x) => { names[x.name.toLowerCase()] = (names[x.name.toLowerCase()] || 0) + 1; });
     console.log('  Artikel: ' + d.parse.title + ' | Wikitext ' + wt.length + ' Zeichen | Abschnitte: ' + (d.parse.sections || []).filter((s) => s.toclevel === 1).map((s) => s.line).join(' / '));
     console.log('  Vorlagen (häufigste): ' + Object.entries(names).sort((a, b) => b[1] - a[1]).slice(0, 12).map((e) => e[0] + ' ×' + e[1]).join(', '));
-    const see = tp.filter((x) => SEE.test(x.name)), doo = tp.filter((x) => DO.test(x.name));
+    const vc = tp.filter((x) => /^vcard$/i.test(x.name)), types = {};
+    vc.forEach((x) => { const t = (x.args.type || x.args.typ || '(ohne)').toLowerCase(); types[t] = (types[t] || 0) + 1; });
+    if (vc.length) console.log('  vcard-Typen: ' + Object.entries(types).map((e) => e[0] + ' ×' + e[1]).join(', ') + ' | Beispiel-Felder: ' + Object.keys(vc[0].args).join(','));
+    const isT = (x, re) => SEE.test(x.name) && re === 'see' || DO.test(x.name) && re === 'do' || /^vcard$/i.test(x.name) && new RegExp(re === 'see' ? '^(see|sight|sehenswürdigkeit|attraction)' : '^(do|activity|aktivität)', 'i').test(x.args.type || x.args.typ || '');
+    const see = tp.filter((x) => isT(x, 'see')), doo = tp.filter((x) => isT(x, 'do'));
     for (const [label, L] of [['Sehenswürdigkeiten', see], ['Aktivitäten', doo]]) {
       const withCoord = L.filter((x) => first(x.args, ['lat', 'latitude']) && first(x.args, ['long', 'lon', 'longitude'])).length;
       const withWd = L.filter((x) => x.args.wikidata).length;
