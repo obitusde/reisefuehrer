@@ -1,8 +1,8 @@
-/* Reiseführer – app (v0.17.0). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.18.0). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.17.0';
+  var VERSION = '0.18.0';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
@@ -309,12 +309,29 @@
   }
 
   // Every visible point gets a short label, unless it would overlap a more important one.
+  // how many markers the section may show: more the closer you are (config marker.max_nach_zoom); the rest is decided by room
+  function maxVisible(z) {
+    var mc = cfg.marker || {}, n = mc.max_sichtbar || 30, t = mc.max_nach_zoom || {};
+    Object.keys(t).map(Number).sort(function (a, b) { return a - b; }).forEach(function (k) { if (z >= k) n = Math.max(n, t[k]); });
+    return n;
+  }
+  // how many marks without a name the section may show (config marker.ohne_name_nach_zoom: biggest key at or below the zoom)
+  function plainLimit(z) {
+    var t = (cfg.marker || {}).ohne_name_nach_zoom || {}, keys = Object.keys(t).map(Number).sort(function (a, b) { return a - b; }), n = keys.length ? t[keys[0]] : 99;
+    keys.forEach(function (k) { if (z >= k) n = t[k]; });
+    return n;
+  }
+  // within equal stars: what interests more (museums, castles, churches, viewpoints) before mountains, parks, artworks
+  function typPrio(p) {
+    var mc = cfg.marker || {};
+    return (mc.typ_vorrang || []).indexOf(p.typ) >= 0 ? 1 : (mc.typ_nachrang || []).indexOf(p.typ) >= 0 ? -1 : 0;
+  }
   function renderMarkers() {
     if (!map) return;
     markerLayer.clearLayers();
     if (cityMode() || ROUTE) return; // zoomed out: city stars instead of single places (v0.7.0); route: its own layer
     var mc = cfg.marker || {}, maxChars = mc.beschriftung_max_zeichen || 16, lines = mc.beschriftung_zeilen || 2;
-    var zNow = map.getZoom(), zAll = (cfg.verzeichnis && cfg.verzeichnis.zoom && cfg.verzeichnis.zoom.alle) || 15;
+    var zNow = map.getZoom();
     // v0.7.2: not too many at once – in the visible section only the most important ones (max_sichtbar);
     // where there is little (Le Brassus), everything. Same rule at every zoom.
     var vb = viewBbox(), dy = (vb.north - vb.south) * 0.05, dx = (vb.east - vb.west) * 0.05;
@@ -328,7 +345,7 @@
       var have = {};
       (last && last.places || []).forEach(function (p) { if (p.wikidata) have[p.wikidata] = 1; });
       dr.orte.forEach(function (x) {
-        if (have[x.q] || !C.inBbox(x, pad) || x.st < settings.minStars || (x.low && zNow < zAll)) return;
+        if (have[x.q] || !C.inBbox(x, pad) || x.st < settings.minStars) return; // v0.18.0: the small ones are no longer held back by zoom: they come if there is room
         if (settings.kat && C.typeInfo(x.typ, cfg).kategorie !== settings.kat) return;
         shown.push({ id: 'vz:' + x.q, name: x.name, lat: x.lat, lon: x.lon, sterne: x.st, score: x.score, vzScore: x.score, typ: x.typ, vz: x });
       });
@@ -336,11 +353,11 @@
     // v0.12.0: close up, the OSM points of the country package (grey rings), where no search covers the section
     paketOsmInView(vb, pad, shown, dr).forEach(function (p) { shown.push(p); });
     shown = shown.sort(function (a, b) {
-      return ((b.id === selectedId) - (a.id === selectedId)) || placeRank(a, b);
-    }).slice(0, mc.max_sichtbar || 30);
+      return ((b.id === selectedId) - (a.id === selectedId)) || (b.sterne - a.sterne) || (typPrio(b) - typPrio(a)) || placeRank(a, b);
+    }).slice(0, maxVisible(zNow));
     // v0.10.0: at a glance what is worth it in this section: the best `top` big with a bold name, up to `mit_name` named,
     // the rest only as a small dot; OSM only (no Wikipedia article): grey ring without a name
-    var nTop = mc.top || 5, nNamed = mc.mit_name || 15, nDrawn = 0;
+    var nTop = mc.top || 5, nNamed = mc.mit_name || 15, nDrawn = 0, nPlain = 0, plainMax = plainLimit(zNow);
     var boxes = [];
     function free(bx) {
       return !boxes.some(function (o) { return bx.x1 < o.x2 && bx.x2 > o.x1 && bx.y1 < o.y2 && bx.y2 > o.y1; });
@@ -351,7 +368,8 @@
       var pt = map.latLngToContainerPoint([p.lat, p.lon]);
       var r = dotR(p) * ({ top: 1.3, dot: 0.7, osm: 0.6 }[tier] || 1), px = (LBL_PX[p.sterne] || 11) + (tier === 'top' ? 2 : 0);
       // crowded: a less important dot on top of a more important one is left out
-      if (!sel && p.sterne < 3 && !free({ x1: pt.x - r, y1: pt.y - r, x2: pt.x + r, y2: pt.y + r })) return;
+      var gap = sel || p.sterne >= 2 ? 0 : (mc.abstand_px != null ? mc.abstand_px : 5); // small dots keep a little distance (v0.18.0)
+      if (!sel && p.sterne < 3 && !free({ x1: pt.x - r - gap, y1: pt.y - r - gap, x2: pt.x + r + gap, y2: pt.y + r + gap })) return;
       if (!osm) nDrawn++;
       var label = tier === 'top' || tier === 'name' ? C.mapLabel(p.name, last && last.ort, maxChars, lines) : null, side = '';
       if (label) {
@@ -361,6 +379,8 @@
         side = free(right) ? 'right' : free(left) ? 'left' : '';  // right of the dot, else left, else none
         if (side) boxes.push(side === 'right' ? right : left);
       }
+      // v0.18.0: marks without a name (one would have to tap each) are limited per zoom; ★★ and better never count
+      if (!side && !sel && p.sterne < 2) { if (nPlain >= plainMax) return; nPlain++; }
       boxes.push({ x1: pt.x - r, y1: pt.y - r, x2: pt.x + r, y2: pt.y + r });
       var m = L.marker([p.lat, p.lon], {
         icon: markerIcon(p, sel, side ? label : null, side, tier), keyboard: false, title: C.displayName(p.name),
@@ -477,10 +497,10 @@
   function dirInView(b) {
     var dr = dirResult(b);
     if (!dr) return [];
-    var z = map.getZoom(), out = [], zAll = (cfg.verzeichnis.zoom && cfg.verzeichnis.zoom.alle) || 15;
+    var z = map.getZoom(), out = [];
     dr.staedte.forEach(function (x) { if (x.st && C.inBbox(x, b)) out.push({ k: 'c', x: x, s: x.st, vz: true }); });
     dr.orte.forEach(function (x) {
-      if (!C.inBbox(x, b) || x.st < settings.minStars || (x.low && z < zAll)) return; // v0.9.3: the small ones only very close
+      if (!C.inBbox(x, b) || x.st < settings.minStars) return; // v0.18.0: no zoom gate for the small ones, they rank lower
       if (settings.kat && (settings.kat === '__osm' || C.typeInfo(x.typ, cfg).kategorie !== settings.kat)) return;
       out.push({ k: 'o', x: x, s: x.st, vz: true });
     });
@@ -934,7 +954,8 @@
   // OSM points of the package in the section (from IndexedDB, kept in memory), without those the directory already has
   function paketOsmInView(vb, pad, shown, dr) {
     var z = map.getZoom(), out = [];
-    if (z < (PK().osm_ab_zoom || 15) || !Object.keys(PAKET.cover).length || settings.minStars > 0) return out;
+    var zKind = PK().osm_ab_zoom_je_typ || {}, zMin = Math.min.apply(null, [PK().osm_ab_zoom || 15].concat(Object.keys(zKind).map(function (k) { return zKind[k]; })));
+    if (z < zMin || !Object.keys(PAKET.cover).length || settings.minStars > 0) return out;
     var c = viewCenter(vb);
     if (last && last.bbox && C.inBbox(c, last.bbox)) return out; // the search there has its OSM places already
     var v = (cfg.osm && cfg.osm.version) || 1, need = [];
@@ -949,8 +970,9 @@
       els.forEach(function (e) {
         if (!C.inBbox(e, pad) || (e.wd && haveQ[e.wd]) || haveN[String(C.displayName(e.name)).toLowerCase()]) return;
         var typ = C.osmTypeOf(e, cfg);
+        if (z < (zKind[typ] != null ? zKind[typ] : (PK().osm_ab_zoom || 15))) return; // v0.18.0: important kinds from zoom 12, the rest from 15
         if (settings.kat && settings.kat !== '__osm' && C.typeInfo(typ, cfg).kategorie !== settings.kat) return;
-        out.push({ id: 'osm:' + e.id, name: e.name, lat: e.lat, lon: e.lon, sterne: 0, score: 0, typ: typ, quellen: ['O'], osmEl: e });
+        out.push({ id: 'osm:' + e.id, name: e.name, lat: e.lat, lon: e.lon, sterne: 0, score: (PK().osm_gewicht || {})[typ] || 0, typ: typ, quellen: ['O'], osmEl: e });
       });
     });
     if (need.length) {

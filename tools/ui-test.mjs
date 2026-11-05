@@ -171,7 +171,7 @@ try {
   if (process.env.DEBUG) { page.on('request', (r) => { if (/extracts|mymemory/.test(r.url())) console.log('REQ', decodeURIComponent(r.url()).slice(0, 160)); }); page.on('requestfailed', (r) => console.log('FAILED', r.url().slice(0, 120), r.failure() && r.failure().errorText)); page.on('console', (m) => console.log('CONSOLE', m.text())); }
   await page.goto(BASE + 'index.html');
   await page.waitForSelector('.empty');
-  ok((await page.textContent('#version')) === 'v0.17.0', 'footer version');
+  ok((await page.textContent('#version')) === 'v0.18.0', 'footer version');
   if (OUT) await page.screenshot({ path: OUT + '/01-start.png' });
 
   await menuClick(page, '#btnLocate');
@@ -480,10 +480,10 @@ try {
   ok(splitNow && +splitNow > 12, 'split persisted: ' + splitNow);
 
   // update banner (fake newer version, then ?testupdate=1)
-  fakeVersion = '0.17.1';
+  fakeVersion = '0.18.1';
   await page.reload();
   await page.waitForSelector('#banner:not([hidden])');
-  ok((await page.textContent('#bannerText')).includes('v0.17.1'), 'banner shows remote version');
+  ok((await page.textContent('#bannerText')).includes('v0.18.1'), 'banner shows remote version');
   if (OUT) await page.screenshot({ path: OUT + '/05-banner.png' });
   fakeVersion = null;
   await page.click('#bannerBtn');
@@ -616,9 +616,9 @@ try {
   const swOk = await p3.evaluate(() => navigator.serviceWorker.ready.then((r) => !!r.active)).catch(() => false);
   ok(swOk, 'service worker active');
   const cacheKeys = await p3.evaluate(async () => { await new Promise((r) => setTimeout(r, 800)); return caches.keys(); });
-  ok(cacheKeys.includes('rf-app-0.17.0'), 'app cache with version: ' + cacheKeys.join(','));
-  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.17.0')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
-  ok(cached.some((u) => u.includes('app.js?v=0.17.0')), 'shell precached');
+  ok(cacheKeys.includes('rf-app-0.18.0'), 'app cache with version: ' + cacheKeys.join(','));
+  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.18.0')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
+  ok(cached.some((u) => u.includes('app.js?v=0.18.0')), 'shell precached');
   ok(errs3.length === 0, 'sw: no JS errors ' + errs3.join(' | '));
   await ctx3.close();
 
@@ -814,7 +814,7 @@ try {
     await menuClick(p14, '#btnData');
     await p14.waitForSelector('#sheetBody [data-a="pkdel"][data-land="LU"]');
     await p14.click('#sheetBody [data-a="pkdel"][data-land="LU"]');
-    await p14.waitForFunction(() => /gelöscht/.test(document.getElementById('toast').textContent), null, { timeout: 8000 }).catch(() => {});
+    await p14.waitForFunction(() => /Paket Testland gelöscht/.test(document.getElementById('toast').textContent), null, { timeout: 8000 }).catch(() => {}); // (not the toast of the neighbour, which may still be visible)
     await p14.evaluate(() => history.back());
     await p14.waitForSelector('#sheet', { state: 'hidden' });
     await p14.evaluate(() => window.__rfMap.setView([49.6105, 6.1325], 15, { animate: false }));
@@ -1010,7 +1010,7 @@ try {
     const katSt = await p8.$$eval('.mk-wrap', (els) => { const e = els.find((x) => /Kathedrale/.test(x.textContent)); return e ? +e.querySelector('.mk').className.match(/mk(\d)/)[1] : -1; });
     await p8.evaluate(() => window.__rfMap.setZoom(14, { animate: false }));
     await p8.waitForTimeout(400);
-    ok(!(await p8.$$eval('.mk-lbl', (els) => els.some((e) => /Kleinmuseum/.test(e.textContent)))), 'v0.9.3 the small museum not at zoom 14');
+    ok(await p8.$$eval('.mk-wrap', (els) => els.some((e) => /Kleinmuseum/.test(e.title))), 'v0.18.0 the small museum is also there at zoom 14 (room instead of zoom gate)');
     await p8.evaluate(() => window.__rfMap.setView([49.6105, 6.1325], 15, { animate: false }));
     await p8.waitForTimeout(400);
     await p8.selectOption('#fStars', '1');

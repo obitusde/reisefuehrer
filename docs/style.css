@@ -111,7 +111,8 @@ button { cursor: pointer; }
 .mk.sel { outline: 4px solid rgba(14, 107, 125, .55); outline-offset: 1px; }
 /* v0.10.0: what is worth it in this section stands out: top (bigger, bold name), named, dot only; OSM only: grey ring */
 .mk.t-top { transform: translate(-50%, -50%) scale(1.3); box-shadow: 0 1px 4px rgba(0, 0, 0, .55); }
-.mk.t-dot { transform: translate(-50%, -50%) scale(.7); }
+.mk.t-dot { transform: translate(-50%, -50%) scale(.6); opacity: .85; }
+.mk.t-name { transform: translate(-50%, -50%) scale(1.1); } /* v0.18.0: symbols with a name stand out, plain dots recede */
 .mk.t-osm { width: 10px; height: 10px; background: rgba(255, 255, 255, .85); border: 2px solid #8f8c85; box-shadow: none; }
 .mk.t-osm svg { display: none; }
 .mk-lbl.top { font-size: 13.5px; font-weight: 800; margin-left: 4px; }

@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.18.0 – 05.11.2026 – Karte zeigt, was Platz hat (statt fester Zoomstufen)
+
+Wunsch Nutzer: Bei Zoom 14 war die Karte leer, obwohl Platz da war. Sachen sollen nur weggelassen werden, wenn kein Platz ist oder es zu voll wird. In jeder Zoomstufe sinnvoll viele Punkte.
+
+- **Zoom-Sperre für kleine Ziele weg**: Ziele mit wenig Punkten (unter 4) und beschreibende Namen erschienen erst ab Zoom 15. Jetzt stehen sie in der Rangfolge hinten, erscheinen aber auf jeder Zoomstufe (ab 12, darunter zeigt die Karte die Städte), wenn Platz ist. Gilt für Karte und Liste.
+- **Graue OSM-Ringe früher**: je Art (`paket.osm_ab_zoom_je_typ`): Museum, Burg, Herrenhaus, Ausgrabung, Kirche, Kloster, Aussichtspunkt, Attraktion und Freizeit ab Zoom 12, Denkmal und Turm ab 14, alles übrige (Park, Kunstwerk, Theater, Bibliothek …) wie bisher ab 15. Die Ringe sind untereinander geordnet (`paket.osm_gewicht`: Museum und Burg zuerst, Denkmal und Turm zuletzt).
+- **Mehr Punkte, wo Platz ist**: Höchstzahl im Ausschnitt (`marker.max_nach_zoom`): 30 bis Zoom 11, 45 ab 12, 70 ab 14. Kleine Punkte halten 5 Pixel Abstand zu anderen (`marker.abstand_px`); weniger wichtige Punkte, die auf einem wichtigeren liegen, bleiben wie bisher weg.
+- **Nicht zu viele Punkte ohne Namen** (Wunsch Nutzer, Zoom 13: man müsste jeden antippen): Punkte ohne Namen (weiße Punkte und kleine Symbole ohne Beschriftung) sind je Ausschnitt begrenzt, `marker.ohne_name_nach_zoom`: Zoom 12: 4, 13: 8, 14: 16, 15: 30, ab 16: 60. Ziele mit ★★ und mehr zählen nicht dazu. Mit Namen werden so viele Ziele gezeigt, wie Platz für die Beschriftung ist.
+- **Symbole hervorgehoben**: Punkte mit Namen etwas größer (Symbol 1,1fach), namenlose kleiner und leicht durchsichtig. Innerhalb gleicher Sterne zuerst Museen, Burgen, Schlösser, Klöster, Kirchen, Aussichtspunkte, Ausgrabungen, Herrenhäuser, danach Berge, Parks, Kunstwerke, Theater, Brücken (`marker.typ_vorrang`, `typ_nachrang`).
+- Sterne, Rangfolge, die fünf besten groß mit Namen: unverändert.
+
+### Annahmen/Abweichungen
+
+- Mit dem Länderpaket der Schweiz oder von Deutschland sind die Ringe sofort da; ohne Paket kommen sie wie bisher erst nach „Hier suchen“.
+- Die Zahlen (45, 70, Abstand 5 px, Zoomstufen 12/14/15 je Art) sind Startwerte aus Überlegung, nicht gemessen. Zu voll oder zu leer: in `config.json` anpassen oder mir sagen.
+- Zoomstufe 12 und höher: Bei Zoom 11 und darunter zeigt die Karte weiter die Städte mit Sternen (v0.7.0), nicht einzelne Ziele.
+- Der Test „kleines Museum erst ab Zoom 15“ (v0.9.3) ist durch den neuen ersetzt.
+
 ## v0.17.0 – 05.11.2026 – Kürzerer Prompt „Praktisches und Bewertung“, „Audioguide“, Einstellungen aufgeräumt
 
 Wunsch Nutzer: Prompt für „Lohnt sich der Besuch?“ nach dem Muster der kurzen Google-Frage; Knopf soll „Praktisches und Bewertung“ heißen; „Erzähl mir davon“ soll „Audioguide“ heißen; Karten-App fest auf die Android-Karten-App; „Schon gehört“ komplett weg; „Hier suchen“ kann das weg?
