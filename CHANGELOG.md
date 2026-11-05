@@ -21,6 +21,14 @@ Wunsch Nutzer: Andere Länder Europas herunterladen können, so einfach wie mög
 - **Speicher**: vor dem Laden fragt die App einmal, wenn nach ihrer Schätzung nicht genug Platz ist. Das Verzeichnis eines Landes wird nicht mehr komplett in den Arbeitsspeicher geladen, sondern erst, wenn es im Kartenausschnitt gebraucht wird.
 - Neue Hilfsskripte: `tools/grenze.mjs`, `tools/paket-land.mjs`, `tools/paket-liste.mjs`; Workflow `geofabrik-test.yml`.
 
+### Gemessen (GitHub und Chromium am PC, 5.11.2026)
+
+- **Schweiz (Format 2)**: 2 Teile, 11,0 MB (gezippt beim Herunterladen 2,0 MB), 30 045 Ziele, 1 695 Orte. OSM: 25 528 Orte in 2 178 Kacheln, davon 459 Randkacheln (bisher 20 979 Orte in 1 708 Kacheln: die Randkacheln fehlten). Bau etwa 17 Minuten.
+- **Liechtenstein**: 1 Teil, 0,3 MB, 1 148 Ziele, 173 OSM-Orte, Bau 66 Sekunden. **Luxemburg**: 1 Teil, 0,9 MB, 2 236 Ziele, 1 955 OSM-Orte. Drei Länder liefen gleichzeitig und schrieben ohne Fehler nach main (Länderliste `laender.json` jedes Mal neu erzeugt).
+- **Geofabrik-Auszüge** (Größe der Quelldatei): Deutschland 4,6 GB, Frankreich 4,9 GB, Vereinigtes Königreich 2,2 GB, Italien 2,1 GB, Polen 2,0 GB, Spanien 1,4 GB; Liechtenstein 3 MB.
+- **Mit den echten Paketen im Browser** (Schweiz, dann Liechtenstein; Wikipedia, Wikidata, Overpass gesperrt): Laden und Speichern der Schweiz in 1,0 s am PC (Arbeitsspeicher der Seite danach 38 MB). Genf, Basel, Lausanne, Chiasso und Schaan/Vaduz bei Zoom 12 und 15: Ziele sofort da, keine Frage „Details laden?“ oder „Gegend laden?“, **0 Anfragen ins Internet**, keine Fehler. Die Randkacheln von Genf-Zentrum (505 Orte) und Basel-Zentrum (304 Orte) sind im Paket. Jenseits der Grenze (Frankreich, Deutschland) kommen die grauen OSM-Ringe erst mit dem Paket des Nachbarlandes.
+- **Nachbarländer an der Grenze** werden mit synthetischen Daten geprüft (zwei Länder teilen eine OSM-Kachel und eine Verzeichnis-Kachel: beide Seiten da, Löschen entfernt nur die eigene Seite).
+
 ### Annahmen/Abweichungen
 
 - Die App löst den Bau nicht selbst aus: dafür wäre ein GitHub-Schlüssel im Browser nötig (nach der Regel „keine Schlüssel im Browsercode“ ausgeschlossen). „Bauen ↗“ öffnet deshalb GitHub; dort sind zwei Tipps nötig (Land wählen, „Run workflow“). Das lässt sich nicht weiter vereinfachen.
