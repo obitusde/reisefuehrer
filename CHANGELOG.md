@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.13.3 – 05.11.2026 – Schlankes Ortsfenster, „Lohnt sich der Besuch?“
+
+Wunsch Nutzer (nach Test auf dem Pixel): Name per langem Tippen kopieren, Knöpfe niedriger, weniger Knöpfe und Blöcke, der Besuchs-Prompt nur noch für „lohnt es sich?“ und praktische Tipps.
+
+- **Name kopieren**: langes Tippen auf den Namen oben im Ortsfenster kopiert ihn (kurze Vibration, Meldung „Kopiert: …“). Der Knopf „Name kopieren“ ist weg.
+- **Weg aus dem Ortsfenster**: „Als gehört markieren“ (Erzähl mir davon markiert den Ort weiter selbst als gehört, die Liste zeigt „✓ gehört“ wie bisher), „Pin“, „🖼 Bilder“, „Warum … Stern?“ und „Wikipedia-Einleitung“. Der Wikipedia-Knopf erscheint wie bisher nur, wenn es einen Artikel gibt.
+- **Niedrigere Knöpfe**: normale Knöpfe 40 statt 48 px, die großen 42 statt 54, Umschalter und Auswahl 38 statt 44, kleinere Abstände.
+- **„👍 Lohnt sich der Besuch?“** (vorher „📋 Übersicht und Bewertung“): der Prompt fragt nur noch nach dem Urteil (Ja / Bedingt / Eher nicht, mit kurzer Begründung aus den Bewertungen) und nach praktischen Tipps für den Besuch (Anfahrt, Eintritt und Öffnungszeiten mit Stand, Zeitbedarf, beste Zeit, worauf achten). Keine Tabelle, keine weiteren Abschnitte, keine Rückfrage am Ende. Text und Knopfname in `config.json` unter `besucher`.
+
+### Annahmen/Abweichungen
+
+- Kopiert wird der angezeigte Name (bei langen Namen die gekürzte Form). Vorher kopierte der Knopf „Name, Ort“.
+- Die Sterne-Begründung („Warum …?“) ist nirgends mehr zu sehen; die Sterne-Zeile („Ohne Stern“ usw.) bleibt.
+- Die „Bilder“-Suche ist komplett weg; `googleLinks` liefert sie noch, die App zeigt sie nicht.
+- Auf dem Handy noch nicht geprüft: das lange Tippen auf den Namen (Chrome kann dabei die Textauswahl anbieten; ich habe die Auswahl am Namen abgeschaltet).
+
 ## v0.13.2 – 05.11.2026 – Google-Frage: kurz, nur „Keine Rückfrage am Ende“
 
 Wunsch Nutzer: Der lange Auftrag war zu lang (man musste scrollen). Endgültiges Format: „Was ist „Parc Pidoux“ in Chavannes-près-Renens (Waadt)? Keine Rückfrage am Ende“. Aufbau und Länge der Antwort entscheidet Google.

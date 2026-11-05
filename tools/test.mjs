@@ -239,9 +239,10 @@ ok(core.osmandIntentUrl(pin, 'net.osmand.plus').startsWith('intent://osmand.net/
   core.osmandIntentUrl(pin).endsWith(';end'), 'osmand intent url');
 ok(core.claudeNewUrl('a b?').startsWith('claude://claude.ai/new?q=a%20b%3F'), 'claude url');
 const rv = core.buildReviewPrompt(th, cfg);
-ok(rv.text.startsWith('Gib mir eine Übersicht zu dieser Sehenswürdigkeit') && rv.text.includes('Ort: Manchester Town Hall (deutsch: Rathaus Manchester)') &&
-  rv.text.includes('Google Maps, Tripadvisor') && rv.text.includes('## Praktische Tipps') && rv.text.includes('Wikipedia: https://en.wikipedia.org/wiki/Manchester_Town_Hall'), 'review prompt');
-ok(rv.text.includes('nicht zum Vorlesen') && rv.text.includes('Eine Tabelle mit zwei Spalten') && rv.text.includes('## Lohnt es sich?') && rv.length < 3000, 'v0.5 overview prompt: for reading, table, verdict (' + rv.length + ')');
+ok(rv.text.startsWith('Lohnt sich ein Besuch?') && rv.text.includes('Ort: Manchester Town Hall (deutsch: Rathaus Manchester)') &&
+  rv.text.includes('Google Maps, Tripadvisor') && rv.text.includes('## Praktische Tipps für den Besuch') && rv.text.includes('Wikipedia: https://en.wikipedia.org/wiki/Manchester_Town_Hall'), 'review prompt');
+ok(rv.text.includes('nicht zum Vorlesen') && rv.text.includes('## Lohnt sich der Besuch?') && !rv.text.includes('Tabelle mit zwei Spalten') && rv.text.includes('Stelle am Ende keine Rückfrage') && rv.length < 2000, 'v0.13.3 visit prompt: only "worth it?" and practical tips, no follow-up question (' + rv.length + ')');
+ok(cfg.besucher.knopf === '👍 Lohnt sich der Besuch?', 'v0.13.3 button text');
 
 // ---- languages
 eq(core.languagesFor({ cc: 'ch', region: 'CH-VD' }, cfg).join(), 'de,en,fr', 'Vaud -> fr');

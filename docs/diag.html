@@ -106,7 +106,7 @@
 
 <!-- ======================= v0.7 ======================= -->
 <section class="card" id="v08">
-  <h2>v0.8/v0.9 – Verzeichnis, Zoom-Stufen, Strecke, Namen (v0.13.2)</h2>
+  <h2>v0.8/v0.9 – Verzeichnis, Zoom-Stufen, Strecke, Namen (v0.13.3)</h2>
   <a class="btn secondary" href="index.html">App öffnen</a>
   <div id="checklist8"></div>
   <h2 style="margin-top:16px">Installieren (neue App-Kennung)</h2>
@@ -324,7 +324,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '0.13.2';
+  var VERSION = '0.13.3';
   var KEY = 'rf.diag.v1';
 
   var TESTS = [
@@ -635,14 +635,14 @@
   init();
 })();
 </script>
-<script src="core.js?v=0.13.2"></script>
+<script src="core.js?v=0.13.3"></script>
 <script>
 /* v0.2 diagnostics: API checks, gold list, manual checklist, summary */
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
   var KEY = 'rf.diag.v2';
-  var DV = '0.13.2';
+  var DV = '0.13.3';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function load() { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { return {}; } }
@@ -917,7 +917,7 @@
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
-  var KEY = 'rf.diag.v3', DV = '0.13.2';
+  var KEY = 'rf.diag.v3', DV = '0.13.3';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -994,7 +994,7 @@
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
-  var KEY = 'rf.diag.v6', DV = '0.13.2';
+  var KEY = 'rf.diag.v6', DV = '0.13.3';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -1015,7 +1015,7 @@
     ['k4', 'Liste zeigt bei jedem Ort W, OSM oder W+OSM'],
     ['k5', 'Langsame Suche: Sekunden zählen, „Ohne OSM weiter“ und „Abbrechen“ funktionieren'],
     ['k6', 'Deutscher Name steht nur da, wenn er wirklich anders ist'],
-    ['k7', '„Übersicht und Bewertung“: Claude antwortet mit Tabelle und Stichpunkten'],
+    ['k7', '„Lohnt sich der Besuch?“ (v0.13.3, vorher „Übersicht und Bewertung“): Claude antwortet nur mit Urteil und praktischen Tipps, ohne Rückfrage'],
     ['k8', '„Kartenausschnitt vorbereiten“ läuft durch (⚙), Gebiet ist grün umrandet'],
     ['k9', 'Flugmodus: „Hier suchen“ im Gebiet zeigt Orte mit Kurzinfos'],
     ['k10', 'Flugmodus: „Erzähl mir davon“ kopiert einen Prompt mit Wikipedia-Text']
@@ -1095,7 +1095,7 @@
 /* v0.7 diagnostics: installability, checklist (symbols, city stars) */
 (function () {
   'use strict';
-  var KEY = 'rf.diag.v7', DV = '0.13.2';
+  var KEY = 'rf.diag.v7', DV = '0.13.3';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -1182,7 +1182,7 @@
 <script>
 /* v0.8: acceptance of the directory */
 (function () {
-  var KEY = 'rf.diag.v8', DV = '0.13.2';
+  var KEY = 'rf.diag.v8', DV = '0.13.3';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -1237,7 +1237,11 @@
     ['q3', 'v0.13.0 Crêt des Alouettes antippen: Zeile „Berg in der Schweiz · 1 054 m“ und die Knöpfe „✨ Google fragen“ und „🖼 Bilder“'],
     ['q4', 'v0.13.0 „✨ Google fragen“ öffnet ein Fenster mit dem KI-Modus (Frage „Was ist … in Ort (Kanton)? Keine Rückfrage am Ende“; die Antwort endet ohne Rückfrage); ✕ oder Zurück schließt es und die App ist wieder da'],
     ['q5', 'v0.13.0 Der Wikipedia-Knopf öffnet ebenfalls ein Fenster, das sich wieder schließen lässt'],
-    ['q6', 'v0.13.0 Ein Ort ohne jede Beschreibung (z. B. Pigeonnier de Paderewski): „Keine Beschreibung gefunden.“ und die Google-Knöpfe']
+    ['q6', 'v0.13.0 Ein Ort ohne jede Beschreibung (z. B. Pigeonnier de Paderewski): „Keine Beschreibung gefunden.“ und der Google-Knopf'],
+    ['q7', 'v0.13.3 Langes Tippen auf den Namen im Ortsfenster kopiert ihn („Kopiert: …“); kein Knopf „Name kopieren“'],
+    ['q8', 'v0.13.3 Ortsfenster schlank: kein „Als gehört markieren“, kein „Pin“, keine „Bilder“, kein „Warum … Stern?“, keine „Wikipedia-Einleitung“; Wikipedia-Knopf nur mit Artikel'],
+    ['q9', 'v0.13.3 Knöpfe niedriger; mehr vom Fenster ohne Scrollen sichtbar'],
+    ['q10', 'v0.13.3 „👍 Lohnt sich der Besuch?“ öffnet das Teilen-Menü; Antwort: Ja/Bedingt/Eher nicht und praktische Tipps, keine Rückfrage am Ende']
   ];
   var RES = [['ok', 'Installiert, öffnet vom Startbildschirm'], ['fehler', 'Fehlermeldung'], ['schon', 'Wieder „bereits installiert“'], ['nein', 'Nicht versucht']];
   $('checklist8').innerHTML = CHECKS.map(function (c) {

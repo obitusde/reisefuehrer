@@ -1,5 +1,5 @@
 /*
- * Reiseführer – core logic (v0.13.2)
+ * Reiseführer – core logic (v0.13.3)
  * Shared by the app (index.html), the diagnostics page (diag.html) and Node tests.
  * No DOM access here. Network access only through the injected fetch function.
  */
@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var CORE_VERSION = '0.13.2';
+  var CORE_VERSION = '0.13.3';
 
   // ---------------------------------------------------------------- helpers
 
@@ -1522,7 +1522,7 @@
     return 'https://' + lang + '.m.wikipedia.org/wiki/' + encodeURIComponent(title.replace(/ /g, '_'));
   }
   /**
-   * v0.13.2: links to Google for a place that has nothing (much) in our data. They open in their own window (target _blank);
+   * v0.13.0: links to Google for a place that has nothing (much) in our data. They open in their own window (target _blank);
    * the app cannot read the answer, it only hands over the question.
    * loc: {name, state} from reverse geocoding, or null. Question and instruction come from cfg.google.
    *   ai     – Google "KI-Modus" (udm=50; not documented by Google, may change), the question with the instruction

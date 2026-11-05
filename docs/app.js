@@ -1,8 +1,8 @@
-/* Reiseführer – app (v0.13.2). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.13.3). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.13.2';
+  var VERSION = '0.13.3';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
@@ -708,7 +708,7 @@
   // built by the GitHub Action paket.yml. Stored like loaded tiles (IndexedDB vz:<tile>, osm:<v>:<tile>), so the rest of the
   // app works as before – only nothing has to be loaded any more. Photos and Wikipedia texts: when a place is opened.
   var PAKET = { meta: {}, cover: {}, osmMem: {}, osmReading: {}, job: null, info: {} };
-  // v0.13.2: [description, height] per Wikidata item, from the package (works without internet)
+  // v0.13.0: [description, height] per Wikidata item, from the package (works without internet)
   function infoRec(q) {
     if (!q) return null;
     var lands = Object.keys(PAKET.info);
@@ -1653,7 +1653,7 @@
     var k = kurzStore[p.id];
     if (k && k.t && !(k.orig && p.kurz && !p.kurzOrig)) return k.t;
     if (p.kurz) return p.kurz;   // stored with a prepared area (v0.6)
-    // v0.13.2: Wikidata description and height from the package (also OSM description and height tag), works without internet
+    // v0.13.0: Wikidata description and height from the package (also OSM description and height tag), works without internet
     var inf = C.infoLine(infoRec(p.wikidata) || (p.osmOnly && p.beschreibung ? [p.beschreibung] : null), p.osm && p.osm.x && p.osm.x.ele);
     if (inf) return inf;
     if (p.osmOnly) return p.beschreibung || '';
@@ -1761,6 +1761,7 @@
   function openSheet(title, html) {
     $('sheetBody').removeAttribute('data-view');
     $('sheetTitle').textContent = title;
+    $('sheetTitle').className = '';
     $('sheetBody').innerHTML = html;
     if ($('sheet').hidden) {
       $('sheet').hidden = false;
@@ -1799,25 +1800,6 @@
       .filter(Boolean).join(' · ');
     var ml = mapsLinks(p);
     var on = isMerk(p.id);
-    var t = p.teile || {};
-    var osmTag = p.osm && p.osm.k ? ' (OSM: ' + p.osm.k + ')' : '';
-    var vzRow = p.vzScore != null ? [['Sterne wie im Verzeichnis (gleicher Maßstab wie auf der Karte), Punkte', p.vzScore]]
-      : p.vzCap ? [['Nicht im Verzeichnis (zu wenig Punkte): höchstens ★', null]] : [];
-    var rows = p.vz ? [
-      ['Punkte im Verzeichnis (Sprachversionen, Seitenaufrufe, Denkmal, Art)', p.score]
-    ] : p.osmOnly ? [
-      ['Grundwert OpenStreetMap (höchstens ★, Museen ★★)', t.osm_basis],
-      ['Denkmal', t.denkmal],
-      ['Typ: ' + p.typ_label + osmTag, t.typ]
-    ] : [
-      ['Sprachversionen (' + p.sprachversionen + ')', t.sprachversionen],
-      ['Artikellänge (' + (p.laenge || 0).toLocaleString('de-DE') + ' Bytes)', t.laenge],
-      ['Denkmal/UNESCO', t.denkmal],
-      ['Typ: ' + p.typ_label + (p.klassen && p.klassen.length ? ' (Wikidata: ' + p.klassen.join(', ') + ')' : osmTag), t.typ],
-      ['Weitere Quellen (' + p.quellen.join(' + ') + ')', t.quellen]
-    ];
-    if (!p.vz) rows = vzRow.concat(rows);
-    var srcNames = { W: 'Wikipedia', O: 'OpenStreetMap', V: 'Wikivoyage', C: 'Claude-Liste' };
     var lv = settings.level;
     var foci = (cfg.erzaehlen && cfg.erzaehlen.schwerpunkte) || [];
     var html =
@@ -1841,30 +1823,22 @@
         '<button class="btn primary big" type="button" data-a="tell">🎧 Erzähl mir davon</button>' +
         '<button class="btn big review-btn" type="button" data-a="review">' + esc((cfg.besucher && cfg.besucher.knopf) || '📋 Übersicht und Bewertung') + '</button>' +
         '<div id="tellStatus" class="tell-status" hidden></div>' +
-        '<button class="btn heard-btn' + (heard[p.id] ? ' on' : '') + '" type="button" data-a="heard">' + (heard[p.id] ? '✓ Schon gehört' : 'Als gehört markieren') + '</button>' +
       '</div>' +
       '<div class="actions">' +
-        '<button class="btn" type="button" data-a="copy">Name kopieren</button>' +
         (p.wikipedia ? '<a class="btn" href="' + esc(C.wikipediaUrl(p)) + '" target="_blank" rel="noopener">Wikipedia (' + esc(String(p.wikipedia).split(':')[0]) + ')</a>' : '') +
         '<a class="btn primary" href="' + esc(ml.name) + '"' + ml.target + '>' + ml.label + '</a>' +
-        '<a class="btn" href="' + esc(ml.pin) + '"' + ml.target + '>Pin</a>' +
-        '<button class="btn wide' + (on ? ' on' : '') + '" type="button" data-a="merk">' + (on ? '★ Gemerkt' : '☆ Merken') + '</button>' +
+        '<button class="btn' + (p.wikipedia ? ' wide' : '') + (on ? ' on' : '') + '" type="button" data-a="merk">' + (on ? '★ Gemerkt' : '☆ Merken') + '</button>' +
       '</div>' +
-      (p.wikipedia ? googleHtml(p) : '') +
-      '<details class="why"><summary>Warum ' + (p.sterne ? C.starsText(p.sterne) : 'kein Stern') + '?</summary><table>' +
-        rows.map(function (r) { return '<tr><td>' + esc(r[0]) + '</td><td>' + (r[1] == null ? '–' : r[1].toFixed(1)) + '</td></tr>'; }).join('') +
-        '<tr><td><b>Punkte</b></td><td><b>' + (p.score == null ? '–' : p.score.toFixed(1)) + '</b></td></tr>' +
-      '</table><p class="small">Faustregel aus Wikipedia/Wikidata. Gewichte und Schwellen stehen in config.json.</p></details>' +
-      '<details class="why" id="plIntro" hidden><summary>Wikipedia-Einleitung</summary><p class="intro" id="plIntroText"></p></details>' +
-      '';
+      (p.wikipedia ? googleHtml(p) : '');
     openSheet(C.displayName(p.name), html);
     $('sheetBody').setAttribute('data-place', p.id);
+    $('sheetTitle').className = 'copyable'; // v0.13.3: long press on the name copies it
     if (kurzNeeded(p.id)) { kurzQueue[p.id] = 1; scheduleKurz(); }
     prepareNarration(p);
     googleLocate(p);
   }
 
-  // v0.13.2: what the window says when neither the package nor Wikipedia has a text; and the Google buttons.
+  // v0.13.0: what the window says when neither the package nor Wikipedia has a text; and the Google buttons.
   // The links open in their own window (target _blank: on Android a window above the app that closes with ✕ / Back).
   var NODESC = 'Keine Beschreibung gefunden.', GLOC = {};
   function plDescSet(p) {
@@ -1877,8 +1851,7 @@
   function googleHtml(p) {
     var u = C.googleLinks(p, GLOC[gKey(p)] || null, cfg);
     return '<div class="actions google" id="plGoogle">' +
-      '<a class="btn" data-g="ai" href="' + esc(u.ai) + '" target="_blank" rel="noopener">✨ Google fragen</a>' +
-      '<a class="btn" data-g="images" href="' + esc(u.images) + '" target="_blank" rel="noopener">🖼 Bilder</a></div>';
+      '<a class="btn wide" data-g="ai" href="' + esc(u.ai) + '" target="_blank" rel="noopener">✨ Google fragen</a></div>';
   }
   function gKey(p) { return (+p.lat).toFixed(2) + ',' + (+p.lon).toFixed(2); }
   // the place (and canton) for the question: one request to Nominatim when the window opens, the links are updated when it arrives
@@ -1923,11 +1896,6 @@
       if (art.thumb && $('plImg')) {
         $('plImg').innerHTML = '<img src="' + esc(art.thumb) + '" alt="" onerror="this.parentNode.hidden=true">';
         $('plImg').hidden = false;
-      }
-      if (art.intro && $('plIntro')) {
-        $('plIntroText').textContent = art.intro;
-        $('plIntro').querySelector('summary').textContent = 'Wikipedia-Einleitung (' + (LANG_NOM[art.lang] || art.lang) + ')';
-        $('plIntro').hidden = false;
       }
       var k = kurzStore[pid];
       if (k && k.t && $('plDesc')) { $('plDesc').innerHTML = esc(k.t) + kurzNote(p); $('plDesc').hidden = false; $('plDesc').classList.remove('none'); }
@@ -2532,6 +2500,24 @@
       select(id, 'list');
     });
 
+    // v0.13.3: long press on the name of a place copies it (no button any more)
+    (function () {
+      var h = $('sheetTitle'), timer = null, x0 = 0, y0 = 0;
+      var stop = function () { clearTimeout(timer); timer = null; };
+      h.addEventListener('pointerdown', function (e) {
+        if (h.className !== 'copyable') return;
+        x0 = e.clientX; y0 = e.clientY; stop();
+        timer = setTimeout(function () {
+          timer = null;
+          var name = h.textContent;
+          copyText(name).then(function (ok) { toast(ok ? 'Kopiert: ' + name : 'Kopieren nicht möglich'); });
+          try { if (navigator.vibrate) navigator.vibrate(25); } catch (er) { /* ignore */ }
+        }, 550);
+      });
+      h.addEventListener('pointermove', function (e) { if (timer && Math.abs(e.clientX - x0) + Math.abs(e.clientY - y0) > 12) stop(); });
+      ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (n) { h.addEventListener(n, stop); });
+      h.addEventListener('contextmenu', function (e) { if (h.className === 'copyable') e.preventDefault(); });
+    })();
     $('sheetBody').addEventListener('click', function (e) {
       var el = e.target.closest('[data-a]');
       if (!el) return;
@@ -2539,12 +2525,7 @@
       var pid = $('sheetBody').getAttribute('data-place');
       var p = pid ? findPlace(pid) : null;
       var li = e.target.closest('li[data-id]');
-      if (a === 'copy' && p) {
-        copyText(C.nameWithPlace(p)).then(function (ok) {
-          if (ok) toast('Kopiert: ' + C.nameWithPlace(p));
-          else { selectElementText($('sheetTitle')); toast('Kopieren nicht möglich – Name ist markiert.'); }
-        });
-      } else if (a === 'share' && p) {
+      if (a === 'share' && p) {
         shareText(p.name, C.nameWithPlace(p) + '\n' + C.gmapsSearchUrl(p)).then(function (r) {
           if (r === 'copied') toast('Teilen nicht verfügbar – Text kopiert.');
         });

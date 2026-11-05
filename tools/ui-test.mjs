@@ -169,7 +169,7 @@ try {
   if (process.env.DEBUG) { page.on('request', (r) => { if (/extracts|mymemory/.test(r.url())) console.log('REQ', decodeURIComponent(r.url()).slice(0, 160)); }); page.on('requestfailed', (r) => console.log('FAILED', r.url().slice(0, 120), r.failure() && r.failure().errorText)); page.on('console', (m) => console.log('CONSOLE', m.text())); }
   await page.goto(BASE + 'index.html');
   await page.waitForSelector('.empty');
-  ok((await page.textContent('#version')) === 'v0.13.2', 'footer version');
+  ok((await page.textContent('#version')) === 'v0.13.3', 'footer version');
   if (OUT) await page.screenshot({ path: OUT + '/01-start.png' });
 
   await menuClick(page, '#btnLocate');
@@ -271,11 +271,19 @@ try {
   ok(title === items[0].n, 'sheet title = item');
   const mapsHref = await page.getAttribute('#sheetBody a.btn.primary', 'href');
   ok(mapsHref.startsWith('https://www.google.com/maps/search/?api=1&query='), 'maps link');
-  await page.click('[data-a=copy]');
-  await page.waitForTimeout(200);
+  // v0.13.3: no buttons for copying, Pin, "gehört", "Warum", Wikipedia intro; long press on the name copies it
+  ok(!(await page.$('[data-a=copy]')) && !(await page.$('[data-a=heard]')) && !(await page.$('details.why')) && !(await page.$('#plIntro')) && !(await page.$$eval('#sheetBody .btn', (els) => els.map((e) => e.textContent.trim()))).some((t) => /^(Pin|Name kopieren|Als gehört markieren|🖼 Bilder)/.test(t)), 'v0.13.3 slim place window: no copy, Pin, heard, why, intro');
+  await page.evaluate(() => navigator.clipboard.writeText('x'));
+  await page.dispatchEvent('#sheetTitle', 'pointerdown', { clientX: 10, clientY: 10 });
+  await page.waitForTimeout(250);
+  ok((await page.evaluate(() => navigator.clipboard.readText())) === 'x', 'v0.13.3 short touch on the name copies nothing');
+  await page.dispatchEvent('#sheetTitle', 'pointerup');
+  await page.dispatchEvent('#sheetTitle', 'pointerdown', { clientX: 10, clientY: 10 });
+  await page.waitForTimeout(800);
   const clip = await page.evaluate(() => navigator.clipboard.readText());
-  ok(clip.startsWith(title.split(',')[0]), 'name copied: ' + clip);
+  ok(clip === title, 'v0.13.3 long press on the name copies it: ' + clip);
   ok((await page.textContent('#toast')).startsWith('Kopiert'), 'copy toast');
+  await page.dispatchEvent('#sheetTitle', 'pointerup');
   await page.click('[data-a=merk]');
   ok((await page.textContent('#merkCount')) === '1', 'merk badge 1');
   ok(await page.isVisible('.item.sel'), 'list row highlighted');
@@ -391,7 +399,7 @@ try {
   // v0.3: picture, narration prompt, handover, "schon gehört"
   await page.waitForSelector('#plImg:not([hidden]) img', { timeout: 8000 });
   ok(true, 'detail view shows picture');
-  ok(await page.isVisible('#plIntro'), 'detail view has Wikipedia intro');
+  ok(!(await page.$('#plIntro')), 'v0.13.3 no Wikipedia intro block any more');
   await page.click('[data-a=level][data-level=ausfuehrlich]');
   ok(await page.$eval('[data-a=level][data-level=ausfuehrlich]', (b) => b.classList.contains('on')), 'level switch');
   await page.selectOption('#focusSel', 'Architektur');
@@ -403,15 +411,15 @@ try {
   // v0.8.1: always Android "Teilen" (the user picks the app), no Claude link
   const shared = await page.evaluate(() => window.__shared || []);
   ok(shared.length >= 1 && shared[shared.length - 1] === prompt && (await page.$('#tellStatus [data-a="aishare"]')) && !(await page.$('#tellStatus a[href^="claude:"]')), 'v0.8.1 prompt handed over with "Teilen": ' + JSON.stringify(shared.map((x) => x.length)) + ' ' + prompt.length + ' ' + (await page.textContent('#tellStatus')));
-  ok((await page.textContent('[data-a=heard]')).includes('Schon gehört'), 'marked as heard');
+  ok(!(await page.$('[data-a=heard]')), 'v0.13.3 no "Als gehört markieren" button (telling still marks the place as heard)');
   if (OUT) await page.screenshot({ path: OUT + '/10-erzaehlen.png' });
   ok(!(await page.$('[data-a=share]')) && !(await page.$('a[href*="tripadvisor"]')), 'no share button, no Tripadvisor link in place window');
   await page.click('[data-a=review]');
   await page.waitForFunction(() => /Prompt kopiert/.test(document.getElementById('tellStatus').textContent));
   const rprompt = await page.evaluate(() => navigator.clipboard.readText());
-  ok(rprompt.startsWith('Gib mir eine Übersicht') && rprompt.includes('Tripadvisor') && rprompt.includes('## Auf einen Blick'), 'overview prompt copied');
+  ok(rprompt.startsWith('Lohnt sich ein Besuch?') && rprompt.includes('Tripadvisor') && rprompt.includes('## Praktische Tipps für den Besuch') && !rprompt.includes('## Auf einen Blick'), 'visit prompt copied');
   ok((await page.evaluate(() => window.__shared || [])).slice(-1)[0] === rprompt, 'v0.8.1 overview handed over with "Teilen"');
-  ok((await page.textContent('[data-a=review]')).includes('Übersicht und Bewertung'), 'v0.5 button "Übersicht und Bewertung"');
+  ok((await page.textContent('[data-a=review]')).includes('Lohnt sich der Besuch?'), 'v0.13.3 button "Lohnt sich der Besuch?"');
   await page.click('[data-a=recopy]');
   await page.$eval('#sheetBody', (b) => { b.scrollTop = 400; });
   await page.$eval('.item:nth-child(2) .it-main', (el) => el.click());
@@ -480,10 +488,10 @@ try {
   ok(splitNow && +splitNow > 12, 'split persisted: ' + splitNow);
 
   // update banner (fake newer version, then ?testupdate=1)
-  fakeVersion = '0.13.3';
+  fakeVersion = '0.13.4';
   await page.reload();
   await page.waitForSelector('#banner:not([hidden])');
-  ok((await page.textContent('#bannerText')).includes('v0.13.3'), 'banner shows remote version');
+  ok((await page.textContent('#bannerText')).includes('v0.13.4'), 'banner shows remote version');
   if (OUT) await page.screenshot({ path: OUT + '/05-banner.png' });
   fakeVersion = null;
   await page.click('#bannerBtn');
@@ -616,9 +624,9 @@ try {
   const swOk = await p3.evaluate(() => navigator.serviceWorker.ready.then((r) => !!r.active)).catch(() => false);
   ok(swOk, 'service worker active');
   const cacheKeys = await p3.evaluate(async () => { await new Promise((r) => setTimeout(r, 800)); return caches.keys(); });
-  ok(cacheKeys.includes('rf-app-0.13.2'), 'app cache with version: ' + cacheKeys.join(','));
-  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.13.2')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
-  ok(cached.some((u) => u.includes('app.js?v=0.13.2')), 'shell precached');
+  ok(cacheKeys.includes('rf-app-0.13.3'), 'app cache with version: ' + cacheKeys.join(','));
+  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.13.3')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
+  ok(cached.some((u) => u.includes('app.js?v=0.13.3')), 'shell precached');
   ok(errs3.length === 0, 'sw: no JS errors ' + errs3.join(' | '));
   await ctx3.close();
 
@@ -704,7 +712,7 @@ try {
     // v0.13.0: the line from the package (description + height), Google buttons in their own window, no empty field
     ok((await p12.textContent('#plDesc')) === 'Brunnen im Testland · 321 m', 'v0.13.0 place window: description and height from the package: ' + await p12.textContent('#plDesc'));
     const gl = await p12.$$eval('#plGoogle a', (els) => els.map((e) => ({ g: e.getAttribute('data-g'), h: e.href, t: e.target, r: e.rel, x: e.textContent })));
-    ok(gl.length === 2 && gl.every((a) => a.t === '_blank' && /noopener/.test(a.r) && /^https:\/\/www\.google\.com\/search\?hl=de/.test(a.h)) && /udm=50/.test(gl[0].h) && /tbm=isch/.test(gl[1].h), 'v0.13.0 Google buttons (KI-Modus, Bilder) open in their own window: ' + JSON.stringify(gl));
+    ok(gl.length === 1 && gl.every((a) => a.t === '_blank' && /noopener/.test(a.r) && /^https:\/\/www\.google\.com\/search\?hl=de/.test(a.h)) && /udm=50/.test(gl[0].h), 'v0.13.0 Google button (KI-Modus) opens in its own window, no image button: ' + JSON.stringify(gl));
     await p12.waitForFunction(() => /Manchester/.test(decodeURIComponent(document.querySelector('#plGoogle a[data-g="ai"]').href)), null, { timeout: 5000 }).catch(() => {});
     const q12 = decodeURIComponent((await p12.getAttribute('#plGoogle a[data-g="ai"]', 'href')).replace(/^.*[?&]q=/, '').replace(/\+/g, ' '));
     ok(/^Was ist „Testbrunnen“ in Manchester\?.*\\? Keine Rückfrage am Ende$/.test(q12), 'v0.13.0 question with the place from Nominatim and the instruction: ' + q12);
@@ -714,7 +722,7 @@ try {
     await p12.click('.mk-wrap[title="Stummer Stein"]');
     await p12.waitForSelector('#sheet:not([hidden])');
     if (OUT) { await p12.waitForTimeout(600); await p12.screenshot({ path: OUT + '/21-ortsfenster-leer.png' }); }
-    ok((await p12.textContent('#plDesc')) === 'Keine Beschreibung gefunden.' && !(await p12.$eval('#plDesc', (e) => e.hidden)) && (await p12.$$('#plGoogle a')).length === 2, 'v0.13.0 nothing known: "Keine Beschreibung gefunden." and the Google buttons');
+    ok((await p12.textContent('#plDesc')) === 'Keine Beschreibung gefunden.' && !(await p12.$eval('#plDesc', (e) => e.hidden)) && (await p12.$$('#plGoogle a')).length === 1, 'v0.13.0 nothing known: "Keine Beschreibung gefunden." and the Google button');
     await p12.evaluate(() => history.back());
     await p12.waitForSelector('#sheet', { state: 'hidden' });
     await p12.evaluate(() => window.__rfMap.setView([49.6105, 6.1325], 15, { animate: false })); await p12.waitForTimeout(500); // opening a place moved the map
@@ -841,8 +849,8 @@ try {
     await p8.waitForSelector('#sheet:not([hidden])');
     // v0.8.4: a sight of the directory opens with Wikipedia intro and "Erzähl mir davon", without "Hier suchen"
     await p8.waitForSelector('#sheetBody [data-a="tell"]', { timeout: 10000 });
-    await p8.waitForSelector('#plIntro:not([hidden])', { timeout: 10000 });
-    ok(/ist ein Testort/.test(await p8.textContent('#plIntroText')), 'v0.8.4 directory sight: Wikipedia intro on tap: ' + (await p8.textContent('#sheetTitle')));
+    await p8.waitForFunction(() => /ist ein Testort/.test(document.getElementById('plDesc').textContent), null, { timeout: 10000 }).catch(() => {});
+    ok(/ist ein Testort/.test(await p8.textContent('#plDesc')), 'v0.8.4 directory sight: Wikipedia text on tap: ' + (await p8.textContent('#sheetTitle')));
     if (OUT) await p8.screenshot({ path: OUT + '/14-verzeichnis-ziel.png' });
     await p8.click('[data-a="tell"]');
     await p8.waitForFunction(() => /Prompt kopiert/.test(document.getElementById('tellStatus').textContent), null, { timeout: 8000 });
