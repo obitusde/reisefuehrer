@@ -304,9 +304,6 @@ table.kv td:first-child { color: var(--muted); white-space: nowrap; }
 .tell-status { margin: 8px 0 0; font-size: 14px; }
 .tell-status p { margin: 0 0 4px; }
 .tell-status .actions { margin: 6px 0 0; }
-.heard-btn { width: 100%; margin-top: 8px; min-height: 44px; font-weight: 500; }
-.heard-btn.on { color: var(--ok); }
-.item.heard .it-name, .item.heard .it-stars { opacity: .5; }
 .intro { white-space: pre-line; font-size: 14px; }
 .pl-stars { font-size: 18px; font-weight: 700; margin: 2px 0; }
 .pl-stars span { font-size: 15px; font-weight: 600; color: var(--text); margin-left: 6px; }

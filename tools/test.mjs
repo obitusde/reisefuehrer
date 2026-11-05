@@ -245,11 +245,11 @@ eq(core.osmandGoUrl(pin), 'https://osmand.net/go?lat=46.511000&lon=6.498000&z=17
 ok(core.osmandIntentUrl(pin, 'net.osmand.plus').startsWith('intent://osmand.net/map?pin=46.511000,6.498000#Intent;scheme=https;package=net.osmand.plus;S.browser_fallback_url=https%3A%2F%2Fosmand.net') &&
   core.osmandIntentUrl(pin).endsWith(';end'), 'osmand intent url');
 ok(core.claudeNewUrl('a b?').startsWith('claude://claude.ai/new?q=a%20b%3F'), 'claude url');
-const rv = core.buildReviewPrompt(th, cfg);
-ok(rv.text.startsWith('Du bist mein Reiseführer. Sag mir, ob sich ein Besuch lohnt') && rv.text.includes('Ort: Manchester Town Hall (deutsch: Rathaus Manchester)') &&
-  rv.text.includes('Google Maps, Tripadvisor') && rv.text.includes('## Praktische Tipps für den Besuch') && rv.text.includes('Wikipedia: https://en.wikipedia.org/wiki/Manchester_Town_Hall'), 'review prompt');
-ok(rv.text.includes('Ich lese die Antwort auf dem Handy') && rv.text.includes('## Lohnt sich der Besuch?') && rv.text.includes('Erfinde nichts') && rv.text.includes('nicht gefunden') && !rv.text.includes('Tabelle mit zwei Spalten') && rv.text.includes('am Ende keine Rückfrage') && rv.text.includes('Beginne direkt mit der Überschrift') && rv.length < 1800, 'v0.13.5 visit prompt: only "worth it?" and practical tips, sourced, no follow-up question (' + rv.length + ')');
-ok(cfg.besucher.knopf === '👍 Lohnt sich der Besuch?', 'v0.13.3 button text');
+const rv = core.buildReviewPrompt(th, cfg, { name: 'Manchester', state: 'England' });
+eq(rv.text, 'Reiseführer: Lohnt sich Manchester Town Hall (deutsch: Rathaus Manchester) (England, ' + th.lat.toFixed(4) + ', ' + th.lon.toFixed(4) + ')? Suche aktuelle Besucherbewertungen, nenne Quelle und Stand, nichts raten. Antworte in zwei Abschnitten: 1. Lohnt sich der Besuch? 2. Praktische Tipps (Eintritt, Öffnungszeiten, Zeitbedarf, beste Zeit, Tipps). Sachlich, ohne Rückfrage am Ende', 'v0.17.0 review prompt (short form): region, coordinates');
+ok(rv.text.length < 420 && !rv.text.includes('\n') && rv.text.includes('nichts raten') && rv.text.includes('Quelle und Stand'), 'v0.17.0 review prompt is short: ' + rv.text.length);
+ok(core.buildReviewPrompt(th, cfg, null).text.includes('(' + (th.ort ? th.ort + ', ' : '') + th.lat.toFixed(4)), 'v0.17.0 review prompt without lookup: place or just coordinates');
+ok(cfg.besucher.knopf === 'Praktisches und Bewertung' && cfg.erzaehlen.knopf === '🎧 Audioguide' && cfg.karten_app_standard === undefined, 'v0.17.0 button texts: "Praktisches und Bewertung", "Audioguide"; no map app choice any more');
 
 
 // ---- v0.14.0: country packages for Europe (list, workflow, border, parts)

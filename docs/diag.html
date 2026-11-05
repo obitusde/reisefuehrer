@@ -106,7 +106,7 @@
 
 <!-- ======================= v0.7 ======================= -->
 <section class="card" id="v08">
-  <h2>v0.8/v0.9 – Verzeichnis, Zoom-Stufen, Strecke, Namen (v0.16.0)</h2>
+  <h2>v0.8/v0.9 – Verzeichnis, Zoom-Stufen, Strecke, Namen (v0.17.0)</h2>
   <a class="btn secondary" href="index.html">App öffnen</a>
   <div id="checklist8"></div>
   <h2 style="margin-top:16px">Installieren (neue App-Kennung)</h2>
@@ -324,7 +324,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '0.16.0';
+  var VERSION = '0.17.0';
   var KEY = 'rf.diag.v1';
 
   var TESTS = [
@@ -635,14 +635,14 @@
   init();
 })();
 </script>
-<script src="core.js?v=0.16.0"></script>
+<script src="core.js?v=0.17.0"></script>
 <script>
 /* v0.2 diagnostics: API checks, gold list, manual checklist, summary */
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
   var KEY = 'rf.diag.v2';
-  var DV = '0.16.0';
+  var DV = '0.17.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function load() { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { return {}; } }
@@ -917,7 +917,7 @@
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
-  var KEY = 'rf.diag.v3', DV = '0.16.0';
+  var KEY = 'rf.diag.v3', DV = '0.17.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -925,12 +925,12 @@
   function save() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) { /* ignore */ } }
   var f = function (u, o) { return fetch(u, o); };
   var CHECKS = [
-    ['e1', '„Erzähl mir davon“ öffnet Claude mit dem Prompt'],
+    ['e1', '„🎧 Audioguide“ (vorher „Erzähl mir davon“) öffnet das Teilen-Menü mit dem Prompt'],
     ['e2', 'Claude erzeugt einen gesprochenen deutschen Text'],
     ['e3', 'Vorlesen in Claude funktioniert'],
     ['e4', '„ausführlich“ ergibt einen langen Text'],
-    ['e5', 'Bild und deutsche Kurzinfo erscheinen im Ortsfenster'],
-    ['e6', 'Erzählte Orte sind in der Liste grau („✓ gehört“)']
+    ['e5', 'Bild und deutsche Kurzinfo erscheinen im Ortsfenster']
+    // e6 (graue „✓ gehört“-Orte) entfällt seit v0.17.0
   ];
   var TOWN_HALL = { id: 'diag', name: 'Manchester Town Hall', name2: 'Rathaus Manchester', ort: 'Manchester', lat: 53.4794, lon: -2.2446,
     typ_label: 'Rathaus', wikipedia: 'en:Manchester Town Hall', artikel: { en: 'Manchester Town Hall', de: 'Rathaus Manchester' } };
@@ -994,7 +994,7 @@
 (function () {
   'use strict';
   var C = window.RF && window.RF.core;
-  var KEY = 'rf.diag.v6', DV = '0.16.0';
+  var KEY = 'rf.diag.v6', DV = '0.17.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -1018,7 +1018,7 @@
     ['k7', '„Lohnt sich der Besuch?“ (v0.13.3, vorher „Übersicht und Bewertung“): Claude antwortet nur mit Urteil und praktischen Tipps, ohne Rückfrage'],
     ['k8', '„Kartenausschnitt vorbereiten“ läuft durch (⚙), Gebiet ist grün umrandet'],
     ['k9', 'Flugmodus: „Hier suchen“ im Gebiet zeigt Orte mit Kurzinfos'],
-    ['k10', 'Flugmodus: „Erzähl mir davon“ kopiert einen Prompt mit Wikipedia-Text']
+    ['k10', 'Flugmodus: „Audioguide“ kopiert einen Prompt mit Wikipedia-Text']
   ];
   $('osmandTests').innerHTML = LINKS.map(function (l) {
     return '<div class="card"><h2><span class="num">' + l[0] + '</span>' + esc(l[1]) + '</h2>' +
@@ -1095,7 +1095,7 @@
 /* v0.7 diagnostics: installability, checklist (symbols, city stars) */
 (function () {
   'use strict';
-  var KEY = 'rf.diag.v7', DV = '0.16.0';
+  var KEY = 'rf.diag.v7', DV = '0.17.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -1182,7 +1182,7 @@
 <script>
 /* v0.8: acceptance of the directory */
 (function () {
-  var KEY = 'rf.diag.v8', DV = '0.16.0';
+  var KEY = 'rf.diag.v8', DV = '0.17.0';
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { st = {}; }
@@ -1194,11 +1194,11 @@
     ['z3', 'Nach „Hier suchen“ ab Zoom 12: alle Ziele mit Kurzinfos, auch Museen (z. B. Le Brassus)'],
     ['z6', '„Mein Standort“ springt nur, gesucht wird erst mit „Hier suchen“'],
     ['z7', 'Nie zu viele Punkte auf einmal, aber wo wenig ist, alles'],
-    ['z8', '„Erzähl mir davon“ öffnet das Android-Teilen-Menü, dort die App wählen'],
+    ['z8', '„Audioguide“ (vorher „Erzähl mir davon“) öffnet das Android-Teilen-Menü, dort die App wählen'],
     ['z9', 'Statuszeile beim Suchen in einer Zeile; man sieht, ob OSM noch lädt'],
     ['z10', '☰ unten links schaltet die Liste aus und an (Karte über den ganzen Bildschirm)'],
     ['z11', 'Kein Vollbild-Hinweis von Chrome mehr beim ersten Antippen'],
-    ['z12', 'v0.8.4: Ziel aus dem Verzeichnis antippen zeigt Wikipedia-Text und Bild, „Erzähl mir davon“ geht'],
+    ['z12', 'v0.8.4: Ziel aus dem Verzeichnis antippen zeigt Wikipedia-Text und Bild, „Audioguide“ geht'],
     ['r1', 'v0.9 Strecke (⇢): Fahrrad Morges → Genf zeigt Ziele, Liste nach „km“ sortiert, mit Umweg'],
     ['r2', 'v0.9 Strecke: Auto Morges → Lyon lädt mit Fortschritt; zweites Mal deutlich schneller'],
     ['r3', 'v0.9 Strecke: Ziele mit weniger Sternen liegen nie weiter weg als solche mit mehr Sternen'],
@@ -1256,7 +1256,10 @@
     ['p2', 'v0.15.0 Bei einem Land „Bauen“ tippen: Fortschritt „Wird gestartet“ → „Wird gebaut seit N Min.“ → „Gebaut, wird veröffentlicht“ → „<Land> ist fertig gebaut“ (Herunterladen-Knopf)'],
     ['f1', 'v0.16.0 Lausanne neu bauen (Menü → Daten → Schweiz → Neu bauen), laden: Art Brut, Photo Elysée, Beaux-Arts mindestens ★★; Zoologie- und Geologiemuseum höchstens ★; Olympisches Museum ★★; „Lucy Mackintosh“ ohne Stern'],
     ['f2', 'v0.16.0 Lausanne: Fondation de l’Hermitage nur einmal in der Liste (nicht zusätzlich „Hermitage Foundation collection“)'],
-    ['f3', 'v0.16.0 Basel: Kunstmuseum, Münster, Tinguely ★★★; Naturhistorisches Museum höchstens ★★; Jüdisches Museum und Papiermuseum ★ oder mehr']
+    ['f3', 'v0.16.0 Basel: Kunstmuseum, Münster, Tinguely ★★★; Naturhistorisches Museum höchstens ★★; Jüdisches Museum und Papiermuseum ★ oder mehr'],
+    ['g1', 'v0.17.0 „Praktisches und Bewertung“ (vorher „Lohnt sich der Besuch?“): der Prompt beginnt mit „Reiseführer: Lohnt sich <Ort> (<Region>, <Breite>, <Länge>)?“; Antwort in zwei Abschnitten, Quelle und Stand, keine Rückfrage am Ende'],
+    ['g2', 'v0.17.0 Menü → Einstellungen: keine Wahl „Karten-App“ und keine Liste „Schon gehört“ mehr; „In Karten-App“ im Ortsfenster öffnet die Auswahl der Android-Karten-Apps'],
+    ['g3', 'v0.17.0 Orte, die du dir erzählen lässt, werden nicht mehr grau (kein „✓ gehört“)']
   ];
   var RES = [['ok', 'Installiert, öffnet vom Startbildschirm'], ['fehler', 'Fehlermeldung'], ['schon', 'Wieder „bereits installiert“'], ['nein', 'Nicht versucht']];
   $('checklist8').innerHTML = CHECKS.map(function (c) {

@@ -1,5 +1,5 @@
 /*
- * Reiseführer – core logic (v0.16.0)
+ * Reiseführer – core logic (v0.17.0)
  * Shared by the app (index.html), the diagnostics page (diag.html) and Node tests.
  * No DOM access here. Network access only through the injected fetch function.
  */
@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var CORE_VERSION = '0.16.0';
+  var CORE_VERSION = '0.17.0';
 
   // ---------------------------------------------------------------- helpers
 
@@ -1189,10 +1189,13 @@
   }
 
   /** Prompt "Lohnt sich das?": Claude searches visitor reviews (Google Maps, Tripadvisor, …) and sums them up. */
-  function buildReviewPrompt(p, cfg) {
+  function buildReviewPrompt(p, cfg, loc) {
     var b = cfg.besucher;
+    // wo: region (canton/state from the reverse lookup, else the place), then the coordinates – "Waadt, 46.6191, 6.4116"
+    var region = (loc && (loc.state || loc.name)) || p.ort || '';
     var vars = {
-      name: p.name + (p.name2 ? ' (deutsch: ' + p.name2 + ')' : '') + (p.ort && p.name.indexOf(p.ort) < 0 ? ', ' + p.ort : ''),
+      name: p.name + (p.name2 ? ' (deutsch: ' + p.name2 + ')' : ''),
+      wo: [region, (+p.lat).toFixed(4), (+p.lon).toFixed(4)].filter(Boolean).join(', '),
       lat: p.lat.toFixed(5), lon: p.lon.toFixed(5),
       typ: p.typ_label || 'Sehenswürdigkeit',
       wikipedia_url: p.wikipedia ? 'https://' + p.wikipedia.split(':')[0] + '.wikipedia.org/wiki/' +

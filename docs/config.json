@@ -259,38 +259,19 @@
     "duplikat": { "aehnlichkeit": 0.85, "abstand_m": 150 }
   },
 
-  "karten_app_standard": "google",
   "osmand_paket": "net.osmand.plus",
 
   "besucher": {
-    "_hinweis": "Prompt für den Knopf „Lohnt sich der Besuch?“ (v0.13.3; v0.13.5 neu aufgebaut): zum Lesen auf dem Handy. Die KI-App sucht Informationen und Besucherbewertungen im Netz und beantwortet nur zwei Dinge: lohnt sich der Besuch, und praktische Tipps für den Besuch. Aufbau: Rolle und Aufgabe, Daten, Quellenregeln, feste Gliederung, Stilregeln, Startanweisung.",
-    "knopf": "👍 Lohnt sich der Besuch?",
+    "_hinweis": "Prompt für den Knopf „Praktisches und Bewertung“ (v0.17.0, vorher „Lohnt sich der Besuch?“): kurz gehalten, zum Lesen auf dem Handy. Die KI-App sucht aktuelle Besucherbewertungen und antwortet in zwei Abschnitten: lohnt sich der Besuch, praktische Tipps. Platzhalter: {name}, {wo} (Region oder Ort, dann Koordinaten), {lat}, {lon}, {typ}, {wikipedia_url}.",
+    "knopf": "Praktisches und Bewertung",
     "vorlage": [
-      "Du bist mein Reiseführer. Sag mir, ob sich ein Besuch lohnt, und gib mir praktische Tipps für den Besuch. Sprich mich mit „du“ an. Ich lese die Antwort auf dem Handy.",
-      "",
-      "Ort: {name}",
-      "Wo: {lat}, {lon}",
-      "Art: {typ}",
-      "Wikipedia: {wikipedia_url}",
-      "",
-      "Quellen: Suche im Internet nach aktuellen Informationen und nach Bewertungen und Erfahrungen von Besuchern, zum Beispiel bei Google Maps, Tripadvisor, in Reiseforen, Reiseblogs und auf der offiziellen Website. Sage nur, was du gefunden hast. Nenne bei Zahlen und Urteilen die Quelle und bei Öffnungszeiten und Preisen den Stand (Monat und Jahr). Was du nicht findest, schreibst du als „nicht gefunden“. Erfinde nichts.",
-      "",
-      "Antworte genau in dieser Gliederung, mit nur diesen zwei Abschnitten:",
-      "",
-      "## Lohnt sich der Besuch?",
-      "**Ja**, **Bedingt** oder **Eher nicht**, dazu zwei bis drei Sätze Begründung: was Besucher loben und kritisieren, für wen es geeignet ist.",
-      "",
-      "## Praktische Tipps für den Besuch",
-      "Fünf bis acht Stichpunkte: Anfahrt und Parken, Eintritt und Öffnungszeiten, Zeitbedarf, beste Besuchszeit, worauf man achten sollte, was man nicht verpassen sollte.",
-      "",
-      "Stil: Deutsch, knapp und sachlich, ohne Prospektsprache und ohne Wertungen ohne Beleg. Keine Tabelle, keine weiteren Abschnitte, am Ende keine Rückfrage und keine Vorschläge.",
-      "",
-      "Beginne direkt mit der Überschrift „Lohnt sich der Besuch?“."
+      "Reiseführer: Lohnt sich {name} ({wo})? Suche aktuelle Besucherbewertungen, nenne Quelle und Stand, nichts raten. Antworte in zwei Abschnitten: 1. Lohnt sich der Besuch? 2. Praktische Tipps (Eintritt, Öffnungszeiten, Zeitbedarf, beste Zeit, Tipps). Sachlich, ohne Rückfrage am Ende"
     ]
   },
 
   "erzaehlen": {
     "_hinweis": "Prompt für „Erzähl mir davon“ (PROJEKT.md Abschnitt 8). Platzhalter in {geschweiften Klammern}. Übergabe (v0.8.1): Text wird kopiert und mit Android „Teilen“ an die gewählte App gegeben. v0.13.5: Aufbau nach den üblichen Regeln für gute Prompts: Rolle und Aufgabe, Daten getrennt von Regeln, Quellenregeln (Websuche erlaubt, nur Belegtes, „laut …“ bei Einzelbehauptungen), feste Reihenfolge, Stilregeln positiv formuliert mit kurzer Verbotsliste, Quelltext am Ende, Startanweisung ohne Einleitung. Kein Beispielsatz zum Abschreiben.",
+    "knopf": "🎧 Audioguide",
     "max_zeichen": 12000,
     "quelltext_max": {"kurz": 2500, "normal": 3000, "ausfuehrlich": 10000},
     "standard_ausfuehrlichkeit": "kurz",

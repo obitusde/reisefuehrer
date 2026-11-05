@@ -1,14 +1,14 @@
-/* Reiseführer – app (v0.16.0). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.17.0). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.16.0';
+  var VERSION = '0.17.0';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
   var K = {
     settings: 'rf.settings', last: 'rf.last', merk: 'rf.merk', wd: 'rf.wdcache',
-    ort: 'rf.ortcache2', view: 'rf.view', split: 'rf.split', recent: 'rf.recent', kurz: 'rf.kurz3', heard: 'rf.gehoert'
+    ort: 'rf.ortcache2', view: 'rf.view', split: 'rf.split', recent: 'rf.recent', kurz: 'rf.kurz3'
   };
   var LS = {
     get: function (k, d) {
@@ -71,7 +71,7 @@
   // Results saved by an older version were scored differently: drop them (user searches again)
   if (last && last.version !== VERSION) { last = null; LS.del(K.last); }
   var merk = LS.get(K.merk, []) || [];   // saved place objects
-  var heard = LS.get(K.heard, {}) || {};  // id -> time ("schon gehört")
+  LS.del('rf.gehoert'); // v0.17.0: "Schon gehört" is gone
   var wdStore = LS.get(K.wd, {}) || {};
   var wdCache = { get: function (k) { return wdStore[k]; }, set: function (k, v) { wdStore[k] = v; } };
   var userPos = null, busy = false, selectedId = null;
@@ -170,11 +170,9 @@
     cfg.suche = cfg.suche || {};
     cfg.gebiet = cfg.gebiet || {};
     if (typeof settings.minStars !== 'number') settings.minStars = 0; // v0.10.0: all, the map emphasis shows what is worth it
-    if (['google', 'geo', 'osmand'].indexOf(settings.kartenApp) < 0) settings.kartenApp = cfg.karten_app_standard || 'google';
     if (settings.kat == null) settings.kat = '';
     if (['kurz', 'normal', 'ausfuehrlich'].indexOf(settings.level) < 0) settings.level = (cfg.erzaehlen && cfg.erzaehlen.standard_ausfuehrlichkeit) || 'kurz';
     if (settings.focus == null) settings.focus = '';
-    if (settings.hideHeard == null) settings.hideHeard = false;
     if (settings.osm == null) settings.osm = true;
     saveSettings();
 
@@ -1698,8 +1696,7 @@
     return last.places.filter(function (p) {
       if (hide.indexOf(p.typ) >= 0) return false; // v0.8.4: districts and villages add little
       var kat = !settings.kat || (settings.kat === '__osm' ? C.sourceTag(p) === 'OSM' : p.kategorie === settings.kat);
-      return p.sterne >= settings.minStars && kat &&
-        !(settings.hideHeard && heard[p.id]);
+      return p.sterne >= settings.minStars && kat;
     });
   }
 
@@ -1810,10 +1807,10 @@
     var dt = cfg.dauer_text || {};
     return (function () {
       var d = distOf(p);
-      var meta = [heard[p.id] ? '✓ gehört' : '', p.typ_label, d != null ? C.formatDistance(d) : '', dt[String(p.sterne)] || ''].filter(Boolean).join(' · ');
+      var meta = [p.typ_label, d != null ? C.formatDistance(d) : '', dt[String(p.sterne)] || ''].filter(Boolean).join(' · ');
       var on = isMerk(p.id);
       var tag = C.sourceTag(p);
-      return '<li class="item' + (p.id === selectedId ? ' sel' : '') + (p.sterne ? '' : ' zero') + (isOsmOnly(p) ? ' osm' : '') + (heard[p.id] ? ' heard' : '') + '" data-id="' + esc(p.id) + '">' +
+      return '<li class="item' + (p.id === selectedId ? ' sel' : '') + (p.sterne ? '' : ' zero') + (isOsmOnly(p) ? ' osm' : '') + '" data-id="' + esc(p.id) + '">' +
         '<div class="it-main">' +
           '<span class="it-stars s' + p.sterne + '">' + (p.sterne ? C.starsText(p.sterne) : '·') + '</span>' +
           '<span class="it-text"><span class="it-name">' + esc(C.displayName(p.name)) + '</span>' +
@@ -2023,14 +2020,9 @@
     if (history.state && history.state.rfSheet) history.back(); else hideSheet();
   }
 
+  // v0.17.0: fixed to the Android map app (geo: link, the system offers the apps); the choice in the settings is gone
   function mapsLinks(p) {
-    if (settings.kartenApp === 'geo') {
-      return { name: C.geoSearchUrl(p), pin: C.geoPinUrl(p), label: 'In Karten-App', target: '' };
-    }
-    if (settings.kartenApp === 'osmand') {
-      return { name: C.osmandIntentUrl(p, cfg.osmand_paket), pin: C.geoPinUrl(p), label: 'In OsmAnd', target: '' };
-    }
-    return { name: C.gmapsSearchUrl(p), pin: C.gmapsPinUrl(p), label: 'In Google Maps', target: ' target="_blank" rel="noopener"' };
+    return { name: C.geoSearchUrl(p), pin: C.geoPinUrl(p), label: 'In Karten-App', target: '' };
   }
 
   function openPlace(p) {
@@ -2060,8 +2052,8 @@
         '<select id="focusSel" class="focus" aria-label="Schwerpunkt"><option value="">Schwerpunkt: keiner</option>' +
           foci.map(function (f) { return '<option' + (settings.focus === f ? ' selected' : '') + '>' + esc(f) + '</option>'; }).join('') +
         '</select>' +
-        '<button class="btn primary big" type="button" data-a="tell">🎧 Erzähl mir davon</button>' +
-        '<button class="btn big review-btn" type="button" data-a="review">' + esc((cfg.besucher && cfg.besucher.knopf) || '📋 Übersicht und Bewertung') + '</button>' +
+        '<button class="btn primary big" type="button" data-a="tell">' + esc((cfg.erzaehlen && cfg.erzaehlen.knopf) || '🎧 Audioguide') + '</button>' +
+        '<button class="btn big review-btn" type="button" data-a="review">' + esc((cfg.besucher && cfg.besucher.knopf) || 'Praktisches und Bewertung') + '</button>' +
         '<div id="tellStatus" class="tell-status" hidden></div>' +
       '</div>' +
       '<div class="actions">' +
@@ -2162,7 +2154,6 @@
     setTellStatus('Lade Text …');
     articleFor(level).catch(function () { return null; }).then(function (art) {
       var pr = C.buildPrompt(p, { article: art, level: level, schwerpunkt: settings.focus, distance: distanceForPrompt(p) }, cfg);
-      markHeard(p.id, true);
       handOver(pr, (pr.truncated ? ', Quelltext gekürzt' : '') + (art ? '' : ', ohne Wikipedia-Text'), t0);
     });
   }
@@ -2171,7 +2162,7 @@
   function review() {
     var p = findPlace(narr && narr.pid);
     if (!p) return;
-    handOver(C.buildReviewPrompt(p, cfg), '', Date.now());
+    handOver(C.buildReviewPrompt(p, cfg, GLOC[gKey(p)] || null), '', Date.now()); // GLOC: region from the Google question (Nominatim), if known
   }
 
   // v0.8.1: always Android "Teilen" – the user picks the app (Claude, Gemini, …) in the share menu.
@@ -2192,16 +2183,6 @@
   function aiShare() {
     if (!narr || !narr.prompt || !navigator.share) return;
     navigator.share({ text: narr.prompt }).catch(function () { /* cancelled */ });
-  }
-
-  function markHeard(id, on) {
-    if (on) heard[id] = Date.now(); else delete heard[id];
-    LS.set(K.heard, heard);
-    var list = $('scroller'), top = list.scrollTop;
-    renderList();            // row shows "✓ gehört" and is greyed
-    list.scrollTop = top;
-    var b = document.querySelector('[data-a="heard"]');
-    if (b) { b.classList.toggle('on', !!on); b.textContent = on ? '✓ Schon gehört' : 'Als gehört markieren'; }
   }
 
   var LANG_NAMES = { en: 'Englischen', fr: 'Französischen', it: 'Italienischen', es: 'Spanischen', nl: 'Niederländischen',
@@ -2262,13 +2243,6 @@
       areasHtml() +
       dirMetaHtml() +
       fullscreenHtml() +
-      '<h3>Karten-App für „In Google Maps“ und „Pin“</h3>' +
-      [['google', 'Google Maps (Web-Link, empfohlen)'], ['geo', 'Android-Karten-App (geo:-Link, Auswahl möglich)'], ['osmand', 'OsmAnd (öffnet OsmAnd+; „Pin“ per geo:-Link)']].map(function (o) {
-        return '<label class="opt"><input type="radio" name="kapp" value="' + o[0] + '"' + (settings.kartenApp === o[0] ? ' checked' : '') + '> ' + o[1] + '</label>';
-      }).join('') +
-      '<h3>Schon gehört</h3>' +
-      '<label class="opt"><input type="checkbox" id="hideHeard"' + (settings.hideHeard ? ' checked' : '') + '> Schon gehörte Orte in Liste und Karte ausblenden</label>' +
-      '<div class="actions"><button class="btn wide" type="button" data-a="clearheard">Liste „Schon gehört“ leeren (' + Object.keys(heard).length + ')</button></div>' +
       '<h3>Quellen</h3>' +
       '<label class="opt"><input type="checkbox" id="useOsm"' + (settings.osm !== false ? ' checked' : '') + '> OpenStreetMap-Orte einbeziehen (Kunstwerke, Aussichtspunkte, Denkmäler …)</label>' +
       '<h3>Daten</h3>' +
@@ -2801,11 +2775,6 @@
         aiShare();
       } else if (a === 'recopy') {
         if (narr && narr.prompt) copyText(narr.prompt).then(function (ok) { toast(ok ? 'Prompt nochmal kopiert' : 'Kopieren nicht möglich'); });
-      } else if (a === 'heard' && p) {
-        markHeard(p.id, !heard[p.id]);
-        if (settings.hideHeard) renderAll();
-      } else if (a === 'clearheard') {
-        if (confirm('Liste „Schon gehört“ leeren?')) { heard = {}; LS.set(K.heard, heard); renderAll(); toast('„Schon gehört“ geleert'); }
       } else if (a === 'hit') {
         var h = searchHits[parseInt(el.getAttribute('data-i'), 10)];
         if (h) goToHit(h);
@@ -2888,11 +2857,6 @@
       if (e.target.id === 'useOsm') { settings.osm = e.target.checked; saveSettings(); toast('Gilt ab der nächsten Suche'); return; }
       if (e.target.id === 'autoFs') { settings.vollbild = e.target.checked; saveSettings(); return; }
       if (e.target.id === 'showCities') { settings.staedte = e.target.checked; saveSettings(); renderMarkers(); scheduleCities(); return; }
-      if (e.target.id === 'hideHeard') { settings.hideHeard = e.target.checked; saveSettings(); renderAll(); return; }
-      if (e.target.name === 'kapp') {
-        settings.kartenApp = e.target.value; saveSettings();
-        toast({ geo: 'Karten-App: geo:-Link', osmand: 'Karten-App: OsmAnd', google: 'Karten-App: Google Maps' }[e.target.value]);
-      }
     });
   }
 

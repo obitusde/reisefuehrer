@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.17.0 – 05.11.2026 – Kürzerer Prompt „Praktisches und Bewertung“, „Audioguide“, Einstellungen aufgeräumt
+
+Wunsch Nutzer: Prompt für „Lohnt sich der Besuch?“ nach dem Muster der kurzen Google-Frage; Knopf soll „Praktisches und Bewertung“ heißen; „Erzähl mir davon“ soll „Audioguide“ heißen; Karten-App fest auf die Android-Karten-App; „Schon gehört“ komplett weg; „Hier suchen“ kann das weg?
+
+- **Prompt** (Knopf „Praktisches und Bewertung“, `config.json` → `besucher.vorlage`): eine Zeile, etwa 330 Zeichen statt 1 300. Wortlaut: „Reiseführer: Lohnt sich {Name} ({Region}, {Breite}, {Länge})? Suche aktuelle Besucherbewertungen, nenne Quelle und Stand, nichts raten. Antworte in zwei Abschnitten: 1. Lohnt sich der Besuch? 2. Praktische Tipps (Eintritt, Öffnungszeiten, Zeitbedarf, beste Zeit, Tipps). Sachlich, ohne Rückfrage am Ende“. Die Region (z. B. „Waadt“) kommt aus derselben Abfrage wie bei den Google-Knöpfen (Nominatim, beim Öffnen des Ortsfensters), sonst steht der Ort da, sonst nur die Koordinaten (vier Stellen).
+- **Knöpfe**: „🎧 Audioguide“ (vorher „🎧 Erzähl mir davon“), „Praktisches und Bewertung“ (vorher „👍 Lohnt sich der Besuch?“). Der Text des Audioguide-Prompts bleibt wie in v0.13.5. Namen in `config.json` (`erzaehlen.knopf`, `besucher.knopf`).
+- **Karten-App fest**: Der Knopf im Ortsfenster heißt „In Karten-App“ und öffnet die Android-Karten-App (geo:-Link, die Auswahl macht Android). Die Wahl in den Einstellungen und `karten_app_standard` sind entfernt (Google Maps und OsmAnd als Auswahl gibt es nicht mehr; die Hilfsfunktionen in `core.js` bleiben liegen).
+- **„Schon gehört“ komplett entfernt**: Einstellung „Schon gehörte Orte ausblenden“, „Liste leeren“, graue Zeilen und das automatische Merken beim Erzählen; die gespeicherte Liste (`rf.gehoert`) wird beim Start gelöscht.
+
+### Annahmen/Abweichungen
+
+- Im Wortlaut stand „Antworte  zwei Abschnitte“ (doppeltes Leerzeichen, „in“ fehlte): ich habe „Antworte in zwei Abschnitten“ geschrieben, sonst unverändert.
+- Nur der Audioguide behält sein Symbol (🎧); „Praktisches und Bewertung“ steht ohne Symbol, wie du es geschrieben hast.
+- **„Hier suchen“ bleibt** (siehe Antwort): Die Liste unter der Karte füllt sich nur damit, und außerhalb gebauter Länderpakete lädt es die Karten- und Verzeichnisdaten. Ändern wir später, wenn die Liste dem Kartenausschnitt automatisch folgen soll.
+- Die Abschnitte, die ich in der Einstellungsseite gestrichen habe (Karten-App, Schon gehört), bleiben in `PROJEKT.md` als Geschichte stehen.
+- Die Beschränkung auf zwei Abschnitte hängt nur an der KI-App: Der Prompt ist kürzer und strenger Format-Vorgaben („genau diese Überschriften“) fehlen, das Ergebnis kann daher etwas freier ausfallen.
+
 ## v0.16.0 – 05.11.2026 – Interessenprofil: Kunst, Geschichte, Aussicht; keine Doppelten
 
 Wunsch Nutzer: Ich mag Museen, Aussichtspunkte, Geschichtliches, Kunstmuseen und UNESCO-Stätten. Die Sterne sollen das widerspiegeln. Festes Profil im Code (keine Regler), erst gemessen (Lausanne, Basel), dann eingebaut.

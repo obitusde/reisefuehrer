@@ -171,7 +171,7 @@ try {
   if (process.env.DEBUG) { page.on('request', (r) => { if (/extracts|mymemory/.test(r.url())) console.log('REQ', decodeURIComponent(r.url()).slice(0, 160)); }); page.on('requestfailed', (r) => console.log('FAILED', r.url().slice(0, 120), r.failure() && r.failure().errorText)); page.on('console', (m) => console.log('CONSOLE', m.text())); }
   await page.goto(BASE + 'index.html');
   await page.waitForSelector('.empty');
-  ok((await page.textContent('#version')) === 'v0.16.0', 'footer version');
+  ok((await page.textContent('#version')) === 'v0.17.0', 'footer version');
   if (OUT) await page.screenshot({ path: OUT + '/01-start.png' });
 
   await menuClick(page, '#btnLocate');
@@ -272,7 +272,7 @@ try {
   const title = await page.textContent('#sheetTitle');
   ok(title === items[0].n, 'sheet title = item');
   const mapsHref = await page.getAttribute('#sheetBody a.btn.primary', 'href');
-  ok(mapsHref.startsWith('https://www.google.com/maps/search/?api=1&query='), 'maps link');
+  ok(mapsHref.startsWith('geo:0,0?q='), 'v0.17.0 maps link: Android map app (geo:)');
   // v0.13.3: no buttons for copying, Pin, "gehört", "Warum", Wikipedia intro; long press on the name copies it
   ok(!(await page.$('[data-a=copy]')) && !(await page.$('[data-a=heard]')) && !(await page.$('details.why')) && !(await page.$('#plIntro')) && !(await page.$$eval('#sheetBody .btn', (els) => els.map((e) => e.textContent.trim()))).some((t) => /^(Pin|Name kopieren|Als gehört markieren|🖼 Bilder)/.test(t)), 'v0.13.3 slim place window: no copy, Pin, heard, why, intro');
   await page.evaluate(() => navigator.clipboard.writeText('x'));
@@ -330,23 +330,12 @@ try {
 
   // settings + geo links
   await menuClick(page, '#btnSettings');
-  await page.check('input[name=kapp][value=geo]');
+  ok(!(await page.$('input[name=kapp]')) && !(await page.$('#hideHeard')) && !(await page.$('[data-a=clearheard]')) && !/Karten-App für|Schon gehört/.test(await page.textContent('#sheetBody')), 'v0.17.0 settings: no map app choice, no "Schon gehört"');
   await page.click('#sheetClose');
   await page.click('.item >> nth=0');
-  ok((await page.getAttribute('#sheetBody a.btn.primary', 'href')).startsWith('geo:0,0?q='), 'geo link setting');
+  ok((await page.getAttribute('#sheetBody a.btn.primary', 'href')).startsWith('geo:0,0?q=') && (await page.textContent('#sheetBody a.btn.primary')) === 'In Karten-App', 'v0.17.0 map link fixed to the Android map app (geo:)');
   await page.evaluate(() => history.back());
   await page.waitForSelector('#sheet', { state: 'hidden' });
-  await menuClick(page, '#btnSettings');
-  await page.check('input[name=kapp][value=osmand]');
-  await page.click('#sheetClose');
-  await page.click('.item >> nth=0');
-  const osmHref = await page.getAttribute('#sheetBody a.btn.primary', 'href');
-  ok(osmHref.startsWith('intent://osmand.net/map?pin=') && osmHref.includes('package=net.osmand.plus') && (await page.textContent('#sheetBody a.btn.primary')) === 'In OsmAnd', 'v0.5 OsmAnd link: ' + osmHref.slice(0, 60));
-  await page.evaluate(() => history.back());
-  await page.waitForSelector('#sheet', { state: 'hidden' });
-  await menuClick(page, '#btnSettings');
-  await page.check('input[name=kapp][value=google]');
-  await page.click('#sheetClose');
 
   // splitter drag
   const sp = await page.$('#splitter'); const b = await sp.boundingBox();
@@ -413,15 +402,16 @@ try {
   // v0.8.1: always Android "Teilen" (the user picks the app), no Claude link
   const shared = await page.evaluate(() => window.__shared || []);
   ok(shared.length >= 1 && shared[shared.length - 1] === prompt && (await page.$('#tellStatus [data-a="aishare"]')) && !(await page.$('#tellStatus a[href^="claude:"]')), 'v0.8.1 prompt handed over with "Teilen": ' + JSON.stringify(shared.map((x) => x.length)) + ' ' + prompt.length + ' ' + (await page.textContent('#tellStatus')));
-  ok(!(await page.$('[data-a=heard]')), 'v0.13.3 no "Als gehört markieren" button (telling still marks the place as heard)');
+  ok(!(await page.$('[data-a=heard]')), 'v0.13.3 no "Als gehört markieren" button');
+  ok((await page.textContent('[data-a=tell]')).includes('Audioguide'), 'v0.17.0 button "Audioguide"');
   if (OUT) await page.screenshot({ path: OUT + '/10-erzaehlen.png' });
   ok(!(await page.$('[data-a=share]')) && !(await page.$('a[href*="tripadvisor"]')), 'no share button, no Tripadvisor link in place window');
   await page.click('[data-a=review]');
   await page.waitForFunction(() => /Prompt kopiert/.test(document.getElementById('tellStatus').textContent));
   const rprompt = await page.evaluate(() => navigator.clipboard.readText());
-  ok(rprompt.startsWith('Du bist mein Reiseführer. Sag mir, ob sich ein Besuch lohnt') && rprompt.includes('Tripadvisor') && rprompt.includes('## Praktische Tipps für den Besuch') && !rprompt.includes('## Auf einen Blick'), 'visit prompt copied');
+  ok(rprompt.startsWith('Reiseführer: Lohnt sich ') && rprompt.includes('Suche aktuelle Besucherbewertungen') && rprompt.includes('Praktische Tipps (Eintritt') && rprompt.length < 450 && !rprompt.includes('\n'), 'v0.17.0 visit prompt (short) copied: ' + rprompt.slice(0, 120));
   ok((await page.evaluate(() => window.__shared || [])).slice(-1)[0] === rprompt, 'v0.8.1 overview handed over with "Teilen"');
-  ok((await page.textContent('[data-a=review]')).includes('Lohnt sich der Besuch?'), 'v0.13.3 button "Lohnt sich der Besuch?"');
+  ok((await page.textContent('[data-a=review]')).trim() === 'Praktisches und Bewertung', 'v0.17.0 button "Praktisches und Bewertung"');
   await page.click('[data-a=recopy]');
   await page.$eval('#sheetBody', (b) => { b.scrollTop = 400; });
   await page.$eval('.item:nth-child(2) .it-main', (el) => el.click());
@@ -429,7 +419,7 @@ try {
   ok(await page.$eval('#sheetBody', (b) => b.scrollTop === 0), 'next place opens at the top');
   await page.evaluate(() => history.back());
   await page.waitForSelector('#sheet', { state: 'hidden' });
-  ok(await page.$eval('.item.heard', (e) => e.textContent.includes('✓ gehört')).catch(() => false), 'heard row greyed in list');
+  ok(!(await page.$('.item.heard')), 'v0.17.0 told places are not greyed any more');
   await menuClick(page, '#btnSearch');
   // search a sight via Nominatim: jumps there and opens the nearest place
   await page.fill('#searchInput', 'Imperial War Museum');
@@ -490,10 +480,10 @@ try {
   ok(splitNow && +splitNow > 12, 'split persisted: ' + splitNow);
 
   // update banner (fake newer version, then ?testupdate=1)
-  fakeVersion = '0.16.1';
+  fakeVersion = '0.17.1';
   await page.reload();
   await page.waitForSelector('#banner:not([hidden])');
-  ok((await page.textContent('#bannerText')).includes('v0.16.1'), 'banner shows remote version');
+  ok((await page.textContent('#bannerText')).includes('v0.17.1'), 'banner shows remote version');
   if (OUT) await page.screenshot({ path: OUT + '/05-banner.png' });
   fakeVersion = null;
   await page.click('#bannerBtn');
@@ -626,9 +616,9 @@ try {
   const swOk = await p3.evaluate(() => navigator.serviceWorker.ready.then((r) => !!r.active)).catch(() => false);
   ok(swOk, 'service worker active');
   const cacheKeys = await p3.evaluate(async () => { await new Promise((r) => setTimeout(r, 800)); return caches.keys(); });
-  ok(cacheKeys.includes('rf-app-0.16.0'), 'app cache with version: ' + cacheKeys.join(','));
-  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.16.0')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
-  ok(cached.some((u) => u.includes('app.js?v=0.16.0')), 'shell precached');
+  ok(cacheKeys.includes('rf-app-0.17.0'), 'app cache with version: ' + cacheKeys.join(','));
+  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.17.0')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
+  ok(cached.some((u) => u.includes('app.js?v=0.17.0')), 'shell precached');
   ok(errs3.length === 0, 'sw: no JS errors ' + errs3.join(' | '));
   await ctx3.close();
 
