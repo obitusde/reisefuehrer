@@ -249,6 +249,8 @@ const rv = core.buildReviewPrompt(th, cfg, { name: 'Manchester', state: 'England
 eq(rv.text, 'Reiseführer: Lohnt sich Manchester Town Hall (deutsch: Rathaus Manchester) (England, ' + th.lat.toFixed(4) + ', ' + th.lon.toFixed(4) + ')? Suche aktuelle Besucherbewertungen, nenne Quelle und Stand, nichts raten. Antworte in zwei Abschnitten: 1. Lohnt sich der Besuch? 2. Praktische Tipps (Eintritt, Öffnungszeiten, Zeitbedarf, beste Zeit, Tipps). Sachlich, ohne Rückfrage am Ende', 'v0.17.0 review prompt (short form): region, coordinates');
 ok(rv.text.length < 420 && !rv.text.includes('\n') && rv.text.includes('nichts raten') && rv.text.includes('Quelle und Stand'), 'v0.17.0 review prompt is short: ' + rv.text.length);
 ok(core.buildReviewPrompt(th, cfg, null).text.includes('(' + (th.ort ? th.ort + ', ' : '') + th.lat.toFixed(4)), 'v0.17.0 review prompt without lookup: place or just coordinates');
+const rgl = core.reviewGoogleUrl(th, { name: 'Manchester', state: 'England' }, cfg);
+ok(rgl.startsWith('https://www.google.com/search?hl=de&udm=50&q=') && decodeURIComponent(rgl.split('&q=')[1]) === core.buildReviewPrompt(th, cfg, { name: 'Manchester', state: 'England' }).text && rgl.length < 900, 'v0.19.0 review link: Google AI search with the review prompt (' + rgl.length + ' characters)');
 ok(cfg.besucher.knopf === 'Praktisches und Bewertung' && cfg.erzaehlen.knopf === '🎧 Audioguide' && cfg.karten_app_standard === undefined, 'v0.17.0 button texts: "Praktisches und Bewertung", "Audioguide"; no map app choice any more');
 
 

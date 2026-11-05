@@ -265,7 +265,7 @@
   "osmand_paket": "net.osmand.plus",
 
   "besucher": {
-    "_hinweis": "Prompt für den Knopf „Praktisches und Bewertung“ (v0.17.0, vorher „Lohnt sich der Besuch?“): kurz gehalten, zum Lesen auf dem Handy. Die KI-App sucht aktuelle Besucherbewertungen und antwortet in zwei Abschnitten: lohnt sich der Besuch, praktische Tipps. Platzhalter: {name}, {wo} (Region oder Ort, dann Koordinaten), {lat}, {lon}, {typ}, {wikipedia_url}.",
+    "_hinweis": "Prompt für den Knopf „Praktisches und Bewertung“ (v0.17.0, vorher „Lohnt sich der Besuch?“; seit v0.19.0 öffnet der Knopf die Google-KI-Suche mit diesem Text, Einstellungen im Block google: ki_param, sprache): kurz gehalten, zum Lesen auf dem Handy. Die KI sucht aktuelle Besucherbewertungen und antwortet in zwei Abschnitten: lohnt sich der Besuch, praktische Tipps. Platzhalter: {name}, {wo} (Region oder Ort, dann Koordinaten), {lat}, {lon}, {typ}, {wikipedia_url}.",
     "knopf": "Praktisches und Bewertung",
     "vorlage": [
       "Reiseführer: Lohnt sich {name} ({wo})? Suche aktuelle Besucherbewertungen, nenne Quelle und Stand, nichts raten. Antworte in zwei Abschnitten: 1. Lohnt sich der Besuch? 2. Praktische Tipps (Eintritt, Öffnungszeiten, Zeitbedarf, beste Zeit, Tipps). Sachlich, ohne Rückfrage am Ende"

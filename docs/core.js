@@ -1,5 +1,5 @@
 /*
- * Reiseführer – core logic (v0.18.0)
+ * Reiseführer – core logic (v0.19.0)
  * Shared by the app (index.html), the diagnostics page (diag.html) and Node tests.
  * No DOM access here. Network access only through the injected fetch function.
  */
@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var CORE_VERSION = '0.18.0';
+  var CORE_VERSION = '0.19.0';
 
   // ---------------------------------------------------------------- helpers
 
@@ -1207,6 +1207,13 @@
     return { text: text, length: text.length, truncated: false };
   }
 
+  /** v0.19.0: link to the Google AI search with the short review prompt (Google answers, the app reads nothing). */
+  function reviewGoogleUrl(p, loc, cfg) {
+    var g = cfg.google || {};
+    return 'https://www.google.com/search?hl=' + encodeURIComponent(g.sprache || 'de') + (g.ki_param ? '&' + g.ki_param : '') +
+      '&q=' + encodeURIComponent(buildReviewPrompt(p, cfg, loc).text);
+  }
+
   function claudeNewUrl(prompt) { return 'claude://claude.ai/new?q=' + encodeURIComponent(prompt); }
 
   // ---------------------------------------------- OpenStreetMap (v0.4)
@@ -2294,7 +2301,7 @@
     dropLocation: dropLocation, shortInfo: shortInfo, splitSentences: splitSentences,
     articleFor: articleFor, loadIntros: loadIntros, translate: translate,
     cleanArticle: cleanArticle, cutAtSentence: cutAtSentence, loadArticle: loadArticle,
-    buildPrompt: buildPrompt, buildReviewPrompt: buildReviewPrompt, claudeNewUrl: claudeNewUrl,
+    buildPrompt: buildPrompt, buildReviewPrompt: buildReviewPrompt, reviewGoogleUrl: reviewGoogleUrl, claudeNewUrl: claudeNewUrl,
     _setFetchTimeout: function (ms) { FETCH_TIMEOUT = ms; },
     tileKeys: tileKeys, overpassQuery: overpassQuery, compactOsm: compactOsm, loadOsm: loadOsm,
     nameSimilarity: nameSimilarity, mergeOsm: mergeOsm, osmFacts: osmFacts,

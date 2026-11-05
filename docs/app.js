@@ -1,8 +1,8 @@
-/* Reiseführer – app (v0.18.0). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.19.0). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.18.0';
+  var VERSION = '0.19.0';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
@@ -2075,7 +2075,7 @@
           foci.map(function (f) { return '<option' + (settings.focus === f ? ' selected' : '') + '>' + esc(f) + '</option>'; }).join('') +
         '</select>' +
         '<button class="btn primary big" type="button" data-a="tell">' + esc((cfg.erzaehlen && cfg.erzaehlen.knopf) || '🎧 Audioguide') + '</button>' +
-        '<button class="btn big review-btn" type="button" data-a="review">' + esc((cfg.besucher && cfg.besucher.knopf) || 'Praktisches und Bewertung') + '</button>' +
+        '<a class="btn big review-btn" data-g="review" href="' + esc(C.reviewGoogleUrl(p, GLOC[gKey(p)] || null, cfg)) + '" target="_blank" rel="noopener">' + esc((cfg.besucher && cfg.besucher.knopf) || 'Praktisches und Bewertung') + '</a>' +
         '<div id="tellStatus" class="tell-status" hidden></div>' +
       '</div>' +
       '<div class="actions">' +
@@ -2116,6 +2116,8 @@
       if (!box || $('sheetBody').getAttribute('data-place') !== p.id) return;
       var u = C.googleLinks(p, loc, cfg);
       Array.prototype.forEach.call(box.querySelectorAll('a[data-g]'), function (a) { a.href = u[a.getAttribute('data-g')]; });
+      var rb = document.querySelector('#sheetBody a[data-g="review"]'); // v0.19.0: "Praktisches und Bewertung" knows the region as well
+      if (rb) rb.href = C.reviewGoogleUrl(p, loc, cfg);
     };
     if (GLOC[k]) { apply(GLOC[k]); return; }
     if (navigator.onLine === false) return;
@@ -2178,13 +2180,6 @@
       var pr = C.buildPrompt(p, { article: art, level: level, schwerpunkt: settings.focus, distance: distanceForPrompt(p) }, cfg);
       handOver(pr, (pr.truncated ? ', Quelltext gekürzt' : '') + (art ? '' : ', ohne Wikipedia-Text'), t0);
     });
-  }
-
-  // "Lohnt sich das?": Claude searches and sums up visitor reviews
-  function review() {
-    var p = findPlace(narr && narr.pid);
-    if (!p) return;
-    handOver(C.buildReviewPrompt(p, cfg, GLOC[gKey(p)] || null), '', Date.now()); // GLOC: region from the Google question (Nominatim), if known
   }
 
   // v0.8.1: always Android "Teilen" – the user picks the app (Claude, Gemini, …) in the share menu.
@@ -2786,8 +2781,6 @@
         }
       } else if (a === 'tell') {
         tell();
-      } else if (a === 'review') {
-        review();
       } else if (a === 'level') {
         settings.level = el.getAttribute('data-level'); saveSettings();
         Array.prototype.forEach.call(document.querySelectorAll('[data-a="level"]'), function (b) { b.classList.toggle('on', b === el); });

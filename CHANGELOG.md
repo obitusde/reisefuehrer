@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.19.0 – 05.11.2026 – „Praktisches und Bewertung“ öffnet direkt die Google-KI-Suche
+
+Wunsch Nutzer: Der Knopf soll direkt mit der Google-KI-Suche arbeiten.
+
+- Der Knopf „Praktisches und Bewertung“ ist jetzt ein Link: `https://www.google.com/search?hl=de&udm=50&q=<kurzer Prompt>` (wie „✨ Google fragen“, öffnet sich in einem Fenster, das du wieder schließt; die App liest die Antwort nicht). Kein Kopieren und kein Teilen-Menü mehr für diesen Knopf. Der Prompt ist der aus v0.17.0 (etwa 330 Zeichen, Link unter 700 Zeichen). Die Region (z. B. Waadt) wird im Link nachgetragen, sobald die Ortsabfrage da ist.
+- „🎧 Audioguide“ bleibt wie bisher (Teilen-Menü, dort die KI-App wählen).
+
+### Annahmen/Abweichungen
+
+- Der Google-KI-Modus (`udm=50`) ist nicht dokumentiert und kann sich ändern; ohne `ki_param` (config.json → google) wäre es eine normale Suche.
+- Google zeigt bei der Frage evtl. den Hinweis „Mit dieser Suche fortfahren?“ (gesehen am 5.11.): einmal bestätigen.
+- Offline gibt der Knopf nichts her (Link braucht Internet).
+
 ## v0.18.0 – 05.11.2026 – Karte zeigt, was Platz hat (statt fester Zoomstufen)
 
 Wunsch Nutzer: Bei Zoom 14 war die Karte leer, obwohl Platz da war. Sachen sollen nur weggelassen werden, wenn kein Platz ist oder es zu voll wird. In jeder Zoomstufe sinnvoll viele Punkte.
