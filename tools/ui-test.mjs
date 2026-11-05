@@ -169,7 +169,7 @@ try {
   if (process.env.DEBUG) { page.on('request', (r) => { if (/extracts|mymemory/.test(r.url())) console.log('REQ', decodeURIComponent(r.url()).slice(0, 160)); }); page.on('requestfailed', (r) => console.log('FAILED', r.url().slice(0, 120), r.failure() && r.failure().errorText)); page.on('console', (m) => console.log('CONSOLE', m.text())); }
   await page.goto(BASE + 'index.html');
   await page.waitForSelector('.empty');
-  ok((await page.textContent('#version')) === 'v0.13.0', 'footer version');
+  ok((await page.textContent('#version')) === 'v0.13.1', 'footer version');
   if (OUT) await page.screenshot({ path: OUT + '/01-start.png' });
 
   await menuClick(page, '#btnLocate');
@@ -480,10 +480,10 @@ try {
   ok(splitNow && +splitNow > 12, 'split persisted: ' + splitNow);
 
   // update banner (fake newer version, then ?testupdate=1)
-  fakeVersion = '0.13.1';
+  fakeVersion = '0.13.2';
   await page.reload();
   await page.waitForSelector('#banner:not([hidden])');
-  ok((await page.textContent('#bannerText')).includes('v0.13.1'), 'banner shows remote version');
+  ok((await page.textContent('#bannerText')).includes('v0.13.2'), 'banner shows remote version');
   if (OUT) await page.screenshot({ path: OUT + '/05-banner.png' });
   fakeVersion = null;
   await page.click('#bannerBtn');
@@ -616,9 +616,9 @@ try {
   const swOk = await p3.evaluate(() => navigator.serviceWorker.ready.then((r) => !!r.active)).catch(() => false);
   ok(swOk, 'service worker active');
   const cacheKeys = await p3.evaluate(async () => { await new Promise((r) => setTimeout(r, 800)); return caches.keys(); });
-  ok(cacheKeys.includes('rf-app-0.13.0'), 'app cache with version: ' + cacheKeys.join(','));
-  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.13.0')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
-  ok(cached.some((u) => u.includes('app.js?v=0.13.0')), 'shell precached');
+  ok(cacheKeys.includes('rf-app-0.13.1'), 'app cache with version: ' + cacheKeys.join(','));
+  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.13.1')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
+  ok(cached.some((u) => u.includes('app.js?v=0.13.1')), 'shell precached');
   ok(errs3.length === 0, 'sw: no JS errors ' + errs3.join(' | '));
   await ctx3.close();
 
@@ -707,7 +707,7 @@ try {
     ok(gl.length === 2 && gl.every((a) => a.t === '_blank' && /noopener/.test(a.r) && /^https:\/\/www\.google\.com\/search\?hl=de/.test(a.h)) && /udm=50/.test(gl[0].h) && /tbm=isch/.test(gl[1].h), 'v0.13.0 Google buttons (KI-Modus, Bilder) open in their own window: ' + JSON.stringify(gl));
     await p12.waitForFunction(() => /Manchester/.test(decodeURIComponent(document.querySelector('#plGoogle a[data-g="ai"]').href)), null, { timeout: 5000 }).catch(() => {});
     const q12 = decodeURIComponent((await p12.getAttribute('#plGoogle a[data-g="ai"]', 'href')).replace(/^.*[?&]q=/, '').replace(/\+/g, ' '));
-    ok(/^Was ist „Testbrunnen“ in Manchester\?.*höchstens 6 Sätzen.*keine Rückfrage/.test(q12), 'v0.13.0 question with the place from Nominatim and the instruction: ' + q12);
+    ok(/^Was ist „Testbrunnen“ in Manchester\?.*gegliederte Übersicht.*kein Fließtext.*keine Rückfrage/.test(q12), 'v0.13.0 question with the place from Nominatim and the instruction: ' + q12);
     if (OUT) { await p12.waitForTimeout(600); await p12.screenshot({ path: OUT + '/20-ortsfenster-google.png' }); }
     await p12.evaluate(() => history.back());
     await p12.waitForSelector('#sheet', { state: 'hidden' });

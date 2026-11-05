@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.13.1 – 05.11.2026 – Google-Frage: gegliederte Übersicht statt Fließtext
+
+Wunsch Nutzer: Die Frage bleibt „Was ist „Name“ in Ort (Kanton)?“, die Antwort soll eine gute Übersicht sein, kein Fließtext, ohne Rückfrage am Ende.
+
+- Der Auftrag hinter der Frage (`config.json` → `google.auftrag`) lautet jetzt: gut gegliederte Übersicht mit kurzen Zwischenüberschriften (z. B. Art, Lage, Besonderheiten, Besuch) und knappen Stichpunkten, kein Fließtext, nicht länger als ein Bildschirm, keine Rückfrage, keine Vorschläge. „Höchstens 6 Sätze“ entfällt.
+
+### Annahmen/Abweichungen
+
+- Google zeigte bei der Frage mit dem langen Auftrag die Meldung „Mit dieser Suche fortfahren?“ (Tipp auf „Ja, weiter“). Ob sie auch ohne Auftrag kommt, ist nicht geklärt; der Auftrag ist wieder dabei, weil du Struktur und keine Rückfrage willst. Kommt die Meldung nur wegen des Auftrags, lässt sich `auftrag` in der `config.json` leeren.
+- Wie Google den Auftrag umsetzt (Überschriften, Länge), sieht man erst beim Ausprobieren.
+
 ## v0.13.0 – 05.11.2026 – Beschreibung für jeden Punkt, Google-Knöpfe im Fenster
 
 Wunsch Nutzer: Wer einen Punkt wie „Crêt des Alouettes“ antippt, soll erfahren, was das ist. Steht nichts in den Daten, soll Google helfen (Fenster, das man wieder schließt). Die Informationen kommen schon in die Download-Datei.

@@ -400,7 +400,7 @@ eq(rg.name + '|' + rg.cc + '|' + rg.region, 'Manchester|gb|GB-ENG', 'reverse geo
 // v0.13.0: Google links, info line, height
 {
   const g = cfg.google;
-  ok(g && g.ki_param === 'udm=50' && /6 Sätzen/.test(g.auftrag) && /keine Rückfrage/.test(g.auftrag), 'config google: KI-Modus, 6 Sätze, keine Rückfrage');
+  ok(g && g.ki_param === 'udm=50' && /Stichpunkt/.test(g.auftrag) && /kein Fließtext/.test(g.auftrag) && /keine Rückfrage/.test(g.auftrag), 'config google: KI-Modus, Übersicht statt Fließtext, keine Rückfrage');
   const pl = { name: 'Crêt des Alouettes', lat: 46.69597, lon: 6.34803, ort: '' };
   const u = core.googleLinks(pl, { name: 'Vallorbe', state: 'Waadt' }, cfg);
   const dq = (x) => decodeURIComponent(x.replace(/^.*[?&]q=/, '').replace(/\+/g, ' '));
