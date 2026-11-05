@@ -1,0 +1,34 @@
+# Einmaliger Test (nur Messung): was liefert Wikivoyage für eine Stadt? Schreibt nichts ins Repository, nur das Protokoll.
+name: Wikivoyage-Test
+on:
+  workflow_dispatch:
+    inputs:
+      stadt:
+        description: 'Artikelname in Wikivoyage'
+        required: false
+        default: 'Lausanne'
+      sprachen:
+        description: 'Sprachen, getrennt mit Komma'
+        required: false
+        default: 'de,en,fr'
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      STADT: ${{ inputs.stadt }}
+      SPRACHEN: ${{ inputs.sprachen }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Eingaben prüfen
+        run: |
+          for v in "$STADT" "$SPRACHEN"; do
+            if ! [[ "$v" =~ ^[^[:cntrl:]]{0,100}$ ]]; then echo "Ungültig"; exit 1; fi
+          done
+      - name: Abfragen
+        run: node tools/wikivoyage-probe.mjs
