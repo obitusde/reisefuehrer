@@ -251,6 +251,57 @@ ok(rv.text.startsWith('Du bist mein Reiseführer. Sag mir, ob sich ein Besuch lo
 ok(rv.text.includes('Ich lese die Antwort auf dem Handy') && rv.text.includes('## Lohnt sich der Besuch?') && rv.text.includes('Erfinde nichts') && rv.text.includes('nicht gefunden') && !rv.text.includes('Tabelle mit zwei Spalten') && rv.text.includes('am Ende keine Rückfrage') && rv.text.includes('Beginne direkt mit der Überschrift') && rv.length < 1800, 'v0.13.5 visit prompt: only "worth it?" and practical tips, sourced, no follow-up question (' + rv.length + ')');
 ok(cfg.besucher.knopf === '👍 Lohnt sich der Besuch?', 'v0.13.3 button text');
 
+
+// ---- v0.14.0: country packages for Europe (list, workflow, border, parts)
+{
+  const { execFileSync } = await import('child_process');
+  const os = await import('os');
+  const L = cfg.paket.laender;
+  ok(L.length >= 35 && new Set(L.map((x) => x.land)).size === L.length && L.every((x) => /^[A-Z]{2}$/.test(x.land) && x.name && /^europe\/[a-z-]+$/.test(x.geofabrik)), 'v0.14.0 config.paket.laender: ' + L.length + ' countries, unique ISO codes, Geofabrik paths');
+  ok(['CH', 'DE', 'FR', 'IT', 'AT', 'LI', 'LU', 'ES', 'GB', 'NL'].every((c) => L.some((x) => x.land === c)), 'v0.14.0 the big neighbours of Switzerland and more are in the list');
+  // the choice list of the workflow = the list of config.json
+  const yml = fs.readFileSync(path.join(ROOT, '.github/workflows/paket.yml'), 'utf8');
+  const optsYml = [...yml.split('options:')[1].split('speichern:')[0].matchAll(/- '([^']+)'/g)].map((m) => m[1]);
+  eq(optsYml.join('|'), L.map((x) => x.name + ' (' + x.land + ')').join('|'), 'v0.14.0 workflow paket.yml: choice list = config.json');
+  ok(/default: 'Schweiz \(CH\)'/.test(yml) && /group: paket-\$\{\{ inputs\.land \}\}/.test(yml) && /paket-liste\.mjs/.test(yml), 'v0.14.0 workflow: default, one queue per country, writes the list of built countries');
+  // border: fast point-in-polygon with holes and enclaves
+  const { makeBorder } = await import('./grenze.mjs');
+  const sq = (x0, y0, x1, y1) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]];
+  const br = makeBorder([{ hole: false, pts: sq(0, 0, 10, 10) }, { hole: true, pts: sq(4, 4, 6, 6) }, { hole: false, pts: sq(20, 0, 30, 10) }]);
+  ok(br.inside(1, 1) && !br.inside(5, 5) && !br.inside(15, 5) && br.inside(25, 5) && !br.inside(-1, 5) && br.bbox.west === 0 && br.bbox.east === 30 && br.bbox.north === 10, 'v0.14.0 border: inside, hole, enclave, bbox');
+  // the country from the workflow's choice
+  const pl = execFileSync('node', ['tools/paket-land.mjs', 'Schweiz (CH)'], { cwd: ROOT, encoding: 'utf8' });
+  ok(pl.includes('CODE=ch') && pl.includes('ISO=CH') && pl.includes('NAME=Schweiz') && pl.includes('GEOFABRIK=europe/switzerland'), 'v0.14.0 paket-land resolves the choice');
+  let badLand = false; try { execFileSync('node', ['tools/paket-land.mjs', 'Atlantis (AA)'], { cwd: ROOT, stdio: 'pipe' }); } catch { badLand = true; }
+  ok(badLand, 'v0.14.0 paket-land rejects an unknown country');
+  // OSM extract with border tiles, then the package in parts – on synthetic data, no network
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-paket-'));
+  const poi = (id, name, lon, lat) => JSON.stringify({ type: 'Feature', id, properties: { name, tourism: 'museum' }, geometry: { type: 'Point', coordinates: [lon, lat] } });
+  fs.writeFileSync(path.join(tmp, 'grenze.geojson'), JSON.stringify({ type: 'FeatureCollection', features: [{ type: 'Feature', properties: { 'ISO3166-1': 'XX', name: 'Testland' }, geometry: { type: 'Polygon', coordinates: [sq(6.0, 49.0, 6.18, 49.2)] } }] }));
+  fs.writeFileSync(path.join(tmp, 'poi.geojsonseq'), [poi('n1', 'Innen', 6.07, 49.07), poi('n2', 'Am Rand', 6.17, 49.07), poi('n3', 'Fremd', 6.5, 49.5)].join('\n') + '\n');
+  execFileSync('node', ['tools/osm-extract.mjs', path.join(tmp, 'poi.geojsonseq'), path.join(tmp, 'osm'), '--grenze=' + path.join(tmp, 'grenze.geojson'), '--land=XX', '--stand=2026-11-01T00:00:00Z'], { cwd: ROOT, stdio: 'pipe' });
+  const oi = JSON.parse(fs.readFileSync(path.join(tmp, 'osm/index.json'), 'utf8'));
+  const keyOf = (la, lo) => (Math.floor(la / 0.05 + 1e-9) * 0.05).toFixed(3) + ',' + (Math.floor(lo / 0.05 + 1e-9) * 0.05).toFixed(3);
+  ok(oi.kacheln[keyOf(49.07, 6.07)] === 1 && !oi.rand.includes(keyOf(49.07, 6.07)), 'v0.14.0 OSM extract: a tile inside is covered, not a border tile');
+  ok(oi.kacheln[keyOf(49.07, 6.17)] === 1 && oi.rand.includes(keyOf(49.07, 6.17)), 'v0.14.0 OSM extract: the tile on the border is included and listed in `rand`');
+  ok(oi.kacheln[keyOf(49.5, 6.5)] === 1 && oi.rand.includes(keyOf(49.5, 6.5)) && oi.orte === 3, 'v0.14.0 OSM extract: elements outside the polygon are kept (not dropped)');
+  execFileSync('node', ['tools/paket.mjs', '--land=XX', '--name=Testland', '--grenze=' + path.join(tmp, 'grenze.geojson'), '--osm=' + path.join(tmp, 'osm'), '--out=' + path.join(tmp, 'paket'), '--max=0', '--teil_mb=0.0003'], { cwd: ROOT, stdio: 'pipe' });
+  const pi = JSON.parse(fs.readFileSync(path.join(tmp, 'paket/index.json'), 'utf8'));
+  const parts = pi.teile.map((t) => JSON.parse(fs.readFileSync(path.join(tmp, 'paket', t.datei), 'utf8')));
+  ok(pi.format === 2 && pi.teile.length > 1 && pi.teile.every((t, i) => t.datei === 'teil-' + String(i + 1).padStart(3, '0') + '.json' && t.bytes > 0 && t.gzip > 0) && pi.bytes === pi.teile.reduce((a, t) => a + t.bytes, 0), 'v0.14.0 package in parts: ' + pi.teile.length + ' parts');
+  const cover = parts.flatMap((p) => p.osm_cover || []), rand = parts.flatMap((p) => p.osm_rand || []), osmEls = parts.flatMap((p) => Object.values(p.osm || {}).flat());
+  ok(cover.length === Object.keys(oi.kacheln).length && rand.length === oi.rand.length && osmEls.length === 3 && pi.osm.rand === rand.length, 'v0.14.0 package: all OSM tiles incl. border tiles and their elements are in the parts');
+  ok(Math.abs(pi.bbox.west - 6.0) < 1e-6 && Math.abs(pi.bbox.north - 49.2) < 1e-6 && pi.land === 'XX' && pi.name === 'Testland', 'v0.14.0 package index: land, name, bbox');
+  // the list of built countries
+  fs.mkdirSync(path.join(tmp, 'pk/xx'), { recursive: true });
+  fs.copyFileSync(path.join(tmp, 'paket/index.json'), path.join(tmp, 'pk/xx/index.json'));
+  fs.mkdirSync(path.join(tmp, 'pk/leer'), { recursive: true });
+  execFileSync('node', ['tools/paket-liste.mjs', path.join(tmp, 'pk')], { cwd: ROOT, stdio: 'pipe' });
+  const ll = JSON.parse(fs.readFileSync(path.join(tmp, 'pk/laender.json'), 'utf8')).laender;
+  ok(Object.keys(ll).join() === 'XX' && ll.XX.teile === pi.teile.length && ll.XX.bbox && ll.XX.stand === pi.stand && ll.XX.gzip === pi.gzip, 'v0.14.0 laender.json lists the built countries (not empty folders)');
+  fs.rmSync(tmp, { recursive: true, force: true });
+}
+
 // ---- languages
 eq(core.languagesFor({ cc: 'ch', region: 'CH-VD' }, cfg).join(), 'de,en,fr', 'Vaud -> fr');
 eq(core.languagesFor({ cc: 'ch', region: 'CH-ZH' }, cfg).join(), 'de,en', 'Zürich -> de only');

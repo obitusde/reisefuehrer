@@ -1,8 +1,8 @@
-/* Reiseführer – app (v0.13.5). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.14.0). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.13.5';
+  var VERSION = '0.14.0';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
@@ -703,11 +703,14 @@
     var o = last && !ROUTE && last.src && last.src.osm;
     return !!(o && Date.now() - (last.time || 0) < 20 * 60000 && (o.state === 'timeout' || o.state === 'skip') && !o.lateMs && !(o.late && !o.late.ok));
   }
-  // ------------------------------------------------------ country package (v0.12.0)
-  // Everything the map shows for a country (directory tiles + OSM points) in one file docs/paket/<code>/paket.json,
+  // ------------------------------------------------------ country packages (v0.12.0; all of Europe v0.14.0)
+  // Everything the map shows for a country (directory tiles + OSM points) in parts docs/paket/<code>/teil-NNN.json (index.json lists them),
   // built by the GitHub Action paket.yml. Stored like loaded tiles (IndexedDB vz:<tile>, osm:<v>:<tile>), so the rest of the
   // app works as before – only nothing has to be loaded any more. Photos and Wikipedia texts: when a place is opened.
-  var PAKET = { meta: {}, cover: {}, osmMem: {}, osmReading: {}, job: null, info: {} };
+  // paket/laender.json lists the countries that are built; config.json (paket.laender) lists those that can be built.
+  // Border tiles belong to two countries: the directory tile is the same (Wikidata, both sides), the OSM tile gets the elements of
+  // every installed package (merged, each element knows its country `l`).
+  var PAKET = { meta: {}, cover: {}, osmMem: {}, osmReading: {}, job: null, info: {}, built: {}, builtErr: '' };
   // v0.13.0: [description, height] per Wikidata item, from the package (works without internet)
   function infoRec(q) {
     if (!q) return null;
@@ -716,24 +719,57 @@
     return null;
   }
   function PK() { return cfg.paket || {}; }
-  function paketList() { return PK().laender || []; }
+  // the countries of config.json with what is built and what is in the phone
+  function paketList() {
+    return (PK().laender || []).map(function (d) {
+      var b = PAKET.built[d.land] || null, m = PAKET.meta[d.land] || null;
+      return { land: d.land, name: d.name, pfad: d.pfad || 'paket/' + String(d.land).toLowerCase() + '/', bbox: (m && m.bbox) || (b && b.bbox) || d.bbox || null, built: b, geofabrik: d.geofabrik };
+    });
+  }
+  function paketRebuildCover() {
+    PAKET.cover = {};
+    Object.keys(PAKET.meta).forEach(function (land) { (PAKET.meta[land].cover || []).forEach(function (k) { PAKET.cover[k] = land; }); });
+  }
+  function paketBuiltLoad(force) {
+    var st = LS.get('rf.paketliste', null);
+    if (st && st.liste && !Object.keys(PAKET.built).length) PAKET.built = st.liste;
+    if (!force && st && st.t && Date.now() - st.t < 10 * 60000) return Promise.resolve(PAKET.built);
+    if (navigator.onLine === false) return Promise.resolve(PAKET.built);
+    return withTimeout(fetch((PK().liste || 'paket/laender.json') + '?t=' + Date.now(), { cache: 'no-store' }).then(function (r) {
+      if (!r.ok) throw new Error(r.status === 404 ? 'noch kein Land gebaut' : 'HTTP ' + r.status);
+      return r.json();
+    }), 10000, null).then(function (j) {
+      if (!j || !j.laender) throw new Error('keine Liste');
+      PAKET.built = j.laender; PAKET.builtErr = '';
+      LS.set('rf.paketliste', { t: Date.now(), liste: j.laender });
+      return PAKET.built;
+    }).catch(function (e) { PAKET.builtErr = (e && e.message) || 'Fehler'; return PAKET.built; });
+  }
   function paketInit() {
     return Promise.all(paketList().map(function (d) {
       return IDB.get('paket:' + d.land).then(function (m) {
         if (!m) return;
         PAKET.meta[d.land] = m;
-        (m.cover || []).forEach(function (k) { PAKET.cover[k] = d.land; });
         return IDB.get('info:' + d.land).then(function (inf) { if (inf) PAKET.info[d.land] = inf; });
       });
-    })).then(function () { scheduleMarkers(); renderHint(); refreshSettings(); renderList(); }).catch(function () {});
+    })).then(function () { paketRebuildCover(); return paketBuiltLoad(false); }).then(function () { scheduleMarkers(); renderHint(); refreshSettings(); renderList(); }).catch(function () {});
   }
   function viewCenter(b) { return { lat: (b.south + b.north) / 2, lon: (b.west + b.east) / 2 }; }
-  // the package whose area contains the middle of the section (installed or not)
-  function paketAt(b) { var c = viewCenter(b); return paketList().filter(function (d) { return d.bbox && C.inBbox(c, d.bbox); })[0] || null; }
+  // the built or installed package whose area contains the middle of the section (the smallest one: Luxembourg before Germany)
+  function paketAt(b) {
+    var c = viewCenter(b), best = null, area = Infinity;
+    paketList().forEach(function (d) {
+      if (!d.bbox || !(d.built || PAKET.meta[d.land]) || !C.inBbox(c, d.bbox)) return;
+      var a = (d.bbox.north - d.bbox.south) * (d.bbox.east - d.bbox.west);
+      if (a < area) { area = a; best = d; }
+    });
+    return best;
+  }
   // the middle of the section is covered by an installed package (its directory tiles)
   function paketCovers(b) { var c = viewCenter(b), e = DIR.index[dirKeyAt(c.lat, c.lon)]; return !!(e && e.p); }
   function paketAsk(b) {
     if (ROUTE || busy || PAKET.job) return null;
+    if (paketCovers(b)) return null; // an installed package covers the middle (border: the neighbour is not asked)
     var d = paketAt(b);
     if (!d || PAKET.meta[d.land]) return null;
     var no = LS.get('rf.paketNein', {}) || {};
@@ -754,62 +790,114 @@
     }
     return pump();
   }
-  // one tap: newest index; same state -> "aktuell", else download, store, show
+  // enough room in the phone? (one question, no hard stop)
+  function paketSpace(idx) {
+    if (!(navigator.storage && navigator.storage.estimate)) return Promise.resolve(true);
+    return navigator.storage.estimate().then(function (e) {
+      var free = (e.quota || 0) - (e.usage || 0), need = (idx.bytes || 0) * 1.3;
+      if (free > 0 && need > 0 && free < need) return confirm('Im Handy sind nur noch etwa ' + Math.round(free / 1048576) + ' MB frei, das Paket braucht etwa ' + Math.round(need / 1048576) + ' MB. Trotzdem laden?');
+      return true;
+    }).catch(function () { return true; });
+  }
+  // one tap: newest index; same state -> "aktuell", else download the parts one after the other, store each at once, show
   function paketInstall(d) {
     if (PAKET.job) return;
     var job = PAKET.job = { land: d.land, name: d.name, pct: 0, text: 'Prüfe …' };
     var tick = function () { renderHint(); if (!$('sheet').hidden && $('sheetBody').getAttribute('data-view') === 'data') dataSheet(); };
+    var idx = null, st = { info: {}, vz: [], cover: [], rand: [] };
     tick();
     fetch(d.pfad + 'index.json?t=' + Date.now(), { cache: 'no-store' }).then(function (r) {
-      if (!r.ok) throw new Error(r.status === 404 ? 'noch kein Paket auf dem Server' : 'HTTP ' + r.status);
+      if (!r.ok) throw new Error(r.status === 404 ? 'noch nicht gebaut' : 'HTTP ' + r.status);
       return r.json();
-    }).then(function (idx) {
+    }).then(function (i) {
+      idx = i;
       var cur = PAKET.meta[d.land];
-      if (cur && cur.stand === idx.stand) return { same: true, idx: idx };
-      job.text = 'Lade'; job.mb = ((idx.gzip || idx.bytes || 0) / 1048576).toFixed(1).replace('.', ',');
-      tick();
-      return fetch(d.pfad + (idx.datei || 'paket.json') + '?s=' + encodeURIComponent(idx.stand)).then(function (r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        // Pages sends it gzipped: the received bytes are about the gzip size
-        var total = +(r.headers.get('content-length') || 0) || idx.gzip || 0;
-        var lastT = 0;
-        return readBody(r, total, function (pct) { job.pct = pct; if (Date.now() - lastT > 300) { lastT = Date.now(); tick(); } });
-      }).then(function (txt) {
-        job.text = 'Speichere'; job.pct = 100; tick();
-        return { p: JSON.parse(txt), idx: idx };
-      });
+      if (cur && cur.stand === idx.stand) return { same: true };
+      // format 1 (v0.12/0.13): one file; format 2: parts
+      var teile = idx.teile && idx.teile.length ? idx.teile : [{ datei: idx.datei || 'paket.json', bytes: idx.bytes || 0 }];
+      var total = teile.reduce(function (a, t) { return a + (t.bytes || 0); }, 0), got = 0, lastT = 0;
+      job.mb = ((idx.gzip || idx.bytes || 0) / 1048576).toFixed(1).replace('.', ',');
+      return paketSpace(idx).then(function (ok) {
+        if (!ok) throw new Error('abgebrochen');
+        job.text = 'Lade'; tick();
+        var n = 0;
+        return (function next() {
+          if (n >= teile.length) return;
+          var t = teile[n++];
+          job.part = teile.length > 1 ? n + '/' + teile.length : '';
+          return fetch(d.pfad + t.datei + '?s=' + encodeURIComponent(idx.stand)).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return readBody(r, t.bytes || 0, function (pct) {
+              job.pct = Math.min(99, Math.round((got + (t.bytes || 0) * pct / 100) / (total || 1) * 100));
+              if (Date.now() - lastT > 300) { lastT = Date.now(); tick(); }
+            });
+          }).then(function (txt) {
+            got += t.bytes || 0; job.pct = Math.min(99, Math.round(got / (total || 1) * 100));
+            return paketStorePart(d, idx, JSON.parse(txt), st);
+          }).then(function () { tick(); return next(); });
+        })();
+      }).then(function () { job.text = 'Speichere'; job.pct = 100; tick(); return paketFinish(d, idx, st); }).then(function (m) { return { meta: m }; });
     }).then(function (r) {
-      if (r.same) { toast('Paket ' + d.name + ' ist aktuell (vom ' + dateText(r.idx.stand) + ')', 3500); return; }
-      return paketStore(d, r.p, r.idx).then(function (m) {
-        toast('Paket ' + d.name + ' geladen: ' + (m.ziele || 0).toLocaleString('de-DE') + ' Ziele', 3500);
-      });
+      if (r.same) { toast('Paket ' + d.name + ' ist aktuell (vom ' + dateText(idx.stand) + ')', 3500); return; }
+      toast('Paket ' + d.name + ' geladen: ' + (r.meta.ziele || 0).toLocaleString('de-DE') + ' Ziele', 3500);
     }).catch(function (e) {
       toast('Paket ' + d.name + ': ' + (e && e.message || 'Fehler') + (navigator.onLine === false ? ' – kein Internet' : ''), 5000);
     }).then(function () {
       PAKET.job = null; tick(); scheduleMarkers(); scheduleCities();
     });
   }
-  function paketStore(d, p, idx) {
-    var stand = Date.parse(p.stand) || Date.now(), entries = [], v = (cfg.osm && cfg.osm.version) || 1;
-    var old = PAKET.meta[d.land];
-    Object.keys(p.verzeichnis || {}).forEach(function (k) {
-      var r = { t: k, stand: stand, items: p.verzeichnis[k], paket: d.land };
-      entries.push(['vz:' + k, r]);
-      DIR.mem[k] = r;
-      DIR.index[k] = { stand: stand, n: r.items.length, kb: 0, p: d.land };
+  // merge of a border tile: elements of this country replace its older ones, those of others stay (the first copy of an element wins)
+  function paketMergeRand(land, old, els) {
+    var keep = [], have = {};
+    ((old && old.els) || []).forEach(function (e) { if (e.l !== land) { keep.push(e); have[e.id] = 1; } });
+    els.forEach(function (e) { if (!have[e.id]) { e.l = land; keep.push(e); } });
+    return keep;
+  }
+  function paketStorePart(d, idx, part, st) {
+    var stand = Date.parse(idx.stand) || Date.now(), v = (cfg.osm && cfg.osm.version) || 1, entries = [], rand = {};
+    (part.osm_rand || []).forEach(function (k) { rand[k] = 1; st.rand.push(k); });
+    Object.keys(part.verzeichnis || {}).forEach(function (k) {
+      var ex = DIR.index[k], ps = (ex && ex.ps) || (ex && ex.p ? [ex.p] : []);
+      if (ps.indexOf(d.land) < 0) ps = ps.concat(d.land); // a border tile can belong to two packages
+      entries.push(['vz:' + k, { t: k, stand: stand, items: part.verzeichnis[k], paket: d.land }]);
+      DIR.index[k] = { stand: stand, n: part.verzeichnis[k].length, kb: 0, p: ps[0], ps: ps };
+      delete DIR.mem[k]; // read from the phone's storage when the tile is in view
+      st.vz.push(k);
     });
-    (p.osm_cover || []).forEach(function (k) { entries.push(['osm:' + v + ':' + k, { t: Date.now(), s: p.osm_stand, els: (p.osm && p.osm[k]) || [] }]); });
-    var meta = { land: d.land, name: d.name, stand: p.stand, osm_stand: p.osm_stand, installiert: Date.now(), cover: p.osm_cover || [],
-      ziele: idx.verzeichnis && idx.verzeichnis.ziele, orte: idx.verzeichnis && idx.verzeichnis.orte, osm_orte: idx.osm && idx.osm.orte, bytes: idx.bytes, gzip: idx.gzip };
-    entries.push(['vz:index', DIR.index]);
-    entries.push(['info:' + d.land, p.info || {}]);
-    meta.info = Object.keys(p.info || {}).length;
-    entries.push(['paket:' + d.land, meta]);
-    return IDB.setMany(entries).then(function () {
-      PAKET.meta[d.land] = meta;
-      PAKET.info[d.land] = p.info || {};
-      if (old) Object.keys(PAKET.cover).forEach(function (k) { if (PAKET.cover[k] === d.land) delete PAKET.cover[k]; });
-      meta.cover.forEach(function (k) { PAKET.cover[k] = d.land; });
+    Object.keys(part.info || {}).forEach(function (q) { st.info[q] = part.info[q]; });
+    var cover = part.osm_cover || [], randKeys = cover.filter(function (k) { return rand[k]; });
+    cover.forEach(function (k) { st.cover.push(k); });
+    return Promise.all(randKeys.map(function (k) { return IDB.get('osm:' + v + ':' + k); })).then(function (olds) {
+      var oldBy = {};
+      randKeys.forEach(function (k, i) { oldBy[k] = olds[i]; });
+      cover.forEach(function (k) {
+        var els = (part.osm && part.osm[k]) || [];
+        entries.push(['osm:' + v + ':' + k, { t: Date.now(), s: idx.osm_stand, els: rand[k] ? paketMergeRand(d.land, oldBy[k], els) : els }]);
+      });
+      return IDB.setMany(entries);
+    });
+  }
+  function paketFinish(d, idx, st) {
+    var v = (cfg.osm && cfg.osm.version) || 1, old = PAKET.meta[d.land], drop = [], newCover = {}, newVz = {};
+    st.cover.forEach(function (k) { newCover[k] = 1; });
+    st.vz.forEach(function (k) { newVz[k] = 1; });
+    if (old) { // what the earlier build had and the new one has not
+      (old.cover || []).forEach(function (k) { if (!newCover[k] && (old.rand || []).indexOf(k) < 0) drop.push('osm:' + v + ':' + k); });
+      Object.keys(DIR.index).forEach(function (k) {
+        var e = DIR.index[k], ps = e.ps || (e.p ? [e.p] : []);
+        if (newVz[k] || ps.indexOf(d.land) < 0) return;
+        ps = ps.filter(function (x) { return x !== d.land; });
+        if (ps.length) { e.ps = ps; e.p = ps[0]; } else { drop.push('vz:' + k); delete DIR.index[k]; delete DIR.mem[k]; }
+      });
+    }
+    var meta = { land: d.land, name: d.name, stand: idx.stand, osm_stand: idx.osm_stand, installiert: Date.now(), cover: st.cover, rand: st.rand, bbox: idx.bbox || null,
+      format: idx.format || 1, ziele: idx.verzeichnis && idx.verzeichnis.ziele, orte: idx.verzeichnis && idx.verzeichnis.orte, osm_orte: idx.osm && idx.osm.orte,
+      info: Object.keys(st.info).length, bytes: idx.bytes, gzip: idx.gzip };
+    return (drop.length ? IDB.delMany(drop) : Promise.resolve()).then(function () {
+      return IDB.setMany([['vz:index', DIR.index], ['info:' + d.land, st.info], ['paket:' + d.land, meta]]);
+    }).then(function () {
+      PAKET.meta[d.land] = meta; PAKET.info[d.land] = st.info;
+      paketRebuildCover();
       PAKET.osmMem = {};
       DIR.res = null; DIR.resKey = ''; DIR.missing = [];
       try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* ignore */ }
@@ -820,12 +908,27 @@
   function paketDelete(d) {
     var m = PAKET.meta[d.land];
     if (!m || !confirm('Paket ' + d.name + ' aus dem Handy löschen? Die Karte lädt dann wieder online.')) return;
-    var v = (cfg.osm && cfg.osm.version) || 1, keys = ['paket:' + d.land, 'info:' + d.land];
-    Object.keys(DIR.index).forEach(function (k) { if (DIR.index[k].p === d.land) { keys.push('vz:' + k); delete DIR.index[k]; delete DIR.mem[k]; } });
-    (m.cover || []).forEach(function (k) { keys.push('osm:' + v + ':' + k); delete PAKET.cover[k]; });
+    var v = (cfg.osm && cfg.osm.version) || 1, keys = ['paket:' + d.land, 'info:' + d.land], rand = {};
+    (m.rand || []).forEach(function (k) { rand[k] = 1; });
+    Object.keys(DIR.index).forEach(function (k) { // a border tile stays while another package still has it
+      var e = DIR.index[k], ps = e.ps || (e.p ? [e.p] : []);
+      if (ps.indexOf(d.land) < 0) return;
+      ps = ps.filter(function (x) { return x !== d.land; });
+      if (ps.length) { e.ps = ps; e.p = ps[0]; } else { keys.push('vz:' + k); delete DIR.index[k]; delete DIR.mem[k]; }
+    });
+    (m.cover || []).forEach(function (k) { if (!rand[k]) keys.push('osm:' + v + ':' + k); });
     delete PAKET.meta[d.land]; delete PAKET.info[d.land];
+    paketRebuildCover();
     PAKET.osmMem = {};
-    IDB.delMany(keys).then(function () { return IDB.set('vz:index', DIR.index); }).then(function () {
+    var randKeys = Object.keys(rand);
+    Promise.all(randKeys.map(function (k) { return IDB.get('osm:' + v + ':' + k); })).then(function (olds) {
+      var sets = [];
+      randKeys.forEach(function (k, i) { // only this country's elements go
+        var els = ((olds[i] && olds[i].els) || []).filter(function (e) { return e.l !== d.land; });
+        if (els.length || PAKET.cover[k]) sets.push(['osm:' + v + ':' + k, { t: (olds[i] && olds[i].t) || Date.now(), s: olds[i] && olds[i].s, els: els }]); else keys.push('osm:' + v + ':' + k);
+      });
+      return IDB.delMany(keys).then(function () { return sets.length ? IDB.setMany(sets) : null; });
+    }).then(function () { return IDB.set('vz:index', DIR.index); }).then(function () {
       DIR.res = null; DIR.resKey = ''; dataSheet(); scheduleMarkers(); scheduleCities(); scheduleDir();
       toast('Paket ' + d.name + ' gelöscht');
     });
@@ -867,22 +970,43 @@
     selectedId = p.id; renderMarkers();
     openPlace(p);
   }
+  // v0.14.0: the countries – in the phone, built (download), and the rest (have it built)
+  function mbText(b) { var x = b / 1048576; return (x < 10 ? Math.round(x * 10) / 10 : Math.round(x)).toString().replace('.', ',') + ' MB'; }
+  function paketRow(d) {
+    var m = PAKET.meta[d.land], b = d.built, job = PAKET.job && PAKET.job.land === d.land ? PAKET.job : null, newer = m && b && Date.parse(b.stand) > Date.parse(m.stand);
+    var head = m
+      ? '<p><b>' + esc(d.name) + '</b>: im Handy, Stand vom <b>' + esc(dateText(m.stand)) + '</b> (OSM vom ' + esc(dateText(m.osm_stand)) + ') · ' +
+        (m.ziele || 0).toLocaleString('de-DE') + ' Ziele, ' + (m.osm_orte || 0).toLocaleString('de-DE') + ' OSM-Punkte' + (m.bytes ? ', ' + mbText(m.bytes) : '') + '.' +
+        (newer ? ' <b>Neuer Stand vom ' + esc(dateText(b.stand)) + '</b> ist gebaut.' : '') + '</p>'
+      : '<p><b>' + esc(d.name) + '</b>: gebaut am ' + esc(dateText(b.stand)) + ' · ' + (b.ziele || 0).toLocaleString('de-DE') + ' Ziele · Download ca. ' + mbText(b.gzip || b.bytes || 0) + '.</p>';
+    var bar = job ? '<p class="small">' + esc(job.text) + (job.text === 'Lade' ? ' (ca. ' + esc(job.mb || '?') + ' MB' + (job.part ? ', Teil ' + esc(job.part) : '') + ') ' + job.pct + ' %' : ' …') + '</p><div class="pk-bar"><span style="width:' + (job.pct || 3) + '%"></span></div>' : '';
+    var dis = PAKET.job ? ' disabled' : '';
+    return '<div class="pk-row">' + head + bar + '<div class="actions">' +
+      '<button class="btn primary" type="button" data-a="pkload" data-land="' + esc(d.land) + '"' + dis + '>' + (m ? 'Aktualisieren' : 'Herunterladen') + '</button>' +
+      (m ? '<button class="btn" type="button" data-a="pkdel" data-land="' + esc(d.land) + '"' + dis + '>Löschen</button>' : '') + '</div></div>';
+  }
   function paketSection() {
     var list = paketList();
     if (!list.length) return '';
-    return '<h3>📦 Länderpaket</h3>' + list.map(function (d) {
-      var m = PAKET.meta[d.land], job = PAKET.job && PAKET.job.land === d.land ? PAKET.job : null;
-      var head = m
-        ? '<p><b>' + esc(d.name) + '</b>: im Handy, Stand vom <b>' + esc(dateText(m.stand)) + '</b> (OSM vom ' + esc(dateText(m.osm_stand)) + ') · ' +
-          (m.ziele || 0).toLocaleString('de-DE') + ' Ziele, ' + (m.osm_orte || 0).toLocaleString('de-DE') + ' OSM-Punkte.</p>'
-        : '<p><b>' + esc(d.name) + '</b>: noch nicht im Handy. Mit dem Paket sind alle Sehenswürdigkeiten sofort auf der Karte, auch ohne Internet (die Karte selbst und Fotos/Texte brauchen Internet).</p>';
-      var bar = job ? '<p class="small">' + esc(job.text) + (job.text === 'Lade' ? ' (ca. ' + esc(job.mb || '?') + ' MB) ' + job.pct + ' %' : ' …') + '</p><div class="pk-bar"><span style="width:' + (job.pct || 3) + '%"></span></div>' : '';
-      return head + bar + '<div class="actions">' +
-        '<button class="btn primary" type="button" data-a="pkload" data-land="' + esc(d.land) + '"' + (PAKET.job ? ' disabled' : '') + '>' + (m ? 'Aktualisieren' : 'Herunterladen') + '</button>' +
-        (m ? '<button class="btn" type="button" data-a="pkdel" data-land="' + esc(d.land) + '"' + (PAKET.job ? ' disabled' : '') + '>Löschen</button>' : '') + '</div>';
-    }).join('') +
-      '<p class="small">„Aktualisieren“ holt das neueste Paket von der Webseite (ist es schon da, steht „aktuell“). Neu gebaut wird das Paket nur, wenn du es anstößt: ' +
-      (PK().aufbereiten_url ? '<a href="' + esc(PK().aufbereiten_url) + '" target="_blank" rel="noopener">Paket neu aufbereiten ↗</a> (GitHub, „Run workflow“, etwa 20 Minuten), danach hier „Aktualisieren“.' : '') + '</p>';
+    var inst = list.filter(function (d) { return PAKET.meta[d.land]; }), built = list.filter(function (d) { return !PAKET.meta[d.land] && d.built; }),
+      rest = list.filter(function (d) { return !PAKET.meta[d.land] && !d.built; }), url = PK().aufbereiten_url;
+    var html = '<h3>📦 Länderpakete</h3>' +
+      '<p class="small">Mit dem Paket eines Landes sind alle Sehenswürdigkeiten sofort auf der Karte, auch ohne Internet (die Karte selbst, Fotos und Texte brauchen Internet). ' +
+      'An der Grenze (Genf, Basel) ergänzen sich die Pakete der Nachbarländer, wenn du beide lädst.</p>';
+    html += inst.length ? '<h4>Im Handy</h4>' + inst.map(paketRow).join('') : '';
+    html += built.length ? '<h4>Fertig gebaut – zum Herunterladen</h4>' + built.map(paketRow).join('') : '';
+    if (!inst.length && !built.length) html += '<p>Noch kein Land gebaut. Wähle unten ein Land und lass es bauen.</p>';
+    html += '<details class="why"' + (!inst.length && !built.length ? ' open' : '') + '><summary>Weiteres Land bauen lassen (' + rest.length + ' zur Wahl)</summary>' +
+      '<p class="small">So geht es: Tippe auf „Bauen ↗“. GitHub öffnet sich. Dort „Run workflow“ tippen, bei „Land“ das Land wählen, noch einmal „Run workflow“. ' +
+      'Nach 5 Minuten (kleines Land) bis etwa 90 Minuten (Deutschland, Frankreich) steht es hier unter „Fertig gebaut“. Dann „Liste prüfen“ tippen.</p>' +
+      '<ul class="pk-list">' + rest.map(function (d) {
+        return '<li><span>' + esc(d.name) + '</span>' + (url ? '<a class="btn small" href="' + esc(url) + '" target="_blank" rel="noopener">Bauen ↗</a>' : '') + '</li>';
+      }).join('') + '</ul></details>' +
+      '<div class="actions"><button class="btn" type="button" data-a="pkliste">Liste prüfen</button>' +
+      (url ? '<a class="btn" href="' + esc(url) + '" target="_blank" rel="noopener">Neu bauen ↗</a>' : '') + '</div>' +
+      '<p class="small">„Aktualisieren“ holt den neuesten fertig gebauten Stand von der Webseite (ist er schon im Handy, steht „aktuell“). ' +
+      'Neu gebaut wird ein Land nur, wenn du es auf GitHub anstößt (dort dasselbe Land wählen). ' + (PAKET.builtErr && !Object.keys(PAKET.built).length ? 'Liste der gebauten Länder: ' + esc(PAKET.builtErr) + '.' : '') + '</p>';
+    return html;
   }
 
   // ------------------------------------------------------ OSM files (v0.12.0)
@@ -938,6 +1062,11 @@
   }
   function osmFilesReady() { return OSMF.ready ? Promise.race([OSMF.ready, new Promise(function (r) { setTimeout(r, 4000); })]) : Promise.resolve(); }
   function dataSheet() {
+    // the list of built countries is looked up once per opening (cached 10 minutes); the sheet is drawn again if it changed
+    var before = JSON.stringify(PAKET.built);
+    paketBuiltLoad(false).then(function () {
+      if (JSON.stringify(PAKET.built) !== before && !$('sheet').hidden && $('sheetBody').getAttribute('data-view') === 'data') dataSheet();
+    });
     var sets = (OSMF.sets || []).filter(function (s) { return !PAKET.meta[s.d.land]; }); // with the package its OSM is in it
     var html = paketSection() + (!sets.length ? '' : '<h3>🧭 OpenStreetMap</h3>' + sets.map(function (s) {
       if (!s.idx) return '<p><b>' + esc(s.d.name) + '</b>: noch keine Daten' + (s.fehler ? ' (' + esc(s.fehler) + ')' : '') + '. Dort fragt die App direkt bei OpenStreetMap (Overpass).</p>';
@@ -978,8 +1107,8 @@
     if (!confirm('Gespeichertes Verzeichnis löschen?')) return;
     dirCancel();
     DIR.mem = {}; DIR.index = {}; DIR.res = null; DIR.resKey = '';
-    paketList().forEach(function (d) { delete PAKET.meta[d.land]; IDB.del('paket:' + d.land); });
-    PAKET.cover = {}; PAKET.osmMem = {};
+    paketList().forEach(function (d) { delete PAKET.meta[d.land]; IDB.del('paket:' + d.land); IDB.del('info:' + d.land); });
+    PAKET.cover = {}; PAKET.osmMem = {}; PAKET.info = {};
     IDB.delPrefix('vz:').then(function () { refreshSettings(); scheduleCities(); scheduleMarkers(); scheduleDir(); });
     toast('Verzeichnis gelöscht');
   }
@@ -2612,6 +2741,12 @@
         dirClear();
       } else if (a === 'osmcheck') {
         osmCheck();
+      } else if (a === 'pkliste') {
+        toast('Prüfe die Liste der gebauten Länder …', 1500);
+        paketBuiltLoad(true).then(function () {
+          toast(PAKET.builtErr && !Object.keys(PAKET.built).length ? 'Liste: ' + PAKET.builtErr : Object.keys(PAKET.built).length + ' Länder gebaut', 3000);
+          if (!$('sheet').hidden && $('sheetBody').getAttribute('data-view') === 'data') dataSheet();
+        });
       } else if (a === 'pkload' || a === 'pkdel') {
         var pd2 = paketList().filter(function (d) { return d.land === el.getAttribute('data-land'); })[0];
         if (pd2) { if (a === 'pkload') paketInstall(pd2); else paketDelete(pd2); }

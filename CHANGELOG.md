@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.14.0 – 05.11.2026 – Länderpakete für ganz Europa: bauen lassen, herunterladen, aktualisieren, Grenzstädte
+
+Wunsch Nutzer: Andere Länder Europas herunterladen können, so einfach wie möglich: bauen lassen, dann runterladen und aktualisieren. Städte wie Genf oder Basel sollen an der Grenze funktionieren.
+
+- **Länderliste** in `config.json` (`paket.laender`): 41 Länder Europas (Albanien bis Zypern, ohne Russland, Türkei, Ukraine, Belarus: deren Auszüge sind sehr groß). Jedes Land mit ISO-Kürzel, deutschem Namen und dem Pfad des Auszugs bei Geofabrik. Alle 41 Pfade und `.poly`-Dateien existieren (geprüft mit dem Workflow „Geofabrik-Adressen prüfen“).
+- **Bauen lassen** (Workflow „Länderpaket aufbereiten“, nur von Hand): auf GitHub „Run workflow“, **Land aus der Liste wählen**, „Run workflow“. Pro Land eine eigene Warteschlange, mehrere Länder gleichzeitig sind möglich. Am Ende speichert die Action das Paket auf main und schreibt die Liste der gebauten Länder (`docs/paket/laender.json`). Dauer: kleine Länder wenige Minuten, die Schweiz etwa 15 Minuten.
+- **App → Menü → Daten → Länderpakete**:
+  - „Im Handy“: Stand, Größe, „Aktualisieren“ (meldet „aktuell“ oder lädt den neuen Stand), „Löschen“. Ist ein neuerer Stand gebaut, steht „Neuer Stand vom …“ dabei.
+  - „Fertig gebaut – zum Herunterladen“: Datum, Anzahl Ziele, Download-Größe, „Herunterladen“ mit Fortschritt.
+  - „Weiteres Land bauen lassen“: alle übrigen Länder mit „Bauen ↗“ (öffnet den Workflow auf GitHub) und eine kurze Anleitung; „Liste prüfen“ holt die Liste der gebauten Länder neu.
+  - Die Zeile über der Karte fragt in einem gebauten, aber nicht geladenen Land „Paket … ins Handy laden?“ (das kleinste passende Land zuerst: Luxemburg vor Deutschland).
+- **Paket in Teilen** (Format 2): `index.json` listet die Teile (`teil-001.json` …, je etwa 6 MB). So gibt es keine Datei über 100 MB (GitHub-Grenze) und das Handy muss nie ein ganzes großes Land auf einmal verarbeiten: jeder Teil wird gleich gespeichert. Format 1 (Schweiz vom 5.11.) bleibt lesbar.
+- **Grenzstädte (Genf, Basel)**:
+  - Das **Verzeichnis** (Wikidata) war schon bisher an der Grenze vollständig, auch der ausländische Teil.
+  - Die **OSM-Kacheln** am Rand sind jetzt dabei (bisher fehlten sie, dort fragte die App Overpass): alle Kacheln, die das Land berühren, und jede Kachel mit Orten. Sie enthalten die Orte der eigenen Seite. Lädst du auch das Nachbarland, **ergänzen sich beide Pakete** in der Randkachel (die App führt die Orte zusammen, jeder Ort kennt sein Land). Löschen entfernt nur die Orte des gelöschten Landes.
+  - Die Landesgrenze kommt aus OSM (`admin_level=2`), bei Ländern ohne passende Relation (z. B. Kosovo) aus der `.poly`-Datei.
+  - Schneller Grenztest (Breitenstreifen), damit auch Deutschland rechenbar bleibt.
+- **Nur die Schweiz** behält ihre OSM-Dateien im Repository (`docs/osm/ch`, die App nutzt sie auch ohne Paket); bei allen anderen Ländern steckt das OSM nur im Paket.
+- **Speicher**: vor dem Laden fragt die App einmal, wenn nach ihrer Schätzung nicht genug Platz ist. Das Verzeichnis eines Landes wird nicht mehr komplett in den Arbeitsspeicher geladen, sondern erst, wenn es im Kartenausschnitt gebraucht wird.
+- Neue Hilfsskripte: `tools/grenze.mjs`, `tools/paket-land.mjs`, `tools/paket-liste.mjs`; Workflow `geofabrik-test.yml`.
+
+### Annahmen/Abweichungen
+
+- Die App löst den Bau nicht selbst aus: dafür wäre ein GitHub-Schlüssel im Browser nötig (nach der Regel „keine Schlüssel im Browsercode“ ausgeschlossen). „Bauen ↗“ öffnet deshalb GitHub; dort sind zwei Tipps nötig (Land wählen, „Run workflow“). Das lässt sich nicht weiter vereinfachen.
+- GitHub Pages ist auf etwa 1 GB begrenzt. Ein Land belegt mit Teilen grob 10 MB (Schweiz) bis geschätzt 100 MB (Deutschland, Frankreich). Alle 41 Länder zusammen würden das Limit sprengen; bau nur, was du brauchst.
+- Große Länder (Deutschland, Frankreich, Italien, Spanien, Polen, Vereinigtes Königreich) habe ich noch nicht gebaut. Das Paket-Skript und der Workflow sind dafür ausgelegt (Teile, Zeitgrenze 350 Minuten, Platz auf dem Rechner wird freigegeben), gemessen ist es nur bei der Schweiz, Liechtenstein und Luxemburg.
+- Randkacheln: Fehlt das Nachbarland im Handy, fehlen in der Randkachel die grauen OSM-Ringe jenseits der Grenze (die Wikidata-Ziele dort sind da).
+- Gehört ein Ort in beiden Auszügen vor, gilt der Treffer des zuerst geladenen Landes; wird dieses Land gelöscht, fehlt dieser eine Ort bis zur nächsten Aktualisierung des anderen.
+- Auf dem Handy noch nicht geprüft: Herunterladen und Speichern der Teile, Dauer, Genf und Basel mit echten Daten (am PC im Browser geprüft, siehe unten).
+
 ## v0.13.5 – 05.11.2026 – Neue Prompts nach bewährten Regeln: „Erzähl mir davon“ und „Lohnt sich der Besuch?“
 
 Wunsch Nutzer: Die Prompts sollen allgemein gelten, möglichst kurz sein und gut funktionieren. Anlass: Test mit der Maison de l'Estérel (Lausanne). Der Prompt aus v0.13.4 erzeugte schon einen guten Hörtext; die Prüfung der Antworten (Wikipedia, Wikidata, Fotos, Suchtreffer) zeigte Verbesserungen bei Reihenfolge, Quellenvermerk und Ausschmückung.

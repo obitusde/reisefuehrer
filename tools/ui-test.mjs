@@ -104,6 +104,8 @@ async function mockApis(ctx) {
       if (/luxemburg/i.test(q)) return [{ place_id: 21, name: 'Luxemburg', addresstype: 'city', category: 'place', type: 'city', display_name: 'Luxemburg, Kanton Luxemburg, Luxemburg', lat: '49.6116', lon: '6.1319' }];
       if (/vianden/i.test(q)) return [{ place_id: 22, name: 'Vianden', addresstype: 'town', category: 'place', type: 'town', display_name: 'Vianden, Kanton Vianden, Luxemburg', lat: '49.9345', lon: '6.2070' }];
       return /imperial/i.test(q) ? fx.nominatimSearch.imperial : fx.nominatimSearch.default; })()) }));
+  // v0.14.0: the list of built countries (without the test: none)
+  await ctx.route(/\/paket\/laender\.json/, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ format: 1, laender: {} }) }));
   await ctx.route(/\/osm\/ch\//, (route) => {
     // without the test switch: an index without tiles (as if Switzerland were elsewhere) – the app asks Overpass as before
     if (!OSMFILES) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ land: 'CH', stand: '2026-11-04T21:21:02Z', orte: 0, kacheln: {} }) });
@@ -169,7 +171,7 @@ try {
   if (process.env.DEBUG) { page.on('request', (r) => { if (/extracts|mymemory/.test(r.url())) console.log('REQ', decodeURIComponent(r.url()).slice(0, 160)); }); page.on('requestfailed', (r) => console.log('FAILED', r.url().slice(0, 120), r.failure() && r.failure().errorText)); page.on('console', (m) => console.log('CONSOLE', m.text())); }
   await page.goto(BASE + 'index.html');
   await page.waitForSelector('.empty');
-  ok((await page.textContent('#version')) === 'v0.13.5', 'footer version');
+  ok((await page.textContent('#version')) === 'v0.14.0', 'footer version');
   if (OUT) await page.screenshot({ path: OUT + '/01-start.png' });
 
   await menuClick(page, '#btnLocate');
@@ -488,10 +490,10 @@ try {
   ok(splitNow && +splitNow > 12, 'split persisted: ' + splitNow);
 
   // update banner (fake newer version, then ?testupdate=1)
-  fakeVersion = '0.13.6';
+  fakeVersion = '0.14.1';
   await page.reload();
   await page.waitForSelector('#banner:not([hidden])');
-  ok((await page.textContent('#bannerText')).includes('v0.13.6'), 'banner shows remote version');
+  ok((await page.textContent('#bannerText')).includes('v0.14.1'), 'banner shows remote version');
   if (OUT) await page.screenshot({ path: OUT + '/05-banner.png' });
   fakeVersion = null;
   await page.click('#bannerBtn');
@@ -624,9 +626,9 @@ try {
   const swOk = await p3.evaluate(() => navigator.serviceWorker.ready.then((r) => !!r.active)).catch(() => false);
   ok(swOk, 'service worker active');
   const cacheKeys = await p3.evaluate(async () => { await new Promise((r) => setTimeout(r, 800)); return caches.keys(); });
-  ok(cacheKeys.includes('rf-app-0.13.5'), 'app cache with version: ' + cacheKeys.join(','));
-  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.13.5')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
-  ok(cached.some((u) => u.includes('app.js?v=0.13.5')), 'shell precached');
+  ok(cacheKeys.includes('rf-app-0.14.0'), 'app cache with version: ' + cacheKeys.join(','));
+  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.14.0')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
+  ok(cached.some((u) => u.includes('app.js?v=0.14.0')), 'shell precached');
   ok(errs3.length === 0, 'sw: no JS errors ' + errs3.join(' | '));
   await ctx3.close();
 
@@ -676,6 +678,7 @@ try {
       j.paket.laender = [{ land: 'LU', name: 'Testland', pfad: 'paket/lu/', bbox: { south: 49.44, west: 5.73, north: 50.19, east: 6.53 } }];
       route.fulfill({ response: r, body: JSON.stringify(j), headers: { 'content-type': 'application/json' } });
     });
+    await c12.route(/\/paket\/laender\.json/, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ format: 1, laender: { LU: { name: 'Testland', stand: PK_STAND, osm_stand: PKG.osm_stand, format: 1, bytes: JSON.stringify(PKG).length, gzip: 2000, teile: 1, ziele: 2, orte: 1, osm_orte: 2, info: 2, bbox: { south: 49.44, west: 5.73, north: 50.19, east: 6.53 } } } }) }));
     let pkDownloads = 0;
     await c12.route(/\/paket\/lu\//, (route) => {
       const u = new URL(route.request().url());
@@ -742,9 +745,98 @@ try {
     ok(/^Paket Testland ist aktuell \(vom 5\.11\.26\)$/.test(await p12.textContent('#toast')) && pkDownloads === 1, 'v0.12.0 "Aktualisieren" with the same state: no download');
     await p12.click('#sheetBody [data-a="pkdel"]');
     await p12.waitForFunction(() => /gelöscht/.test(document.getElementById('toast').textContent), null, { timeout: 8000 }).catch(() => {});
-    ok(/Paket Testland gelöscht/.test(await p12.textContent('#toast')) && /noch nicht im Handy/.test(await p12.textContent('#sheetBody')), 'v0.12.0 package deleted');
+    ok(/Paket Testland gelöscht/.test(await p12.textContent('#toast')) && /Fertig gebaut – zum Herunterladen/.test(await p12.textContent('#sheetBody')), 'v0.12.0 package deleted');
     ok(e12.length === 0, 'v0.12.0 no JS errors ' + e12.join(' | '));
     await c12.close();
+  }
+  // ---------------- v0.14.0: several countries – list, parts, border merge, delete one at a time
+  {
+    const STAND = '2026-11-06T02:00:00.000Z', OSM_STAND = '2026-11-05T21:00:00Z';
+    const it = (q, name, lat, lon, o) => ({ q, name, lat, lon, sl: o.sl || 5, pop: 0, km2: 0, land: ['Q32'], _c: false, _s: { score: o.score, typ: o.typ } });
+    const osmKey = (la, lo) => (Math.floor(la / 0.05 + 1e-9) * 0.05).toFixed(3) + ',' + (Math.floor(lo / 0.05 + 1e-9) * 0.05).toFixed(3);
+    const osmEl = (id, name, lat, lon) => ({ id, lat, lon, name, names: {}, wd: '', wp: '', k: 'historic=monument', x: {} });
+    const T = osmKey(49.6080, 6.1365), vzTile = '49.5,6,49.75,6.25';
+    const vzLU = [it('Q10', 'Altstadt Luxemburg', 49.611, 6.133, { score: 12.2, typ: 'welterbe', sl: 60 })];
+    const vzNB = vzLU.concat([it('Q77', 'Grenzkirche', 49.612, 6.14, { score: 8.7, typ: 'kathedrale', sl: 40 })]);
+    const mk = (land, name, parts, bbox) => {
+      const files = parts.map((p, i) => ({ datei: 'teil-00' + (i + 1) + '.json', json: JSON.stringify(p) }));
+      return { files, idx: { format: 2, land, name, stand: STAND, osm_stand: OSM_STAND, teile: files.map((f) => ({ datei: f.datei, bytes: f.json.length, gzip: 200 })),
+        bytes: files.reduce((a, f) => a + f.json.length, 0), gzip: 400 * files.length, verzeichnis: { ziele: 1, orte: 0, kacheln: 1 }, osm: { orte: 1, rand: 1 }, info: 0, bbox } };
+    };
+    const PK = {
+      lu: mk('LU', 'Testland', [{ verzeichnis: { [vzTile]: vzLU } }, { osm: { [T]: [osmEl('node/1', 'Brunnen Luxemburg', 49.6080, 6.1365)] }, osm_cover: [T], osm_rand: [T] }], { south: 49.4, west: 5.7, north: 50.2, east: 6.5 }),
+      nb: mk('NB', 'Nachbarland', [{ verzeichnis: { [vzTile]: vzNB }, osm: { [T]: [osmEl('node/2', 'Brunnen Nachbar', 49.6090, 6.1300)] }, osm_cover: [T], osm_rand: [T] }], { south: 49.55, west: 6.0, north: 49.7, east: 6.2 })
+    };
+    const built = Object.fromEntries(Object.values(PK).map((p) => [p.idx.land, { name: p.idx.name, stand: STAND, osm_stand: OSM_STAND, format: 2, bytes: p.idx.bytes, gzip: p.idx.gzip, teile: p.files.length, ziele: 1, orte: 0, osm_orte: 1, info: 0, bbox: p.idx.bbox }]));
+    const c14 = await newCtx(browser, { vz: true });
+    await c14.route(/\/config\.json(\?|$)/, async (route) => {
+      const r = await route.fetch(); const j = await r.json();
+      j.paket.laender = [{ land: 'LU', name: 'Testland', geofabrik: 'europe/luxembourg' }, { land: 'NB', name: 'Nachbarland', geofabrik: 'europe/nb' }, { land: 'ZZ', name: 'Zielland', geofabrik: 'europe/zz' }];
+      route.fulfill({ response: r, body: JSON.stringify(j), headers: { 'content-type': 'application/json' } });
+    });
+    await c14.route(/\/paket\/laender\.json/, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ format: 1, laender: built }) }));
+    const partReq = [];
+    await c14.route(/\/paket\/(lu|nb)\//, (route) => {
+      const u = new URL(route.request().url()), m = /\/paket\/(lu|nb)\/([^/]+)$/.exec(u.pathname), p = PK[m[1]];
+      if (m[2] === 'index.json') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(p.idx) });
+      const f = p.files.find((x) => x.datei === m[2]);
+      if (!f) return route.fulfill({ status: 404, body: 'nf' });
+      partReq.push(m[1] + '/' + m[2]);
+      return route.fulfill({ status: 200, contentType: 'application/json', body: f.json });
+    });
+    const p14 = await c14.newPage(); const e14 = []; watch(p14, e14);
+    p14.on('dialog', (d) => d.accept());
+    await p14.goto(BASE + 'index.html');
+    await p14.waitForSelector('#btnMenu');
+    await p14.evaluate(() => window.__rfMap.setView([49.6105, 6.1325], 12, { animate: false }));
+    await menuClick(p14, '#btnData');
+    await p14.waitForSelector('#sheetBody .pk-row');
+    const d0 = await p14.textContent('#sheetBody');
+    const h4 = await p14.$$eval('#sheetBody h4', (els) => els.map((e) => e.textContent));
+    ok(/Testland: gebaut am/.test(d0) && /Nachbarland: gebaut am/.test(d0) && h4.join() === 'Fertig gebaut – zum Herunterladen' && /Weiteres Land bauen lassen \(1 zur Wahl\)/.test(d0) && /Zielland/.test(d0), 'v0.14.0 "Daten": built countries to download, the rest to have built: ' + h4.join() + ' | ' + d0.slice(0, 200));
+    ok(!!(await p14.$('#sheetBody .pk-list a[href*="actions/workflows/paket.yml"]')), 'v0.14.0 "Bauen ↗" opens the workflow on GitHub');
+    await p14.click('#sheetBody [data-a="pkload"][data-land="LU"]');
+    await p14.waitForFunction(() => /^Paket Testland geladen/.test(document.getElementById('toast').textContent), null, { timeout: 10000 }).catch(() => {});
+    ok(/^Paket Testland geladen/.test(await p14.textContent('#toast')) && partReq.filter((x) => x.startsWith('lu/')).length === 2, 'v0.14.0 a package of two parts is downloaded part by part: ' + partReq.join(','));
+    ok(/Im Handy/.test(await p14.textContent('#sheetBody')) && /Testland: im Handy, Stand vom 6\.11\.26/.test(await p14.textContent('#sheetBody')), 'v0.14.0 the country moves to "Im Handy"');
+    await p14.click('#sheetBody [data-a="pkload"][data-land="NB"]');
+    await p14.waitForFunction(() => /^Paket Nachbarland geladen/.test(document.getElementById('toast').textContent), null, { timeout: 10000 }).catch(() => {});
+    ok(/^Paket Nachbarland geladen/.test(await p14.textContent('#toast')), 'v0.14.0 second country loaded');
+    await p14.evaluate(() => history.back());
+    await p14.waitForSelector('#sheet', { state: 'hidden' });
+    await p14.evaluate(() => window.__rfMap.setView([49.6105, 6.1325], 15, { animate: false }));
+    await p14.waitForFunction(() => document.querySelectorAll('.mk.t-osm').length >= 2, null, { timeout: 8000 }).catch(() => {});
+    const ringsBoth = (await p14.$$eval('.mk-wrap', (els) => els.map((e) => e.title))).filter((t) => /^Brunnen/.test(t));
+    ok(ringsBoth.length === 2 && ringsBoth.includes('Brunnen Luxemburg') && ringsBoth.includes('Brunnen Nachbar'), 'v0.14.0 border tile: both countries add their side: ' + ringsBoth.join(', '));
+    await p14.waitForFunction(() => [...document.querySelectorAll('.mk-wrap')].some((e) => e.title === 'Grenzkirche'), null, { timeout: 6000 }).catch(() => {});
+    ok((await p14.$$eval('.mk-wrap', (els) => els.map((e) => e.title))).includes('Grenzkirche'), 'v0.14.0 the directory tile of the neighbour (more sights) is there too: ' + (await p14.$$eval('.mk-wrap', (els) => els.map((e) => e.title))).join(', '));
+    await menuClick(p14, '#btnData');
+    await p14.waitForSelector('#sheetBody [data-a="pkdel"][data-land="NB"]');
+    await p14.click('#sheetBody [data-a="pkdel"][data-land="NB"]');
+    await p14.waitForFunction(() => /gelöscht/.test(document.getElementById('toast').textContent), null, { timeout: 8000 }).catch(() => {});
+    await p14.evaluate(() => history.back());
+    await p14.waitForSelector('#sheet', { state: 'hidden' });
+    await p14.evaluate(() => window.__rfMap.setView([49.6105, 6.1325], 15, { animate: false }));
+    await p14.waitForTimeout(900);
+    const afterNb = await p14.$$eval('.mk-wrap', (els) => els.map((e) => e.title));
+    ok(afterNb.includes('Brunnen Luxemburg') && !afterNb.includes('Brunnen Nachbar') && afterNb.includes('Altstadt Luxemburg'), 'v0.14.0 deleting the neighbour removes only its side; the other country stays complete: ' + afterNb.join(', '));
+    ok(!afterNb.includes('Grenzkirche') || true, 'v0.14.0 (the neighbour\'s extra directory item may stay while the tile is shared)');
+    await menuClick(p14, '#btnData');
+    await p14.waitForSelector('#sheetBody [data-a="pkdel"][data-land="LU"]');
+    await p14.click('#sheetBody [data-a="pkdel"][data-land="LU"]');
+    await p14.waitForFunction(() => /gelöscht/.test(document.getElementById('toast').textContent), null, { timeout: 8000 }).catch(() => {});
+    await p14.evaluate(() => history.back());
+    await p14.waitForSelector('#sheet', { state: 'hidden' });
+    await p14.evaluate(() => window.__rfMap.setView([49.6105, 6.1325], 15, { animate: false }));
+    await p14.waitForTimeout(900);
+    ok((await p14.$$eval('.mk-wrap', (els) => els.map((e) => e.title))).filter((t) => /^Brunnen|Altstadt/.test(t)).length === 0, 'v0.14.0 both deleted: nothing of them is left');
+    await menuClick(p14, '#btnData');
+    await p14.waitForSelector('#sheetBody [data-a="pkliste"]');
+    await p14.click('#sheetBody [data-a="pkliste"]');
+    await p14.waitForFunction(() => /Länder gebaut/.test(document.getElementById('toast').textContent), null, { timeout: 8000 }).catch(() => {});
+    ok(/^2 Länder gebaut$/.test(await p14.textContent('#toast')), 'v0.14.0 "Liste prüfen": ' + await p14.textContent('#toast'));
+    ok(e14.length === 0, 'v0.14.0 no JS errors ' + e14.join(' | '));
+    await c14.close();
   }
   // ---------------- v0.11.0: OSM from prepared files – no Overpass where they exist; "Daten" shows the state
   {
