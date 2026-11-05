@@ -1,22 +1,60 @@
-# Länderpaket aufbereiten (v0.12.0): alles, was die Karte an Sehenswürdigkeiten zeigt (Verzeichnis aus Wikidata/Wikipedia,
-# OSM-Punkte aus dem Geofabrik-Auszug), als eine Datei docs/paket/<code>/paket.json. Die App lädt es mit einem Tipp herunter.
-# Nur von Hand: github.com → Actions → „Länderpaket aufbereiten“ → „Run workflow“ (Schweiz etwa 15–25 Minuten).
+# Länderpaket aufbereiten (v0.12.0, für alle Länder Europas ab v0.14.0): alles, was die Karte an Sehenswürdigkeiten zeigt
+# (Verzeichnis aus Wikidata/Wikipedia, OSM-Punkte aus dem Geofabrik-Auszug) als Teile docs/paket/<kürzel>/teil-NNN.json plus index.json.
+# Die App lädt das Paket mit einem Tipp herunter (Menü → Daten). Nur von Hand:
+#   github.com → Actions → „Länderpaket aufbereiten“ → „Run workflow“ → Land wählen → „Run workflow“.
+# Dauer: kleine Länder wenige Minuten, die Schweiz etwa 15 Minuten, große Länder (Deutschland, Frankreich) ein bis zwei Stunden.
+# Nach dem Bau steht das Land in der App unter Menü → Daten als „gebaut“ (die Liste docs/paket/laender.json schreibt diese Action).
 name: Länderpaket aufbereiten
 on:
   workflow_dispatch:
     inputs:
       land:
-        description: 'Geofabrik-Gebiet'
-        required: false
-        default: 'europe/switzerland'
-      code:
-        description: 'Kürzel (Ordner docs/paket/<code>)'
-        required: false
-        default: 'ch'
-      name:
-        description: 'Name in der App'
-        required: false
-        default: 'Schweiz'
+        description: 'Land'
+        type: choice
+        required: true
+        default: 'Schweiz (CH)'
+        options:
+          - 'Albanien (AL)'
+          - 'Andorra (AD)'
+          - 'Belgien (BE)'
+          - 'Bosnien und Herzegowina (BA)'
+          - 'Bulgarien (BG)'
+          - 'Dänemark (DK)'
+          - 'Deutschland (DE)'
+          - 'Estland (EE)'
+          - 'Finnland (FI)'
+          - 'Frankreich (FR)'
+          - 'Griechenland (GR)'
+          - 'Irland (IE)'
+          - 'Island (IS)'
+          - 'Italien (IT)'
+          - 'Kosovo (XK)'
+          - 'Kroatien (HR)'
+          - 'Lettland (LV)'
+          - 'Liechtenstein (LI)'
+          - 'Litauen (LT)'
+          - 'Luxemburg (LU)'
+          - 'Malta (MT)'
+          - 'Moldau (MD)'
+          - 'Monaco (MC)'
+          - 'Montenegro (ME)'
+          - 'Niederlande (NL)'
+          - 'Nordmazedonien (MK)'
+          - 'Norwegen (NO)'
+          - 'Österreich (AT)'
+          - 'Polen (PL)'
+          - 'Portugal (PT)'
+          - 'Rumänien (RO)'
+          - 'Schweden (SE)'
+          - 'Schweiz (CH)'
+          - 'Serbien (RS)'
+          - 'Slowakei (SK)'
+          - 'Slowenien (SI)'
+          - 'Spanien (ES)'
+          - 'Tschechien (CZ)'
+          - 'Ungarn (HU)'
+          - 'Vereinigtes Königreich (GB)'
+          - 'Zypern (CY)'
       speichern:
         description: 'Ergebnis nach main schreiben (sonst nur messen)'
         type: boolean
@@ -28,16 +66,14 @@ on:
 permissions:
   contents: write
 concurrency:
-  group: paket
+  group: paket-${{ inputs.land }}
   cancel-in-progress: false
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 350
     env:
-      LAND: ${{ inputs.land }}
-      CODE: ${{ inputs.code }}
-      NAME: ${{ inputs.name }}
+      LAND_WAHL: ${{ inputs.land }}
       MAX: ${{ inputs.max }}
       SPEICHERN: ${{ inputs.speichern }}
     steps:
@@ -45,47 +81,59 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Eingaben prüfen
+      - name: Land und Eingaben prüfen
         run: |
-          if ! [[ "$LAND" =~ ^[a-z-]+(/[a-z-]+)*$ ]]; then echo "Ungültiges Gebiet"; exit 1; fi
-          if ! [[ "$CODE" =~ ^[a-z]{2,3}$ ]]; then echo "Ungültiges Kürzel"; exit 1; fi
-          if ! [[ "$NAME" =~ ^[[:alpha:]\ .-]{2,40}$ ]]; then echo "Ungültiger Name"; exit 1; fi
           if [ -n "$MAX" ] && ! [[ "$MAX" =~ ^[0-9]+$ ]]; then echo "Ungültiges max"; exit 1; fi
+          node tools/paket-land.mjs "$LAND_WAHL" | tee land.env
+          cat land.env >> "$GITHUB_ENV"
       - name: osmium installieren
         run: sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool > /dev/null && osmium --version | head -1
       - name: Auszug laden
         run: |
           s=$(date +%s)
-          curl -sSfL -o land.osm.pbf "https://download.geofabrik.de/${LAND}-latest.osm.pbf"
-          curl -sSfL -o land.poly "https://download.geofabrik.de/${LAND}.poly"
+          curl -sSfL --retry 3 -o land.osm.pbf "https://download.geofabrik.de/${GEOFABRIK}-latest.osm.pbf"
+          curl -sSfL --retry 3 -o land.poly "https://download.geofabrik.de/${GEOFABRIK}.poly"
           STAND=$(osmium fileinfo -g header.option.osmosis_replication_timestamp land.osm.pbf || true)
           echo "STAND=$STAND" >> "$GITHUB_ENV"
           osmium tags-filter land.osm.pbf r/admin_level=2 -o grenze.osm.pbf --overwrite
           osmium export grenze.osm.pbf -f geojson --geometry-types=polygon -o grenze.geojson --overwrite || echo "Grenze: Export mit Fehlern"
           echo "Datei: $(du -h land.osm.pbf | cut -f1), Stand OSM: ${STAND:-?}, $(( $(date +%s) - s )) s"
+          df -h . | tail -1
       - name: OSM-Punkte
         run: |
           s=$(date +%s)
           FILTER=$(node tools/osm-extract.mjs --osmium)
           osmium tags-filter land.osm.pbf $FILTER -o poi.osm.pbf --overwrite
+          rm -f land.osm.pbf
           osmium export poi.osm.pbf -f geojsonseq --add-unique-id=type_id -o poi.geojsonseq --overwrite
-          rm -rf "docs/osm/$CODE"
-          U=$(echo "$CODE" | tr a-z A-Z)
-          node tools/osm-extract.mjs poi.geojsonseq "docs/osm/$CODE" --grenze=grenze.geojson --poly=land.poly --stand="$STAND" --land="$U" \
-            --quelle="OpenStreetMap-Mitwirkende (ODbL), Auszug Geofabrik $LAND" | grep -v '^Beispiele'
+          rm -f poi.osm.pbf
+          # nur die Schweiz behält ihre OSM-Dateien im Repository (die App nutzt sie auch ohne Paket); alle anderen Länder: nur im Paket
+          if [ "$CODE" = "ch" ]; then OSMDIR="docs/osm/ch"; else OSMDIR="osm-work"; fi
+          echo "OSMDIR=$OSMDIR" >> "$GITHUB_ENV"
+          rm -rf "$OSMDIR"
+          node tools/osm-extract.mjs poi.geojsonseq "$OSMDIR" --grenze=grenze.geojson --poly=land.poly --stand="$STAND" --land="$ISO" \
+            --quelle="OpenStreetMap-Mitwirkende (ODbL), Auszug Geofabrik $GEOFABRIK" | grep -v '^Beispiele'
           echo "OSM: $(( $(date +%s) - s )) s"
       - name: Verzeichnis und Paket
         run: |
           U=$(echo "$CODE" | tr a-z A-Z)
-          node tools/paket.mjs --land="$U" --name="$NAME" --grenze=grenze.geojson --osm="docs/osm/$CODE" --out="docs/paket/$CODE" ${MAX:+--max=$MAX}
-          ls -la "docs/paket/$CODE"
+          node tools/paket.mjs --land="$U" --iso="$ISO" --name="$NAME" --grenze=grenze.geojson --poly=land.poly --osm="$OSMDIR" --out="docs/paket/$CODE" ${MAX:+--max=$MAX}
+          ls -la "docs/paket/$CODE" | head -20
       - name: Speichern
         if: ${{ env.SPEICHERN == 'true' }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A "docs/paket/$CODE" "docs/osm/$CODE"
-          if git diff --cached --quiet; then echo "Keine Änderung"; exit 0; fi
-          git commit -q -m "Länderpaket $CODE aufbereitet (OSM-Stand ${STAND:-?})"
-          for i in 1 2 3; do git pull -q --rebase origin main && git push -q origin HEAD:main && exit 0; sleep 5; done
+          git add -A "docs/paket/$CODE"
+          if [ "$CODE" = "ch" ]; then git add -A docs/osm/ch; fi
+          if git diff --cached --quiet; then echo "Keine Änderung"; else git commit -q -m "Länderpaket $CODE aufbereitet (OSM-Stand ${STAND:-?})"; fi
+          for i in 1 2 3 4 5; do
+            git fetch -q origin main
+            git rebase -q origin/main || { git rebase --abort; sleep 5; continue; }
+            node tools/paket-liste.mjs docs/paket
+            git add docs/paket/laender.json
+            if ! git diff --cached --quiet; then git commit -q -m "Länderliste aktualisiert"; fi
+            git push -q origin HEAD:main && exit 0
+            sleep $((5 * i))
+          done
           exit 1

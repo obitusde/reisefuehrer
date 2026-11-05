@@ -18,10 +18,10 @@ jobs:
         run: |
           node -e "const c=require('./docs/config.json');console.log(c.paket.laender.map(l=>l.land+' '+l.geofabrik).join('\n'))" > liste.txt
           while read -r code pfad; do
-            h=$(curl -sI "https://download.geofabrik.de/${pfad}-latest.osm.pbf")
-            st=$(echo "$h" | head -1 | tr -d '\r')
-            len=$(echo "$h" | grep -i '^content-length' | awk '{print $2}' | tr -d '\r')
-            lm=$(echo "$h" | grep -i '^last-modified' | cut -d' ' -f2- | tr -d '\r')
+            h=$(curl -sIL "https://download.geofabrik.de/${pfad}-latest.osm.pbf")
+            st=$(echo "$h" | grep '^HTTP' | tail -1 | tr -d '\r')
+            len=$(echo "$h" | grep -i '^content-length' | tail -1 | awk '{print $2}' | tr -d '\r')
+            lm=$(echo "$h" | grep -i '^last-modified' | tail -1 | cut -d' ' -f2- | tr -d '\r')
             ps=$(curl -sI "https://download.geofabrik.de/${pfad}.poly" | head -1 | tr -d '\r')
             echo "$code | $pfad | $st | $(( ${len:-0} / 1048576 )) MB | $lm | poly: $ps"
           done < liste.txt
