@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.13.0 – 05.11.2026 – Beschreibung für jeden Punkt, Google-Knöpfe im Fenster
+
+Wunsch Nutzer: Wer einen Punkt wie „Crêt des Alouettes“ antippt, soll erfahren, was das ist. Steht nichts in den Daten, soll Google helfen (Fenster, das man wieder schließt). Die Informationen kommen schon in die Download-Datei.
+
+- **Paket mit Beschreibungen** (`info` in `paket.json`, gebaut von `tools/paket.mjs`): zu jeder Wikidata-Nummer im Paket (Verzeichnis und OSM-Punkte) eine Zeile aus Wikidata, auf Deutsch, sonst Englisch, plus die Höhe (P2044), z. B. „Berg in der Schweiz · 1 054 m“. Das Paket muss dafür neu gebaut werden (Action „Länderpaket aufbereiten“), danach in der App „Aktualisieren“.
+- **Anzeige**:
+  - Liste im Kartenausschnitt: unter dem Namen eine graue Zeile mit dieser Beschreibung (nur wo es eine gibt, auch ohne Internet).
+  - Ortsfenster: ist kein Wikipedia-Text da, steht dort dieselbe Zeile; bei OSM-Punkten die Beschreibung aus OSM und die Höhe aus dem OSM-Tag `ele` (kommt mit dem nächsten Bau der OSM-Daten).
+  - Weiß weder das Paket noch Wikipedia etwas, steht dort „Keine Beschreibung gefunden.“, statt einer leeren Fläche.
+- **Google-Knöpfe im Ortsfenster** (immer): „✨ Google fragen“ öffnet Googles KI-Modus mit der Frage „Was ist „Name“ in Ort (Kanton)? Antworte kurz in höchstens 6 Sätzen auf Deutsch. Stelle am Ende keine Rückfrage und mache keine Vorschläge.“ und „🖼 Bilder“ die Google-Bildersuche mit Name, Ort und Kanton. Ort und Kanton holt das Fenster beim Öffnen mit einer Anfrage an Nominatim (wie bei „Hier suchen“); ohne Internet stehen die Koordinaten in der Frage. Frage und Auftrag stehen in `config.json` unter `google`. Hat der Ort keinen Wikipedia-Artikel, stehen die Knöpfe direkt unter dem Text, sonst weiter unten bei den anderen Knöpfen.
+- **Fenster zum Schließen**: Google- und Wikipedia-Knöpfe sind normale Links mit `target="_blank"`. Auf Android öffnet das ein Chrome-Fenster über der App (✕ oder Zurück schließt es, die App ist wieder da); als normaler Chrome-Tab bleibt der neue Tab offen. Auf dem Handy noch nicht geprüft.
+- Hinweis `diag.html`: neue Abnahme-Punkte q1–q6.
+
+### Annahmen/Abweichungen
+
+- Der Google-Parameter `udm=50` (KI-Modus) ist von Google nicht dokumentiert und kann sich ändern; dann zeigt Google die normale Suche mit der ganzen Frage. In `config.json` lässt sich `ki_param` leeren.
+- Google hält sich an die Anweisung „keine Rückfrage“ nicht garantiert; die Antwort kann die App nicht lesen (technisch und nach Googles Bedingungen nicht möglich), sie reicht nur die Frage weiter.
+- Die Wikipedia-Suche nach dem Namen habe ich nicht eingebaut (gemessen: falsche Treffer, z. B. ein anderes „Crêt des Alouettes“ in Frankreich). Commons-Fotos aus der Umgebung auch nicht (sie zeigten die Orbe-Quelle, nicht den Berg).
+- „Lage zur nächsten Stadt“ gibt es nicht (dein Wunsch).
+- Die Zeile kommt nur zu Punkten mit Wikidata-Nummer (oder OSM-Beschreibung); reine OSM-Punkte ohne beides bekommen „Keine Beschreibung gefunden.“.
+- Die Größe des Pakets nimmt zu (Messwert siehe unten, nach dem Bau).
+
 ## v0.12.0 – 05.11.2026 – Länderpaket Schweiz: Sehenswürdigkeiten sofort, ohne Nachladen
 
 Wunsch Nutzer: Die Karte kommt online, aber alles, was darüber liegt (Sehenswürdigkeiten), liegt im Handy und ist sofort da. Fotos und Wikipedia-Texte dürfen beim Antippen geladen werden. Paket mit einem Klick herunterladen und aktualisieren. Zoom anzeigen. Keine Offline-Vektorkarte.

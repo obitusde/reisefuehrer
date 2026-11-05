@@ -397,6 +397,31 @@ ok(r3b.places.length > 0 && r3b.warnings.some(w => /Wikipedia de: Search is curr
 const rg = await core.reverseGeocode(53.4792, -2.2442, mockFetch(fx));
 eq(rg.name + '|' + rg.cc + '|' + rg.region, 'Manchester|gb|GB-ENG', 'reverse geocode info');
 
+// v0.13.0: Google links, info line, height
+{
+  const g = cfg.google;
+  ok(g && g.ki_param === 'udm=50' && /6 Sätzen/.test(g.auftrag) && /keine Rückfrage/.test(g.auftrag), 'config google: KI-Modus, 6 Sätze, keine Rückfrage');
+  const pl = { name: 'Crêt des Alouettes', lat: 46.69597, lon: 6.34803, ort: '' };
+  const u = core.googleLinks(pl, { name: 'Vallorbe', state: 'Waadt' }, cfg);
+  const dq = (x) => decodeURIComponent(x.replace(/^.*[?&]q=/, '').replace(/\+/g, ' '));
+  eq(dq(u.ai), 'Was ist „Crêt des Alouettes“ in Vallorbe (Waadt)? ' + g.auftrag, 'Google question with place and canton');
+  ok(/^https:\/\/www\.google\.com\/search\?hl=de&udm=50&q=/.test(u.ai), 'KI-Modus link: ' + u.ai.slice(0, 60));
+  eq(dq(u.images), 'Crêt des Alouettes Vallorbe (Waadt)', 'images search: name and place');
+  ok(/&tbm=isch&q=/.test(u.images) && !/udm=/.test(u.images) && !/udm=/.test(u.search), 'images link without KI-Modus');
+  eq(dq(core.googleLinks(pl, null, cfg).ai).split('? ')[0] + '?', 'Was ist „Crêt des Alouettes“ (Koordinaten 46.6960, 6.3480)?', 'without a place: coordinates');
+  eq(dq(core.googleLinks({ name: 'Schloss', lat: 1, lon: 2, ort: 'Morges' }, null, cfg).images), 'Schloss Morges', 'without reverse geocoding: the place of the search');
+  eq(dq(core.googleLinks({ name: 'Kunsthaus Zürich', lat: 47.37, lon: 8.54 }, { name: 'Zürich', state: 'Zürich' }, cfg).search), 'Kunsthaus Zürich Zürich', 'state equal to place not repeated');
+  eq(dq(core.googleLinks(pl, null, { google: {} }).ai), 'Was ist „Crêt des Alouettes“ (Koordinaten 46.6960, 6.3480)?', 'without config: question without instruction');
+  eq(dq(core.googleLinks(pl, { name: 'Vallorbe' }, { google: { ki_param: '' } }).ai.replace('&&', '&')), 'Was ist „Crêt des Alouettes“ in Vallorbe?', 'no ki_param: normal search');
+  eq(core.heightText(1054), '1\u202f054 m', 'height with thin space'); eq(core.heightText(321.4), '321 m', 'height rounded'); eq(core.heightText(0), '', 'no height 0'); eq(core.heightText('x'), '', 'no height text');
+  eq(core.infoLine(['Berg in der Schweiz', 1054], null), 'Berg in der Schweiz · 1\u202f054 m', 'info line: description and height');
+  eq(core.infoLine(['mountain in Switzerland'], null), 'Mountain in Switzerland', 'info line: description only, capital');
+  eq(core.infoLine(null, '1068'), '1\u202f068 m', 'info line: height from OSM tag');
+  eq(core.infoLine(null, null), '', 'info line: nothing');
+  eq(core.infoLine(['x', 0], 'viel'), 'X', 'info line: bad OSM height ignored'); eq(core.infoLine(null, '1068.5 m'), '1\u202f069 m', 'info line: OSM height with unit');
+  const el = core.compactOsm({ type: 'node', id: 5, lat: 46.7, lon: 6.3, tags: { name: 'Gipfel', natural: 'peak', ele: '1068', wikidata: 'Q1' } });
+  eq(el.x.ele, '1068', 'OSM: height tag kept (compactOsm)');
+}
 // one language failing -> still results, warning
 const fbad = async (url) => url.includes('de.wikipedia') ? { ok: false, status: 404, json: async () => ({}) } : mockFetch(fx)(url);
 const r4 = await core.loadPlaces({ lat: 53.4792, lon: -2.2442, radius: 1000, cfg, fetch: fbad, wdCache });

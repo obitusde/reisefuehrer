@@ -45,6 +45,14 @@
   "dauer_min": { "3": 90, "2": 60, "1": 30, "0": 0 },
   "dauer_text": { "3": "ab 1,5 Std.", "2": "ca. 1 Std.", "1": "ca. 30 Min.", "0": "" },
 
+  "google": {
+    "_hinweis": "v0.13.0: Knöpfe im Ortsfenster für Orte ohne Beschreibung. Die App gibt nur die Frage weiter (Fenster zum Schließen), die Antwort liest sie nicht. frage: {name} und {ort} werden ersetzt; auftrag steht dahinter. ki_param: Google-KI-Modus (nicht dokumentiert, kann sich ändern; leer = normale Suche mit der Frage). sprache: Oberflächen- und Antwortsprache.",
+    "sprache": "de",
+    "ki_param": "udm=50",
+    "frage": "Was ist „{name}“{ort}?",
+    "auftrag": "Antworte kurz in höchstens 6 Sätzen auf Deutsch. Stelle am Ende keine Rückfrage und mache keine Vorschläge."
+  },
+
   "paket": {
     "_hinweis": "v0.12.0: Länderpaket – alles, was die Karte an Sehenswürdigkeiten zeigt (Verzeichnis + OSM-Punkte), einmal ins Handy. Gebaut von der GitHub Action paket.yml (nur von Hand). Im Paketgebiet lädt die Karte nichts mehr nach; Fotos und Wikipedia-Texte kommen beim Antippen. osm_ab_zoom: ab diesem Zoom die grauen OSM-Ringe aus dem Paket.",
     "laender": [{ "land": "CH", "name": "Schweiz", "pfad": "paket/ch/", "bbox": { "south": 45.81, "west": 5.95, "north": 47.81, "east": 10.5 } }],

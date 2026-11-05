@@ -169,7 +169,7 @@ try {
   if (process.env.DEBUG) { page.on('request', (r) => { if (/extracts|mymemory/.test(r.url())) console.log('REQ', decodeURIComponent(r.url()).slice(0, 160)); }); page.on('requestfailed', (r) => console.log('FAILED', r.url().slice(0, 120), r.failure() && r.failure().errorText)); page.on('console', (m) => console.log('CONSOLE', m.text())); }
   await page.goto(BASE + 'index.html');
   await page.waitForSelector('.empty');
-  ok((await page.textContent('#version')) === 'v0.12.0', 'footer version');
+  ok((await page.textContent('#version')) === 'v0.13.0', 'footer version');
   if (OUT) await page.screenshot({ path: OUT + '/01-start.png' });
 
   await menuClick(page, '#btnLocate');
@@ -480,10 +480,10 @@ try {
   ok(splitNow && +splitNow > 12, 'split persisted: ' + splitNow);
 
   // update banner (fake newer version, then ?testupdate=1)
-  fakeVersion = '0.12.1';
+  fakeVersion = '0.13.1';
   await page.reload();
   await page.waitForSelector('#banner:not([hidden])');
-  ok((await page.textContent('#bannerText')).includes('v0.12.1'), 'banner shows remote version');
+  ok((await page.textContent('#bannerText')).includes('v0.13.1'), 'banner shows remote version');
   if (OUT) await page.screenshot({ path: OUT + '/05-banner.png' });
   fakeVersion = null;
   await page.click('#bannerBtn');
@@ -616,9 +616,9 @@ try {
   const swOk = await p3.evaluate(() => navigator.serviceWorker.ready.then((r) => !!r.active)).catch(() => false);
   ok(swOk, 'service worker active');
   const cacheKeys = await p3.evaluate(async () => { await new Promise((r) => setTimeout(r, 800)); return caches.keys(); });
-  ok(cacheKeys.includes('rf-app-0.12.0'), 'app cache with version: ' + cacheKeys.join(','));
-  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.12.0')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
-  ok(cached.some((u) => u.includes('app.js?v=0.12.0')), 'shell precached');
+  ok(cacheKeys.includes('rf-app-0.13.0'), 'app cache with version: ' + cacheKeys.join(','));
+  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.13.0')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
+  ok(cached.some((u) => u.includes('app.js?v=0.13.0')), 'shell precached');
   ok(errs3.length === 0, 'sw: no JS errors ' + errs3.join(' | '));
   await ctx3.close();
 
@@ -657,9 +657,11 @@ try {
         it('Q10', 'Altstadt Luxemburg', 49.611, 6.133, { score: 12.2, typ: 'welterbe', sl: 60 }),
         it('Q11', 'Kathedrale Unserer Lieben Frau', 49.6097, 6.1307, { score: 8.7, typ: 'kathedrale', sl: 40 })],
       '49.5,5.75,49.75,6': [], '49.5,6.25,49.75,6.5': [], '49.25,6,49.5,6.25': [], '49.75,6,50,6.25': [] },
-      osm: { [ok1]: [{ id: 'node/77', lat: 49.6080, lon: 6.1365, name: 'Testbrunnen', names: {}, wd: '', wp: '', k: 'historic=monument', x: {} }] }, osm_cover: [ok1] };
+      osm: { [ok1]: [{ id: 'node/77', lat: 49.6080, lon: 6.1365, name: 'Testbrunnen', names: {}, wd: 'Q99', wp: '', k: 'historic=monument', x: {} },
+        { id: 'node/78', lat: 49.6082, lon: 6.1395, name: 'Stummer Stein', names: {}, wd: '', wp: '', k: 'historic=monument', x: {} }] }, osm_cover: [ok1],
+      info: { Q10: ['Altstadt in Luxemburg', 0], Q99: ['Brunnen im Testland', 321] } };
     const PKIDX = { format: 1, land: 'LU', name: 'Testland', stand: PK_STAND, osm_stand: PKG.osm_stand, datei: 'paket.json', bytes: JSON.stringify(PKG).length, gzip: 2000,
-      verzeichnis: { kacheln: 5, eintraege: 3, ziele: 2, orte: 1 }, osm: { kacheln: 1, orte: 1 } };
+      verzeichnis: { kacheln: 5, eintraege: 3, ziele: 2, orte: 1 }, osm: { kacheln: 1, orte: 2 }, info: 2 };
     const c12 = await newCtx(browser, { vz: true });
     await c12.route(/\/config\.json(\?|$)/, async (route) => {
       const r = await route.fetch(); const j = await r.json();
@@ -689,23 +691,43 @@ try {
     ok(await p12.$eval('#zoomHint', (e) => e.hidden), 'v0.12.0 inside the package: no question (no "Details laden?", no "Gegend laden?"): ' + await p12.textContent('#zoomHint'));
     const vz12 = await p12.$$eval('.vz-item b', (els) => els.map((e) => e.textContent));
     ok(vz12.includes('Altstadt Luxemburg') && (await p12.$$eval('.list-sec', (els) => els.map((e) => e.textContent)))[0] === 'Lohnt am meisten', 'v0.12.0 list of the section from the package: ' + vz12.join(', '));
+    const vzi12 = await p12.$$eval('.vz-info', (els) => els.map((e) => e.textContent));
+    ok(vzi12.includes('Altstadt in Luxemburg') && vzi12.length === 1, 'v0.13.0 list: line from the package under the name (only where there is one): ' + vzi12.join(' | '));
     await p12.evaluate(() => window.__rfMap.setView([49.6105, 6.1325], 15, { animate: false }));
     await p12.waitForFunction(() => document.querySelector('.mk.t-osm'), null, { timeout: 8000 }).catch(() => {});
     const lb12 = await p12.$$eval('.mk-wrap', (els) => els.map((e) => e.title));
-    ok(lb12.includes('Kathedrale Unserer Lieben Frau') && lb12.includes('Testbrunnen') && (await p12.$$('.mk.t-osm')).length === 1, 'v0.12.0 zoom 15: sights and OSM ring from the package at once: ' + lb12.join(', '));
+    ok(lb12.includes('Kathedrale Unserer Lieben Frau') && lb12.includes('Testbrunnen') && (await p12.$$('.mk.t-osm')).length === 2, 'v0.12.0 zoom 15: sights and OSM ring from the package at once: ' + lb12.join(', '));
     ok(await p12.$eval('#zoomHint', (e) => e.hidden) && SPARQL_CALLS.length === sq0, 'v0.12.0 nothing loaded from Wikidata, no question at zoom 15');
     await p12.click('.mk-wrap[title="Testbrunnen"]');
     await p12.waitForSelector('#sheet:not([hidden])');
     ok((await p12.textContent('#sheetTitle')) === 'Testbrunnen', 'v0.12.0 OSM ring opens its place');
+    // v0.13.0: the line from the package (description + height), Google buttons in their own window, no empty field
+    ok((await p12.textContent('#plDesc')) === 'Brunnen im Testland · 321 m', 'v0.13.0 place window: description and height from the package: ' + await p12.textContent('#plDesc'));
+    const gl = await p12.$$eval('#plGoogle a', (els) => els.map((e) => ({ g: e.getAttribute('data-g'), h: e.href, t: e.target, r: e.rel, x: e.textContent })));
+    ok(gl.length === 2 && gl.every((a) => a.t === '_blank' && /noopener/.test(a.r) && /^https:\/\/www\.google\.com\/search\?hl=de/.test(a.h)) && /udm=50/.test(gl[0].h) && /tbm=isch/.test(gl[1].h), 'v0.13.0 Google buttons (KI-Modus, Bilder) open in their own window: ' + JSON.stringify(gl));
+    await p12.waitForFunction(() => /Manchester/.test(decodeURIComponent(document.querySelector('#plGoogle a[data-g="ai"]').href)), null, { timeout: 5000 }).catch(() => {});
+    const q12 = decodeURIComponent((await p12.getAttribute('#plGoogle a[data-g="ai"]', 'href')).replace(/^.*[?&]q=/, '').replace(/\+/g, ' '));
+    ok(/^Was ist „Testbrunnen“ in Manchester\?.*höchstens 6 Sätzen.*keine Rückfrage/.test(q12), 'v0.13.0 question with the place from Nominatim and the instruction: ' + q12);
+    if (OUT) { await p12.waitForTimeout(600); await p12.screenshot({ path: OUT + '/20-ortsfenster-google.png' }); }
     await p12.evaluate(() => history.back());
     await p12.waitForSelector('#sheet', { state: 'hidden' });
+    await p12.click('.mk-wrap[title="Stummer Stein"]');
+    await p12.waitForSelector('#sheet:not([hidden])');
+    if (OUT) { await p12.waitForTimeout(600); await p12.screenshot({ path: OUT + '/21-ortsfenster-leer.png' }); }
+    ok((await p12.textContent('#plDesc')) === 'Keine Beschreibung gefunden.' && !(await p12.$eval('#plDesc', (e) => e.hidden)) && (await p12.$$('#plGoogle a')).length === 2, 'v0.13.0 nothing known: "Keine Beschreibung gefunden." and the Google buttons');
+    await p12.evaluate(() => history.back());
+    await p12.waitForSelector('#sheet', { state: 'hidden' });
+    await p12.evaluate(() => window.__rfMap.setView([49.6105, 6.1325], 15, { animate: false })); await p12.waitForTimeout(500); // opening a place moved the map
     await p12.reload(); await p12.waitForSelector('#btnMenu');
-    await p12.waitForFunction(() => document.querySelectorAll('.mk-wrap').length >= 2, null, { timeout: 8000 }).catch(() => {});
-    ok((await p12.$$eval('.mk-wrap', (els) => els.map((e) => e.title))).includes('Altstadt Luxemburg') && await p12.$eval('#zoomHint', (e) => e.hidden), 'v0.12.0 after a reload the package is still there');
+    await p12.waitForFunction(() => [...document.querySelectorAll('.mk-wrap')].some((e) => e.title === 'Altstadt Luxemburg'), null, { timeout: 8000 }).catch(() => {});
+    { const t = await p12.$$eval('.mk-wrap', (els) => els.map((e) => e.title)), hh = await p12.$eval('#zoomHint', (e) => e.hidden ? '' : e.textContent);
+      ok(t.includes('Altstadt Luxemburg') && !hh, 'v0.12.0 after a reload the package is still there: ' + t.join(', ') + ' | ' + hh + ' | zoom ' + await p12.textContent('#zoomLbl')); }
+    await p12.waitForFunction(() => document.querySelector('.vz-info'), null, { timeout: 5000 }).catch(() => {});
+    ok((await p12.$$eval('.vz-info', (els) => els.map((e) => e.textContent))).includes('Altstadt in Luxemburg'), 'v0.13.0 after a reload the lines of the package are still there (stored in the phone)');
     await menuClick(p12, '#btnData');
     await p12.waitForSelector('#sheetBody [data-a="pkload"]');
     const d12 = await p12.textContent('#sheetBody');
-    ok(/Testland: im Handy, Stand vom 5\.11\.26 \(OSM vom 4\.11\.26\) · 2 Ziele, 1 OSM-Punkte/.test(d12) && /Aktualisieren/.test(d12) && /Löschen/.test(d12), 'v0.12.0 "Daten": package state: ' + d12.slice(0, 200));
+    ok(/Testland: im Handy, Stand vom 5\.11\.26 \(OSM vom 4\.11\.26\) · 2 Ziele, 2 OSM-Punkte/.test(d12) && /Aktualisieren/.test(d12) && /Löschen/.test(d12), 'v0.12.0 "Daten": package state: ' + d12.slice(0, 200));
     if (OUT) await p12.screenshot({ path: OUT + '/19-paket.png' });
     await p12.click('#sheetBody [data-a="pkload"]');
     await p12.waitForFunction(() => /ist aktuell/.test(document.getElementById('toast').textContent), null, { timeout: 8000 }).catch(() => {});

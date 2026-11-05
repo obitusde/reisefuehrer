@@ -1,8 +1,8 @@
-/* Reiseführer – app (v0.12.0). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.13.0). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.12.0';
+  var VERSION = '0.13.0';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
@@ -707,7 +707,14 @@
   // Everything the map shows for a country (directory tiles + OSM points) in one file docs/paket/<code>/paket.json,
   // built by the GitHub Action paket.yml. Stored like loaded tiles (IndexedDB vz:<tile>, osm:<v>:<tile>), so the rest of the
   // app works as before – only nothing has to be loaded any more. Photos and Wikipedia texts: when a place is opened.
-  var PAKET = { meta: {}, cover: {}, osmMem: {}, osmReading: {}, job: null };
+  var PAKET = { meta: {}, cover: {}, osmMem: {}, osmReading: {}, job: null, info: {} };
+  // v0.13.0: [description, height] per Wikidata item, from the package (works without internet)
+  function infoRec(q) {
+    if (!q) return null;
+    var lands = Object.keys(PAKET.info);
+    for (var i = 0; i < lands.length; i++) { var r = PAKET.info[lands[i]][q]; if (r) return r; }
+    return null;
+  }
   function PK() { return cfg.paket || {}; }
   function paketList() { return PK().laender || []; }
   function paketInit() {
@@ -716,8 +723,9 @@
         if (!m) return;
         PAKET.meta[d.land] = m;
         (m.cover || []).forEach(function (k) { PAKET.cover[k] = d.land; });
+        return IDB.get('info:' + d.land).then(function (inf) { if (inf) PAKET.info[d.land] = inf; });
       });
-    })).then(function () { scheduleMarkers(); renderHint(); refreshSettings(); }).catch(function () {});
+    })).then(function () { scheduleMarkers(); renderHint(); refreshSettings(); renderList(); }).catch(function () {});
   }
   function viewCenter(b) { return { lat: (b.south + b.north) / 2, lon: (b.west + b.east) / 2 }; }
   // the package whose area contains the middle of the section (installed or not)
@@ -794,9 +802,12 @@
     var meta = { land: d.land, name: d.name, stand: p.stand, osm_stand: p.osm_stand, installiert: Date.now(), cover: p.osm_cover || [],
       ziele: idx.verzeichnis && idx.verzeichnis.ziele, orte: idx.verzeichnis && idx.verzeichnis.orte, osm_orte: idx.osm && idx.osm.orte, bytes: idx.bytes, gzip: idx.gzip };
     entries.push(['vz:index', DIR.index]);
+    entries.push(['info:' + d.land, p.info || {}]);
+    meta.info = Object.keys(p.info || {}).length;
     entries.push(['paket:' + d.land, meta]);
     return IDB.setMany(entries).then(function () {
       PAKET.meta[d.land] = meta;
+      PAKET.info[d.land] = p.info || {};
       if (old) Object.keys(PAKET.cover).forEach(function (k) { if (PAKET.cover[k] === d.land) delete PAKET.cover[k]; });
       meta.cover.forEach(function (k) { PAKET.cover[k] = d.land; });
       PAKET.osmMem = {};
@@ -809,10 +820,10 @@
   function paketDelete(d) {
     var m = PAKET.meta[d.land];
     if (!m || !confirm('Paket ' + d.name + ' aus dem Handy löschen? Die Karte lädt dann wieder online.')) return;
-    var v = (cfg.osm && cfg.osm.version) || 1, keys = ['paket:' + d.land];
+    var v = (cfg.osm && cfg.osm.version) || 1, keys = ['paket:' + d.land, 'info:' + d.land];
     Object.keys(DIR.index).forEach(function (k) { if (DIR.index[k].p === d.land) { keys.push('vz:' + k); delete DIR.index[k]; delete DIR.mem[k]; } });
     (m.cover || []).forEach(function (k) { keys.push('osm:' + v + ':' + k); delete PAKET.cover[k]; });
-    delete PAKET.meta[d.land];
+    delete PAKET.meta[d.land]; delete PAKET.info[d.land];
     PAKET.osmMem = {};
     IDB.delMany(keys).then(function () { return IDB.set('vz:index', DIR.index); }).then(function () {
       DIR.res = null; DIR.resKey = ''; dataSheet(); scheduleMarkers(); scheduleCities(); scheduleDir();
@@ -1515,9 +1526,10 @@
     }
     function vzRow(it, i) {
       return (function () {
-          var x = it.x, typ = it.k === 'c' ? 'Ort' : C.typeInfo(x.typ, cfg).label;
+          var x = it.x, typ = it.k === 'c' ? 'Ort' : C.typeInfo(x.typ, cfg).label, inf = it.k === 'c' ? '' : C.infoLine(infoRec(x.q), null);
           return '<li class="vz-item" data-vz="' + i + '"><span class="it-stars s' + it.s + '">' + (it.s ? C.starsText(it.s) : '·') + '</span>' +
-            '<span class="vz-main"><b>' + esc(C.displayName(x.name)) + '</b><span class="small">' + esc(typ) + (x.stadt ? ' · ' + esc(x.stadt) : '') + '</span></span></li>';
+            '<span class="vz-main"><b>' + esc(C.displayName(x.name)) + '</b><span class="small">' + esc(typ) + (x.stadt ? ' · ' + esc(x.stadt) : '') + '</span>' +
+            (inf ? '<span class="vz-info">' + esc(inf) + '</span>' : '') + '</span></li>';
       })();
     }
     if (!last || !last.places) {
@@ -1641,6 +1653,9 @@
     var k = kurzStore[p.id];
     if (k && k.t && !(k.orig && p.kurz && !p.kurzOrig)) return k.t;
     if (p.kurz) return p.kurz;   // stored with a prepared area (v0.6)
+    // v0.13.0: Wikidata description and height from the package (also OSM description and height tag), works without internet
+    var inf = C.infoLine(infoRec(p.wikidata) || (p.osmOnly && p.beschreibung ? [p.beschreibung] : null), p.osm && p.osm.x && p.osm.x.ele);
+    if (inf) return inf;
     if (p.osmOnly) return p.beschreibung || '';
     var d = C.stripLocation(p.beschreibung);
     return d && d.toLowerCase() !== String(p.typ_label || '').toLowerCase() ? d : '';
@@ -1682,10 +1697,7 @@
     var el = document.querySelector('.item[data-id="' + cssEsc(id) + '"] .it-desc');
     if (p && el) el.textContent = kurzText(p);
     // the place window may already be open: show the text there too
-    if (p && $('plDesc') && $('sheetBody').getAttribute('data-place') === id) {
-      $('plDesc').textContent = kurzText(p);
-      $('plDesc').hidden = !kurzText(p);
-    }
+    if (p && $('plDesc') && $('sheetBody').getAttribute('data-place') === id) plDescSet(p);
   }
   function runKurz() {
     if (kurzBusy) { scheduleKurz(); return; }
@@ -1815,7 +1827,8 @@
       '<div class="pl-stars s' + p.sterne + '">' + (p.sterne ? C.starsText(p.sterne) : '–') +
         '<span>' + esc(st[String(p.sterne)] || '') + '</span></div>' +
       '<p class="pl-meta">' + esc(meta) + '</p>' +
-      '<p class="pl-desc" id="plDesc"' + (kurzText(p) ? '' : ' hidden') + '>' + esc(kurzText(p)) + kurzNote(p) + '</p>' +
+      '<p class="pl-desc' + (kurzText(p) ? '' : ' none') + '" id="plDesc"' + (kurzText(p) || !p.wikipedia ? '' : ' hidden') + '>' + esc(kurzText(p) || (p.wikipedia ? '' : NODESC)) + kurzNote(p) + '</p>' +
+      (p.wikipedia ? '' : googleHtml(p)) + // no article: the Google buttons right under the text, else at the end
       '<div class="tell">' +
         '<div class="seg" role="group" aria-label="Ausführlichkeit">' +
           [['kurz', 'kurz'], ['normal', 'normal'], ['ausfuehrlich', 'ausführlich']].map(function (x) {
@@ -1837,6 +1850,7 @@
         '<a class="btn" href="' + esc(ml.pin) + '"' + ml.target + '>Pin</a>' +
         '<button class="btn wide' + (on ? ' on' : '') + '" type="button" data-a="merk">' + (on ? '★ Gemerkt' : '☆ Merken') + '</button>' +
       '</div>' +
+      (p.wikipedia ? googleHtml(p) : '') +
       '<details class="why"><summary>Warum ' + (p.sterne ? C.starsText(p.sterne) : 'kein Stern') + '?</summary><table>' +
         rows.map(function (r) { return '<tr><td>' + esc(r[0]) + '</td><td>' + (r[1] == null ? '–' : r[1].toFixed(1)) + '</td></tr>'; }).join('') +
         '<tr><td><b>Punkte</b></td><td><b>' + (p.score == null ? '–' : p.score.toFixed(1)) + '</b></td></tr>' +
@@ -1847,6 +1861,38 @@
     $('sheetBody').setAttribute('data-place', p.id);
     if (kurzNeeded(p.id)) { kurzQueue[p.id] = 1; scheduleKurz(); }
     prepareNarration(p);
+    googleLocate(p);
+  }
+
+  // v0.13.0: what the window says when neither the package nor Wikipedia has a text; and the Google buttons.
+  // The links open in their own window (target _blank: on Android a window above the app that closes with ✕ / Back).
+  var NODESC = 'Keine Beschreibung gefunden.', GLOC = {};
+  function plDescSet(p) {
+    var el = $('plDesc'), t = kurzText(p);
+    if (!el) return;
+    el.textContent = t || (p.wikipedia ? '' : NODESC);
+    el.classList.toggle('none', !t);
+    el.hidden = !t && !!p.wikipedia; // with an article the Wikipedia text is still on its way
+  }
+  function googleHtml(p) {
+    var u = C.googleLinks(p, GLOC[gKey(p)] || null, cfg);
+    return '<div class="actions google" id="plGoogle">' +
+      '<a class="btn" data-g="ai" href="' + esc(u.ai) + '" target="_blank" rel="noopener">✨ Google fragen</a>' +
+      '<a class="btn" data-g="images" href="' + esc(u.images) + '" target="_blank" rel="noopener">🖼 Bilder</a></div>';
+  }
+  function gKey(p) { return (+p.lat).toFixed(2) + ',' + (+p.lon).toFixed(2); }
+  // the place (and canton) for the question: one request to Nominatim when the window opens, the links are updated when it arrives
+  function googleLocate(p) {
+    var k = gKey(p);
+    var apply = function (loc) {
+      var box = $('plGoogle');
+      if (!box || $('sheetBody').getAttribute('data-place') !== p.id) return;
+      var u = C.googleLinks(p, loc, cfg);
+      Array.prototype.forEach.call(box.querySelectorAll('a[data-g]'), function (a) { a.href = u[a.getAttribute('data-g')]; });
+    };
+    if (GLOC[k]) { apply(GLOC[k]); return; }
+    if (navigator.onLine === false) return;
+    C.reverseGeocode(+p.lat, +p.lon, function (u, o) { return fetch(u, o); }).then(function (loc) { GLOC[k] = loc; apply(loc); }, function () { /* offline: the links use the coordinates */ });
   }
 
   // ---------------------------------------------------- narration (v0.3)
@@ -1884,7 +1930,7 @@
         $('plIntro').hidden = false;
       }
       var k = kurzStore[pid];
-      if (k && k.t && $('plDesc')) { $('plDesc').innerHTML = esc(k.t) + kurzNote(p); $('plDesc').hidden = false; }
+      if (k && k.t && $('plDesc')) { $('plDesc').innerHTML = esc(k.t) + kurzNote(p); $('plDesc').hidden = false; $('plDesc').classList.remove('none'); }
     }, function () { /* no article: detail view without picture */ });
     if (settings.level !== 'kurz') articleFor(settings.level).catch(function () {});
   }

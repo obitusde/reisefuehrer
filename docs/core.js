@@ -1,5 +1,5 @@
 /*
- * Reiseführer – core logic (v0.12.0)
+ * Reiseführer – core logic (v0.13.0)
  * Shared by the app (index.html), the diagnostics page (diag.html) and Node tests.
  * No DOM access here. Network access only through the injected fetch function.
  */
@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var CORE_VERSION = '0.12.0';
+  var CORE_VERSION = '0.13.0';
 
   // ---------------------------------------------------------------- helpers
 
@@ -736,6 +736,7 @@
       return {
         name: a.city || a.town || a.village || a.municipality || a.county || a.state || (d && d.name) || '',
         cc: (a.country_code || '').toLowerCase(),
+        state: a.state || '',
         region: a['ISO3166-2-lvl4'] || ''
       };
     });
@@ -1229,7 +1230,7 @@
   }
 
   var OSM_KEYS = ['tourism', 'historic', 'amenity', 'leisure', 'natural', 'building', 'man_made'];
-  var OSM_EXTRA = ['artist_name', 'artist', 'start_date', 'inscription', 'artwork_type', 'memorial', 'architect', 'denomination', 'heritage', 'description'];
+  var OSM_EXTRA = ['artist_name', 'artist', 'start_date', 'inscription', 'artwork_type', 'memorial', 'architect', 'denomination', 'heritage', 'description', 'ele'];
 
   /** Compact element (what is cached): position, names, Wikidata/Wikipedia link, main tag and a few facts. */
   function compactOsm(el) {
@@ -1519,6 +1520,46 @@
     var lang = ix > 0 ? w.slice(0, ix) : (p.artikel && p.artikel.de ? 'de' : 'en');
     var title = ix > 0 ? w.slice(ix + 1) : ((p.artikel && p.artikel[lang]) || '');
     return 'https://' + lang + '.m.wikipedia.org/wiki/' + encodeURIComponent(title.replace(/ /g, '_'));
+  }
+  /**
+   * v0.13.0: links to Google for a place that has nothing (much) in our data. They open in their own window (target _blank);
+   * the app cannot read the answer, it only hands over the question.
+   * loc: {name, state} from reverse geocoding, or null. Question and instruction come from cfg.google.
+   *   ai     – Google "KI-Modus" (udm=50; not documented by Google, may change), the question with the instruction
+   *   search – normal search with the name and the place
+   *   images – Google Images with the name and the place
+   */
+  function googleWhere(p, loc) {
+    if (loc && loc.name) return loc.name + (loc.state && loc.state !== loc.name ? ' (' + loc.state + ')' : '');
+    if (p.ort) return p.ort;
+    return '';
+  }
+  function googleLinks(p, loc, cfg) {
+    var g = (cfg && cfg.google) || {}, name = displayName(p.name), where = googleWhere(p, loc);
+    var coords = p.lat != null && p.lon != null ? 'Koordinaten ' + (+p.lat).toFixed(4) + ', ' + (+p.lon).toFixed(4) : '';
+    var at = where ? ' in ' + where : coords ? ' (' + coords + ')' : '';
+    var frage = (g.frage || 'Was ist „{name}“{ort}?').replace('{name}', name).replace('{ort}', at);
+    var text = frage + (g.auftrag ? ' ' + g.auftrag : '');
+    var hl = g.sprache || 'de', base = 'https://www.google.com/search?hl=' + encodeURIComponent(hl);
+    var plain = name + (where ? ' ' + where : coords ? ' ' + (+p.lat).toFixed(4) + ' ' + (+p.lon).toFixed(4) : '');
+    return {
+      ai: base + (g.ki_param ? '&' + g.ki_param : '') + '&q=' + encodeURIComponent(text),
+      search: base + '&q=' + encodeURIComponent(plain),
+      images: base + '&tbm=isch&q=' + encodeURIComponent(plain),
+      text: text
+    };
+  }
+  /** Height as text: "1 068 m" (non-breaking thousands space, like the rest of the app). */
+  function heightText(m) {
+    var n = Math.round(+m);
+    return isFinite(n) && n > 0 ? String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '\u202f') + ' m' : '';
+  }
+  /** One line from the package info: [Wikidata description, height in m] plus the OSM height tag. '' if there is nothing. */
+  function infoLine(rec, osmEle) {
+    var d = rec && rec[0] ? String(rec[0]) : '', e = rec && rec[1] ? rec[1] : osmEle;
+    var h = heightText(typeof e === 'string' ? parseFloat(e.replace(',', '.')) : e);
+    d = d.charAt(0).toUpperCase() + d.slice(1);
+    return [d, h].filter(Boolean).join(' · ');
   }
   function tripadvisorUrl(p) {
     return 'https://www.tripadvisor.de/Search?q=' + encodeURIComponent(nameWithPlace(p));
@@ -2220,7 +2261,7 @@
     bboxOverlaps: bboxOverlaps, cellsFor: cellsFor, loadWikipediaArea: loadWikipediaArea, loadOsmArea: loadOsmArea,
     osmandWebUrl: osmandWebUrl, osmandGoUrl: osmandGoUrl, osmandIntentUrl: osmandIntentUrl,
     nameWithPlace: nameWithPlace, gmapsSearchUrl: gmapsSearchUrl, gmapsPinUrl: gmapsPinUrl,
-    geoSearchUrl: geoSearchUrl, geoPinUrl: geoPinUrl, wikipediaUrl: wikipediaUrl,
+    geoSearchUrl: geoSearchUrl, geoPinUrl: geoPinUrl, wikipediaUrl: wikipediaUrl, googleLinks: googleLinks, googleWhere: googleWhere, heightText: heightText, infoLine: infoLine,
     tripadvisorUrl: tripadvisorUrl, merkZeile: merkZeile,
     iconFor: iconFor, cityTiles: cityTiles, tileKey: tileKey, splitTile: splitTile, citySparql: citySparql, parseCityRows: parseCityRows,
     loadCityTiles: loadCityTiles, isCityItem: isCityItem, cityRadius: cityRadius, sightScore: sightScore,

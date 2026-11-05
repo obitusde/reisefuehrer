@@ -387,6 +387,9 @@ details.why summary { min-height: 40px; display: flex; align-items: center; colo
 .vz-main { display: flex; flex-direction: column; min-width: 0; }
 .vz-main b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .vz-main .small { color: var(--muted); }
+.vz-main .vz-info { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-desc.none { color: var(--muted); font-style: italic; }
+.actions.google { margin-top: 6px; }
 
 /* v0.8.2: messages centred with left:50% only got half the screen width and wrapped early – use the whole width */
 .toast, .zhint { width: max-content; }

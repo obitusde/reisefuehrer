@@ -1,9 +1,11 @@
 // v0.12.0: Länderpaket – everything the map shows, prepared once, so that the phone shows the sights at once
+// v0.13.0: plus `info`: one short line per Wikidata item (description, height) for the list and the place window
 // (the map itself stays online; photos and Wikipedia texts are loaded when a place is opened).
 //   node tools/paket.mjs --land=CH --name=Schweiz --grenze=grenze.geojson --osm=docs/osm/ch --out=docs/paket/ch [--max=N]
 // Contents (docs/paket/<code>/paket.json):
 //   verzeichnis: {"<0.25° tile>": items}  – exactly what the phone stores after loading a tile (core.prepareDirectoryTile)
 //   osm:         {"<0.05° tile>": elements} and osm_cover (tiles completely inside the border, also empty ones)
+//   info:        {"<Q-number>": [description, height in m]}  – German description, else English (Wikidata); for every Q of the directory and of the OSM points
 // index.json: land, name, stand (when built), osm_stand, counts and size – small, so that the app can check for news.
 // Runs on GitHub (workflow paket.yml), only when started by hand.
 import fs from 'node:fs';
@@ -90,16 +92,57 @@ if (osmDir && fs.existsSync(path.join(osmDir, 'index.json'))) {
   osmIdx = JSON.parse(fs.readFileSync(path.join(osmDir, 'index.json'), 'utf8'));
   for (const [k, n] of Object.entries(osmIdx.kacheln)) if (n) osm[k] = JSON.parse(fs.readFileSync(path.join(osmDir, k + '.json'), 'utf8'));
 }
+// ---- v0.13.0: one line per Wikidata item (description, height), asked in batches from the Wikidata query service
+const qs = new Set();
+Object.values(verzeichnis).flat().forEach((x) => { if (x.q) qs.add(x.q); });
+Object.values(osm).flat().forEach((e) => { if (e.wd) qs.add(e.wd); });
+const info = {};
+let infoFehler = 0;
+{
+  const t1 = Date.now(), list = [...qs], BATCH = 150;
+  const val = (b, k) => (b[k] ? b[k].value : '');
+  for (let i = 0; i < list.length; i += BATCH) {
+    const part = list.slice(i, i + BATCH);
+    const query = 'SELECT ?i ?de ?en (MAX(?e) AS ?ele) WHERE { VALUES ?i { ' + part.map((q) => 'wd:' + q).join(' ') + ' }' +
+      ' OPTIONAL { ?i schema:description ?de. FILTER(LANG(?de) = "de") }' +
+      ' OPTIONAL { ?i schema:description ?en. FILTER(LANG(?en) = "en") }' +
+      ' OPTIONAL { ?i p:P2044/psn:P2044/wikibase:quantityAmount ?e. } } GROUP BY ?i ?de ?en';
+    let rows = null;
+    for (let tries = 0; tries < 4 && !rows; tries++) {
+      try {
+        const r = await f('https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(query), { signal: AbortSignal.timeout(60000) });
+        if (r.status === 429 || r.status >= 500) throw new Error('HTTP ' + r.status);
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        rows = (await r.json()).results.bindings;
+      } catch (e) { console.log('  Info ' + i + ': ' + (e.message || e) + (tries < 3 ? ', neuer Versuch' : '')); await sleep(tries ? 30000 : 10000); }
+    }
+    if (!rows) { infoFehler++; continue; }
+    for (const b of rows) {
+      const q = val(b, 'i').replace(/^.*\//, ''), d = (val(b, 'de') || val(b, 'en')).slice(0, 90), e = Math.round(+val(b, 'ele') || 0);
+      if (!d && !(e > 0)) continue;
+      const rec = info[q] || ['', 0];
+      if (d && (!rec[0] || val(b, 'de'))) rec[0] = d;
+      if (e > rec[1]) rec[1] = e;
+      info[q] = rec;
+    }
+    if ((i / BATCH) % 20 === 19) console.log('  Info ' + Math.min(i + BATCH, list.length) + '/' + list.length + ', ' + fmt(Date.now() - t1));
+    await sleep(400);
+  }
+  // compact: height only when there is one
+  Object.keys(info).forEach((q) => { if (!info[q][1]) info[q].length = 1; });
+  console.log('Info: ' + Object.keys(info).length + ' von ' + list.length + ' Q-Nummern mit Beschreibung oder Höhe (' + Object.values(info).filter((r) => r[0]).length + ' Beschreibungen, ' +
+    Object.values(info).filter((r) => r[1]).length + ' Höhen), ' + infoFehler + ' Stücke ohne Antwort, ' + fmt(Date.now() - t1));
+}
 const stand = new Date().toISOString();
 const paket = { format: 1, land: LAND, name: opt.name || LAND, stand, osm_stand: osmIdx ? osmIdx.stand : '', kachel_vz: cfg.verzeichnis.kachel || 0.25,
-  kachel_osm: cfg.osm.kachel_grad || 0.05, osm_version: cfg.osm.version || 1, verzeichnis, osm, osm_cover: osmIdx ? Object.keys(osmIdx.kacheln) : [] };
+  kachel_osm: cfg.osm.kachel_grad || 0.05, osm_version: cfg.osm.version || 1, verzeichnis, osm, osm_cover: osmIdx ? Object.keys(osmIdx.kacheln) : [], info };
 const json = JSON.stringify(paket);
 const gz = zlib.gzipSync(json).length;
-const parts = { verzeichnis: Buffer.byteLength(JSON.stringify(verzeichnis)), osm: Buffer.byteLength(JSON.stringify(osm)) };
-console.log('Paket: ' + mb(Buffer.byteLength(json)) + ' (gezippt ' + mb(gz) + '); Verzeichnis ' + mb(parts.verzeichnis) + ', OSM ' + mb(parts.osm) + ' (' + Object.values(osm).reduce((a, x) => a + x.length, 0) + ' Orte)');
+const parts = { verzeichnis: Buffer.byteLength(JSON.stringify(verzeichnis)), osm: Buffer.byteLength(JSON.stringify(osm)), info: Buffer.byteLength(JSON.stringify(info)) };
+console.log('Paket: ' + mb(Buffer.byteLength(json)) + ' (gezippt ' + mb(gz) + '); Verzeichnis ' + mb(parts.verzeichnis) + ', OSM ' + mb(parts.osm) + ', Info ' + mb(parts.info) + ' (' + Object.values(osm).reduce((a, x) => a + x.length, 0) + ' Orte)');
 const index = { format: 1, land: LAND, name: paket.name, stand, osm_stand: paket.osm_stand, datei: 'paket.json', bytes: Buffer.byteLength(json), gzip: gz,
   verzeichnis: { kacheln: Object.keys(verzeichnis).length, eintraege: nItems, ziele: res.orte.length, orte: res.staedte.length, fehlt: fehler },
-  osm: { kacheln: Object.keys(osm).length, orte: Object.values(osm).reduce((a, x) => a + x.length, 0) }, bbox: bb };
+  osm: { kacheln: Object.keys(osm).length, orte: Object.values(osm).reduce((a, x) => a + x.length, 0) }, info: Object.keys(info).length, bbox: bb };
 if (opt.out) {
   fs.rmSync(opt.out, { recursive: true, force: true });
   fs.mkdirSync(opt.out, { recursive: true });
