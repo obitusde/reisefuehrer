@@ -4,8 +4,10 @@
 #   github.com → Actions → „Länderpaket aufbereiten“ → „Run workflow“ → Land wählen → „Run workflow“.
 # Dauer: kleine Länder wenige Minuten, die Schweiz etwa 17 Minuten, große Länder (Deutschland, Frankreich) nach Messung und Hochrechnung 2 bis 4 Stunden
 # (der Download des Auszugs allein dauert dort 8 bis 13 Minuten; die meiste Zeit kosten die Wikidata-Abfragen je Kachel).
+# Der Laufname (run-name) ist „Länderpaket <Name> (<CC>)“: daran erkennt die App ihren Lauf (Bauen per Knopf, v0.15.0).
 # Nach dem Bau steht das Land in der App unter Menü → Daten als „gebaut“ (die Liste docs/paket/laender.json schreibt diese Action).
 name: Länderpaket aufbereiten
+run-name: Länderpaket ${{ inputs.land }}
 on:
   workflow_dispatch:
     inputs:

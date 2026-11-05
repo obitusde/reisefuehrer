@@ -171,7 +171,7 @@ try {
   if (process.env.DEBUG) { page.on('request', (r) => { if (/extracts|mymemory/.test(r.url())) console.log('REQ', decodeURIComponent(r.url()).slice(0, 160)); }); page.on('requestfailed', (r) => console.log('FAILED', r.url().slice(0, 120), r.failure() && r.failure().errorText)); page.on('console', (m) => console.log('CONSOLE', m.text())); }
   await page.goto(BASE + 'index.html');
   await page.waitForSelector('.empty');
-  ok((await page.textContent('#version')) === 'v0.14.0', 'footer version');
+  ok((await page.textContent('#version')) === 'v0.15.0', 'footer version');
   if (OUT) await page.screenshot({ path: OUT + '/01-start.png' });
 
   await menuClick(page, '#btnLocate');
@@ -490,10 +490,10 @@ try {
   ok(splitNow && +splitNow > 12, 'split persisted: ' + splitNow);
 
   // update banner (fake newer version, then ?testupdate=1)
-  fakeVersion = '0.14.1';
+  fakeVersion = '0.15.1';
   await page.reload();
   await page.waitForSelector('#banner:not([hidden])');
-  ok((await page.textContent('#bannerText')).includes('v0.14.1'), 'banner shows remote version');
+  ok((await page.textContent('#bannerText')).includes('v0.15.1'), 'banner shows remote version');
   if (OUT) await page.screenshot({ path: OUT + '/05-banner.png' });
   fakeVersion = null;
   await page.click('#bannerBtn');
@@ -626,9 +626,9 @@ try {
   const swOk = await p3.evaluate(() => navigator.serviceWorker.ready.then((r) => !!r.active)).catch(() => false);
   ok(swOk, 'service worker active');
   const cacheKeys = await p3.evaluate(async () => { await new Promise((r) => setTimeout(r, 800)); return caches.keys(); });
-  ok(cacheKeys.includes('rf-app-0.14.0'), 'app cache with version: ' + cacheKeys.join(','));
-  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.14.0')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
-  ok(cached.some((u) => u.includes('app.js?v=0.14.0')), 'shell precached');
+  ok(cacheKeys.includes('rf-app-0.15.0'), 'app cache with version: ' + cacheKeys.join(','));
+  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.15.0')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
+  ok(cached.some((u) => u.includes('app.js?v=0.15.0')), 'shell precached');
   ok(errs3.length === 0, 'sw: no JS errors ' + errs3.join(' | '));
   await ctx3.close();
 
@@ -837,6 +837,106 @@ try {
     ok(/^2 Länder gebaut$/.test(await p14.textContent('#toast')), 'v0.14.0 "Liste prüfen": ' + await p14.textContent('#toast'));
     ok(e14.length === 0, 'v0.14.0 no JS errors ' + e14.join(' | '));
     await c14.close();
+  }
+  // ---------------- v0.15.0: build with one tap (Google Apps Script relay is simulated)
+  {
+    const STAND_NEU = '2026-11-07T02:00:00.000Z';
+    const built15 = {};
+    let runs = [], dispatched = [], pinOk = '1234';
+    const c15 = await newCtx(browser, { vz: true });
+    await c15.route(/\/config\.json(\?|$)/, async (route) => {
+      const r = await route.fetch(); const j = await r.json();
+      j.paket.laender = [{ land: 'ZZ', name: 'Zielland', geofabrik: 'europe/zz' }, { land: 'YY', name: 'Andersland', geofabrik: 'europe/yy' }];
+      route.fulfill({ response: r, body: JSON.stringify(j), headers: { 'content-type': 'application/json' } });
+    });
+    await c15.route(/\/paket\/laender\.json/, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ format: 1, laender: built15 }) }));
+    const CORS = { 'access-control-allow-origin': '*', 'content-type': 'application/json' };
+    await c15.route(/script\.google\.com\/macros\/s\/TEST\/exec/, (route) => {
+      const u = new URL(route.request().url()), q = u.searchParams;
+      const out = (o) => route.fulfill({ status: 200, headers: CORS, body: JSON.stringify(o) });
+      if (q.get('pin') !== pinOk) return out({ ok: false, fehler: 'PIN falsch' });
+      if (q.get('aktion') === 'bauen') {
+        dispatched.push(q.get('land'));
+        runs.unshift({ id: 1, status: 'queued', ergebnis: null, titel: 'Länderpaket ' + q.get('land'), start: new Date().toISOString(), url: 'https://github.com/x/actions/runs/1' });
+        return out({ ok: true, hinweis: 'Bau gestartet' });
+      }
+      if (q.get('aktion') === 'status') return out({ ok: true, 'läufe': runs });
+      return out({ ok: true, hinweis: 'bereit' });
+    });
+    const p15 = await c15.newPage(); const e15 = []; watch(p15, e15);
+    p15.on('dialog', (d) => d.accept());
+    await p15.goto(BASE + 'index.html');
+    await p15.waitForSelector('#btnMenu');
+    await menuClick(p15, '#btnData');
+    await p15.waitForSelector('#sheetBody [data-a="baucfg"]');
+    const t0 = await p15.textContent('#sheetBody');
+    ok(/Bauen per Knopf: einrichten/.test(t0) && !!(await p15.$('#sheetBody .pk-list a[href*="paket.yml"]')) && !(await p15.$('#sheetBody [data-a="baubuild"]')), 'v0.15.0 not set up: setup field, "Bauen ↗" link as before');
+    const tab = async (sel) => p15.textContent(sel);
+    // wrong PIN: nothing is saved
+    await p15.fill('#bauUrl', 'https://script.google.com/macros/s/TEST/exec');
+    await p15.fill('#bauPin', '9999');
+    await p15.click('#sheetBody [data-a="baucfg"]');
+    await p15.waitForFunction(() => /Test fehlgeschlagen/.test(document.getElementById('toast').textContent), null, { timeout: 8000 }).catch(() => {});
+    ok(/Test fehlgeschlagen: PIN falsch/.test(await tab('#toast')) && (await p15.evaluate(() => localStorage.getItem('rf.bau'))) === null, 'v0.15.0 wrong PIN: error shown, nothing saved: ' + await tab('#toast'));
+    await p15.fill('#bauUrl', 'http://example.com/x');
+    await p15.click('#sheetBody [data-a="baucfg"]');
+    ok(/script\.google\.com/.test(await tab('#toast')), 'v0.15.0 a foreign address is refused');
+    // right PIN
+    await p15.fill('#bauUrl', 'https://script.google.com/macros/s/TEST/exec');
+    await p15.fill('#bauPin', '1234');
+    await p15.click('#sheetBody [data-a="baucfg"]');
+    await p15.waitForSelector('#sheetBody [data-a="baubuild"]', { timeout: 8000 });
+    ok(/Verbunden/.test(await tab('#toast')) && /eingerichtet/.test(await tab('#sheetBody')) && !(await p15.$('#sheetBody .pk-list a[href*="paket.yml"]')), 'v0.15.0 right PIN: set up, "Bauen" buttons instead of the link: ' + await tab('#toast'));
+    // start
+    await p15.click('#sheetBody .pk-list [data-a="baubuild"][data-land="ZZ"]');
+    await p15.waitForSelector('#sheetBody .pk-row.bau', { timeout: 8000 });
+    ok(dispatched.join() === 'Zielland (ZZ)' && /Zielland: Wird gestartet/.test(await tab('#sheetBody .pk-row.bau')) && !!(await p15.$('#sheetBody [data-a="baubuild"][disabled]')), 'v0.15.0 start sends "Name (CC)" like the workflow option, button locked while building: ' + dispatched.join());
+    const tick = async (re, what) => {
+      await p15.evaluate(() => window.__rfBau.tick());
+      await p15.waitForFunction((s) => new RegExp(s).test((document.querySelector('#sheetBody .pk-row.bau') || {}).textContent || ''), re, { timeout: 8000 }).catch(() => {});
+      ok(new RegExp(re).test((await p15.textContent('#sheetBody')) || ''), 'v0.15.0 progress: ' + what);
+    };
+    await tick('Wartet auf GitHub', 'queued');
+    runs[0].status = 'in_progress';
+    await tick('Wird gebaut seit \\d+ Min', 'running');
+    ok(!!(await p15.$('#sheetBody .pk-row.bau a[href*="actions/runs/1"]')), 'v0.15.0 link to the log');
+    // the app closed and opened again: the build is still followed
+    await p15.reload(); await p15.waitForSelector('#btnMenu');
+    await menuClick(p15, '#btnData');
+    await p15.waitForSelector('#sheetBody .pk-row.bau', { timeout: 8000 });
+    ok(/Zielland/.test(await tab('#sheetBody .pk-row.bau')), 'v0.15.0 a running build survives a reload');
+    runs[0].status = 'completed'; runs[0].ergebnis = 'success';
+    await tick('wird veröffentlicht', 'built, being published');
+    await p15.evaluate(() => window.__rfBau.tick());
+    await p15.waitForTimeout(500);
+    ok(!!(await p15.$('#sheetBody .pk-row.bau')), 'v0.15.0 not published yet: still waiting (no false "fertig")');
+    built15.ZZ = { name: 'Zielland', stand: STAND_NEU, osm_stand: STAND_NEU, format: 2, bytes: 1000, gzip: 500, teile: 1, ziele: 1, orte: 0, osm_orte: 1, info: 0, bbox: { south: 1, west: 1, north: 2, east: 2 } };
+    await p15.evaluate(() => window.__rfBau.tick());
+    await p15.waitForFunction(() => /ist fertig gebaut/.test(document.getElementById('toast').textContent), null, { timeout: 8000 }).catch(() => {});
+    await p15.waitForSelector('#sheetBody [data-a="pkload"][data-land="ZZ"]', { timeout: 8000 });
+    ok(/Zielland ist fertig gebaut/.test(await tab('#toast')) && !(await p15.$('#sheetBody .pk-row.bau')) && /Zielland: gebaut am/.test(await tab('#sheetBody')), 'v0.15.0 when published: "fertig gebaut", download button there');
+    // failed build
+    await p15.evaluate(() => { document.querySelector('#sheetBody details.why').open = true; });
+    await p15.click('#sheetBody .pk-list [data-a="baubuild"][data-land="YY"]');
+    await p15.waitForSelector('#sheetBody .pk-row.bau', { timeout: 8000 });
+    runs[0].status = 'completed'; runs[0].ergebnis = 'failure';
+    await tick('Bau fehlgeschlagen', 'failed build is shown');
+    await p15.click('#sheetBody [data-a="baudone"]');
+    await p15.waitForFunction(() => !document.querySelector('#sheetBody .pk-row.bau'), null, { timeout: 5000 }).catch(() => {});
+    ok(!(await p15.$('#sheetBody .pk-row.bau')) && (await p15.evaluate(() => localStorage.getItem('rf.baujob'))) === null, 'v0.15.0 "OK" clears the failed build');
+    // rebuild of a built country; 'PIN geändert' shows an error without a crash
+    ok(!!(await p15.$('#sheetBody .pk-row [data-a="baubuild"][data-land="ZZ"]')), 'v0.15.0 built country has "Neu bauen"');
+    pinOk = 'neu';
+    await p15.click('#sheetBody .pk-row [data-a="baubuild"][data-land="ZZ"]');
+    await p15.waitForFunction(() => /Bau nicht gestartet/.test(document.getElementById('toast').textContent), null, { timeout: 8000 }).catch(() => {});
+    ok(/Bau nicht gestartet: PIN falsch/.test(await tab('#toast')) && !(await p15.$('#sheetBody .pk-row.bau')), 'v0.15.0 changed PIN: error, no build box');
+    // remove the set-up
+    await p15.evaluate(() => { document.querySelectorAll('#sheetBody details.why').forEach((d) => { d.open = true; }); });
+    await p15.click('#sheetBody [data-a="baucfgdel"]');
+    await p15.waitForSelector('#sheetBody [data-a="baucfg"]');
+    ok((await p15.evaluate(() => localStorage.getItem('rf.bau'))) === null && /einrichten/.test(await tab('#sheetBody')), 'v0.15.0 "Entfernen" deletes address and PIN from the phone');
+    ok(e15.length === 0, 'v0.15.0 no JS errors ' + e15.join(' | '));
+    await c15.close();
   }
   // ---------------- v0.11.0: OSM from prepared files – no Overpass where they exist; "Daten" shows the state
   {

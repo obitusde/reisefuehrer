@@ -416,3 +416,6 @@ details.why summary { min-height: 40px; display: flex; align-items: center; colo
 .pk-list { list-style: none; margin: 6px 0; padding: 0; }
 .pk-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 0; border-bottom: 1px solid var(--line); }
 .btn.small { min-height: 34px; padding: 2px 12px; font-size: 14px; }
+/* v0.15.0: Bauen per Knopf */
+.sheet-body input[type="url"], .sheet-body input[type="password"] { width: 100%; box-sizing: border-box; min-height: 40px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg, transparent); }
+.pk-row.bau { padding: 6px 10px; border-left: 3px solid var(--accent); background: rgba(14, 107, 125, .08); border-radius: 6px; }

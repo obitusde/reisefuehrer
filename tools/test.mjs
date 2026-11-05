@@ -263,6 +263,7 @@ ok(cfg.besucher.knopf === '👍 Lohnt sich der Besuch?', 'v0.13.3 button text');
   const yml = fs.readFileSync(path.join(ROOT, '.github/workflows/paket.yml'), 'utf8');
   const optsYml = [...yml.split('options:')[1].split('speichern:')[0].matchAll(/- '([^']+)'/g)].map((m) => m[1]);
   eq(optsYml.join('|'), L.map((x) => x.name + ' (' + x.land + ')').join('|'), 'v0.14.0 workflow paket.yml: choice list = config.json');
+  ok(/^run-name: Länderpaket \$\{\{ inputs\.land \}\}$/m.test(yml), 'v0.15.0 workflow: run name "Länderpaket <Land>" (the app finds its run by it)');
   ok(/default: 'Schweiz \(CH\)'/.test(yml) && /group: paket-\$\{\{ inputs\.land \}\}/.test(yml) && /paket-liste\.mjs/.test(yml), 'v0.14.0 workflow: default, one queue per country, writes the list of built countries');
   // border: fast point-in-polygon with holes and enclaves
   const { makeBorder } = await import('./grenze.mjs');

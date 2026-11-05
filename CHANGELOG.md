@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.15.0 – 05.11.2026 – Bauen per Knopf in der App
+
+Wunsch Nutzer: Länder nicht mehr über die GitHub-Seite bauen lassen, sondern „alles per Knopfdruck“; den GitHub-Schlüssel irgendwo sicher ablegen (Skripteigenschaften bei Google Apps Script).
+
+- **Ablauf**: App → Menü → Daten → Länderpakete → „Bauen“ beim Land → Bestätigen. Das Google-Skript des Nutzers startet den GitHub-Workflow `paket.yml` mit dem gewählten Land. Die App fragt über dasselbe Skript alle 30 Sekunden nach dem Lauf und zeigt: „Wird gestartet“, „Wartet auf GitHub“, „Wird gebaut seit N Min.“, „Gebaut, wird veröffentlicht“ und dann „<Land> ist fertig gebaut“ mit dem Knopf „Herunterladen“. Bei einem Fehler steht „Bau fehlgeschlagen“ mit Link zum Protokoll.
+- **Sicherheit**: Der GitHub-Schlüssel (fein abgestufter Token, nur dieses Repository, nur „Actions: Lesen und Schreiben“) steht nur in den Skripteigenschaften des Google-Skripts. In der App und im Repository steht er nicht. Die App kennt nur die Adresse des Skripts und die PIN, beides nur im Handy (`localStorage`, Schlüssel `rf.bau`). Das Skript prüft die PIN und lässt nur den Start von `paket.yml` (mit einer Länderwahl, die GitHub gegen die Liste prüft) und das Lesen der letzten Läufe zu.
+- **Einrichten in der App**: Menü → Daten → ganz unten „⚡ Bauen per Knopf“: Adresse (Web-App-URL, endet auf /exec) und PIN eintragen, „Speichern und testen“. Gespeichert wird erst, wenn der Test klappt (falsche PIN oder fremde Adresse werden abgelehnt). „Entfernen“ löscht beides. Ohne Einrichtung bleibt alles wie in v0.14.0 (Link „Bauen ↗“ zur GitHub-Seite).
+- **Neu bauen**: Bei Ländern, die schon gebaut oder geladen sind, steht ein Knopf „Neu bauen“. Die App verfolgt immer nur einen Bau gleichzeitig (der Workflow selbst könnte mehrere).
+- **Weiterverfolgen**: Der laufende Bau steht im Handy; schließt du die App und öffnest sie später, wird er weiter verfolgt. „Nicht mehr verfolgen“ bricht den Bau nicht ab, die App hört nur auf zu fragen.
+- **Workflow**: `run-name: Länderpaket <Name> (<CC>)`, damit die App ihren Lauf in der Liste findet.
+- **Google-Skript** (Code in der Antwort an den Nutzer, nicht im Repository, weil es ein Konto-Skript ist): Aktionen `bauen` (Land als „Name (CC)“) und `status` (letzte zehn Läufe), PIN-Prüfung mit 2 Sekunden Wartezeit bei Fehlern.
+
+### Geprüft
+
+- `tools/test.mjs` (Workflow hat den Laufnamen) und `tools/ui-test.mjs` mit einem **nachgebauten Skript** (Einrichten mit falscher/richtiger PIN, fremde Adresse, Start mit „Name (CC)“, Fortschritt, Weiterverfolgen nach Neuladen, „noch nicht veröffentlicht“, „fertig“, Fehlerfall, geänderte PIN, Entfernen).
+- Echtes Google-Skript und GitHub: Nutzer hat das Skript eingerichtet, `?aktion=status` im Browser getestet („klappt alles“).
+
+### Annahmen/Abweichungen
+
+- **Nicht geprüft**: Ob Chrome auf dem Handy die Antwort des Google-Skripts aus der App heraus lesen darf (Weiterleitung auf script.googleusercontent.com). Das Skript antwortet mit `ContentService`, das ist der übliche Weg und in Chrome erlaubt; getestet habe ich es nur mit einem nachgebauten Skript. Geht es nicht, zeigt der Test beim Speichern „keine Verbindung zum Skript“, dann baue ich einen Umweg.
+- Die PIN steht in der Adresszeile der Anfrage (GET), weil eine POST-Anfrage mit JSON in Chrome eine Vorabfrage braucht, die Google-Skripte nicht beantworten. Sie ist mit HTTPS verschlüsselt; wer die Adresse kennt, braucht trotzdem die PIN. Schlimmster Fall bei Missbrauch: jemand startet einen Länderbau.
+- Zeitangaben „seit N Min.“ kommen vom GitHub-Zeitstempel; der Lauf wird zugeordnet, wenn er höchstens 3 Minuten vor dem Tippen gestartet wurde (Uhr des Handys gegen GitHub).
+- Nach dem Ende des Laufs braucht GitHub Pages ein bis zwei Minuten, bis die neuen Dateien im Netz sind. Die App wartet darauf bis zu 10 Minuten und meldet dann erst „fertig“.
+- Der GitHub-Token läuft nach der gewählten Frist ab (1 Jahr). Dann meldet das Skript „GitHub 401“; neuen Token in den Skripteigenschaften eintragen.
+
 ## v0.14.0 – 05.11.2026 – Länderpakete für ganz Europa: bauen lassen, herunterladen, aktualisieren, Grenzstädte
 
 Wunsch Nutzer: Andere Länder Europas herunterladen können, so einfach wie möglich: bauen lassen, dann runterladen und aktualisieren. Städte wie Genf oder Basel sollen an der Grenze funktionieren.

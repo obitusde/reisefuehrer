@@ -1,8 +1,8 @@
-/* Reiseführer – app (v0.14.0). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.15.0). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.14.0';
+  var VERSION = '0.15.0';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
@@ -983,7 +983,8 @@
     var dis = PAKET.job ? ' disabled' : '';
     return '<div class="pk-row">' + head + bar + '<div class="actions">' +
       '<button class="btn primary" type="button" data-a="pkload" data-land="' + esc(d.land) + '"' + dis + '>' + (m ? 'Aktualisieren' : 'Herunterladen') + '</button>' +
-      (m ? '<button class="btn" type="button" data-a="pkdel" data-land="' + esc(d.land) + '"' + dis + '>Löschen</button>' : '') + '</div></div>';
+      (m ? '<button class="btn" type="button" data-a="pkdel" data-land="' + esc(d.land) + '"' + dis + '>Löschen</button>' : '') +
+      (bauCfg() && d.geofabrik ? '<button class="btn" type="button" data-a="baubuild" data-land="' + esc(d.land) + '"' + (BAU.job ? ' disabled' : '') + '>Neu bauen</button>' : '') + '</div></div>';
   }
   function paketSection() {
     var list = paketList();
@@ -993,21 +994,131 @@
     var html = '<h3>📦 Länderpakete</h3>' +
       '<p class="small">Mit dem Paket eines Landes sind alle Sehenswürdigkeiten sofort auf der Karte, auch ohne Internet (die Karte selbst, Fotos und Texte brauchen Internet). ' +
       'An der Grenze (Genf, Basel) ergänzen sich die Pakete der Nachbarländer, wenn du beide lädst.</p>';
+    html += bauBox();
     html += inst.length ? '<h4>Im Handy</h4>' + inst.map(paketRow).join('') : '';
     html += built.length ? '<h4>Fertig gebaut – zum Herunterladen</h4>' + built.map(paketRow).join('') : '';
     if (!inst.length && !built.length) html += '<p>Noch kein Land gebaut. Wähle unten ein Land und lass es bauen.</p>';
     html += '<details class="why"' + (!inst.length && !built.length ? ' open' : '') + '><summary>Weiteres Land bauen lassen (' + rest.length + ' zur Wahl)</summary>' +
-      '<p class="small">So geht es: Tippe auf „Bauen ↗“. GitHub öffnet sich. Dort „Run workflow“ tippen, bei „Land“ das Land wählen, noch einmal „Run workflow“. ' +
-      'Nach wenigen Minuten (kleines Land) bis zu einigen Stunden (Deutschland, Frankreich) steht es hier unter „Fertig gebaut“. Dann „Liste prüfen“ tippen.</p>' +
+      (bauCfg()
+        ? '<p class="small">Tippe auf „Bauen“. Nach wenigen Minuten (kleines Land) bis zu einigen Stunden (Deutschland, Frankreich) steht das Land oben unter „Fertig gebaut“; die App zeigt den Fortschritt, solange sie offen ist.</p>'
+        : '<p class="small">So geht es ohne Einrichtung: Tippe auf „Bauen ↗“. GitHub öffnet sich. Dort „Run workflow“ tippen, bei „Land“ das Land wählen, noch einmal „Run workflow“. ' +
+          'Nach wenigen Minuten (kleines Land) bis zu einigen Stunden (Deutschland, Frankreich) steht es hier unter „Fertig gebaut“. Dann „Liste prüfen“ tippen. Einfacher: unten „Bauen per Knopf“ einrichten.</p>') +
       '<ul class="pk-list">' + rest.map(function (d) {
-        return '<li><span>' + esc(d.name) + '</span>' + (url ? '<a class="btn small" href="' + esc(url) + '" target="_blank" rel="noopener">Bauen ↗</a>' : '') + '</li>';
+        return '<li><span>' + esc(d.name) + '</span>' + (bauCfg()
+          ? '<button class="btn small" type="button" data-a="baubuild" data-land="' + esc(d.land) + '"' + (BAU.job ? ' disabled' : '') + '>Bauen</button>'
+          : (url ? '<a class="btn small" href="' + esc(url) + '" target="_blank" rel="noopener">Bauen ↗</a>' : '')) + '</li>';
       }).join('') + '</ul></details>' +
       '<div class="actions"><button class="btn" type="button" data-a="pkliste">Liste prüfen</button>' +
-      (url ? '<a class="btn" href="' + esc(url) + '" target="_blank" rel="noopener">Neu bauen ↗</a>' : '') + '</div>' +
+      (url && !bauCfg() ? '<a class="btn" href="' + esc(url) + '" target="_blank" rel="noopener">Neu bauen ↗</a>' : '') + '</div>' + bauCfgHtml() +
       '<p class="small">„Aktualisieren“ holt den neuesten fertig gebauten Stand von der Webseite (ist er schon im Handy, steht „aktuell“). ' +
-      'Neu gebaut wird ein Land nur, wenn du es auf GitHub anstößt (dort dasselbe Land wählen). ' + (PAKET.builtErr && !Object.keys(PAKET.built).length ? 'Liste der gebauten Länder: ' + esc(PAKET.builtErr) + '.' : '') + '</p>';
+      'Neu gebaut wird ein Land nur, wenn du es bauen lässt (Knopf „Neu bauen“ oder auf GitHub dasselbe Land wählen). ' + (PAKET.builtErr && !Object.keys(PAKET.built).length ? 'Liste der gebauten Länder: ' + esc(PAKET.builtErr) + '.' : '') + '</p>';
     return html;
   }
+
+  // ------------------------------------------------------ v0.15.0: build with one tap (Google Apps Script relay)
+  // The GitHub key stays in the Script properties of the user's own Google script (never in this app or the repository).
+  // The app only knows the script's address and the PIN; both are kept in this phone (localStorage), nowhere else.
+  // The script starts the workflow paket.yml and reports its runs; the run name is "Länderpaket <Name> (<CC>)".
+  var BAU = { job: LS.get('rf.baujob', null), timer: null };
+  function bauCfg() { var c = LS.get('rf.bau', null); return c && c.url && c.pin ? c : null; }
+  function bauOpt(d) { return d.name + ' (' + d.land + ')'; }
+  function bauCall(params, c) {
+    c = c || bauCfg();
+    if (!c) return Promise.reject(new Error('nicht eingerichtet'));
+    var q = Object.keys(params).map(function (k) { return k + '=' + encodeURIComponent(params[k]); }).concat('pin=' + encodeURIComponent(c.pin)).join('&');
+    return withTimeout(fetch(c.url + (c.url.indexOf('?') < 0 ? '?' : '&') + q, { cache: 'no-store' }).then(function (r) { return r.text(); }), 25000, null).then(function (t) {
+      if (t === null) throw new Error('keine Antwort (Zeitüberschreitung)');
+      var j;
+      try { j = JSON.parse(t); } catch (e) { throw new Error('Antwort nicht lesbar – ist es die „Web-App-URL“ (endet auf /exec)?'); }
+      if (!j.ok) throw new Error(j.fehler || 'Fehler');
+      return j;
+    }, function () { throw new Error('keine Verbindung zum Skript (Internet? Adresse?)'); });
+  }
+  function bauSave() { if (BAU.job) LS.set('rf.baujob', BAU.job); else LS.del('rf.baujob'); }
+  // full: draw the whole sheet again (buttons change); otherwise only the progress box (an open list or a field being typed in stays as it is)
+  function bauRedraw(full) {
+    if ($('sheet').hidden || $('sheetBody').getAttribute('data-view') !== 'data') return;
+    var box = $('sheetBody').querySelector('.pk-row.bau'), ae = document.activeElement;
+    if (!full && box && BAU.job) { box.outerHTML = bauBox(); return; }
+    if (!(ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName))) dataSheet();
+  }
+  function bauSchedule(ms) { clearTimeout(BAU.timer); BAU.timer = BAU.job && BAU.job.phase !== 'fehler' ? setTimeout(bauTick, ms) : null; }
+  function bauFail(text) { BAU.job.phase = 'fehler'; BAU.job.text = text; BAU.job.warn = ''; bauSave(); bauRedraw(true); }
+  function bauTick() {
+    var j = BAU.job;
+    if (!j || j.phase === 'fehler') return;
+    if (j.phase === 'veroeff') { // the Action has pushed; GitHub Pages needs a minute or two before the files are on the web
+      paketBuiltLoad(true).then(function () {
+        var b = PAKET.built[j.land];
+        if (b && b.stand !== j.standVor) {
+          BAU.job = null; bauSave(); refreshSettings();
+          toast(j.name + ' ist fertig gebaut – unter Menü → Daten herunterladen', 8000);
+          bauRedraw(true);
+          return;
+        } else if (Date.now() - j.fertig > 10 * 60000) {
+          bauFail('Gebaut, aber noch nicht veröffentlicht. Tippe später auf „Liste prüfen“.');
+          return;
+        } else bauSchedule(20000);
+        bauRedraw(false);
+      });
+      return;
+    }
+    bauCall({ aktion: 'status' }).then(function (r) {
+      var run = (r['läufe'] || []).filter(function (x) { return x.titel === 'Länderpaket ' + j.opt && Date.parse(x.start) >= j.since - 180000; })[0];
+      j.warn = '';
+      if (!run) {
+        if (Date.now() - j.since > 4 * 60000) { bauFail('Der Lauf wurde bei GitHub nicht gefunden.'); return; }
+        j.text = 'Wird gestartet …'; bauSchedule(10000);
+      } else if (run.status !== 'completed') {
+        j.url = run.url;
+        j.text = run.status === 'in_progress' ? 'Wird gebaut seit ' + Math.max(1, Math.round((Date.now() - Date.parse(run.start)) / 60000)) + ' Min.' : 'Wartet auf GitHub …';
+        bauSchedule(30000);
+      } else if (run.ergebnis === 'success') {
+        j.url = run.url; j.phase = 'veroeff'; j.fertig = Date.now(); j.text = 'Gebaut, wird veröffentlicht …'; bauSchedule(15000);
+      } else {
+        j.url = run.url; bauFail('Bau fehlgeschlagen (' + (run.ergebnis || '?') + '). Das Protokoll zeigt, warum.'); return;
+      }
+      bauSave(); bauRedraw(false);
+    }, function (e) { j.warn = e.message; bauSave(); bauSchedule(60000); bauRedraw(false); });
+  }
+  function bauStart(d) {
+    if (BAU.job) { toast('Es läuft schon ein Bau – erst abwarten oder „Nicht mehr verfolgen“'); return; }
+    if (!confirm(d.name + ' bauen lassen? Kleine Länder brauchen wenige Minuten, große (Deutschland, Frankreich) bis zu einigen Stunden. Du kannst die App währenddessen schließen.')) return;
+    toast('Starte den Bau …', 2500);
+    bauCall({ aktion: 'bauen', land: bauOpt(d) }).then(function () {
+      BAU.job = { land: d.land, name: d.name, opt: bauOpt(d), since: Date.now(), standVor: (PAKET.built[d.land] || {}).stand || '', phase: 'lauf', text: 'Wird gestartet …', url: '', warn: '' };
+      bauSave(); bauSchedule(8000); toast('Bau gestartet', 3000); bauRedraw(true);
+    }, function (e) { toast('Bau nicht gestartet: ' + e.message, 6000); });
+  }
+  function bauBox() {
+    var j = BAU.job;
+    if (!j) return '';
+    return '<div class="pk-row bau"><p><b>' + esc(j.name) + '</b>: ' + esc(j.text) + (j.warn ? ' <span class="small">(Abfrage ging nicht: ' + esc(j.warn) + ')</span>' : '') + '</p>' +
+      '<div class="actions">' + (j.url ? '<a class="btn small" href="' + esc(j.url) + '" target="_blank" rel="noopener">Protokoll ↗</a>' : '') +
+      '<button class="btn small" type="button" data-a="baudone">' + (j.phase === 'fehler' ? 'OK' : 'Nicht mehr verfolgen') + '</button></div></div>';
+  }
+  function bauCfgHtml() {
+    var c = bauCfg();
+    return '<details class="why"' + (c ? '' : ' open') + '><summary>⚡ Bauen per Knopf: ' + (c ? 'eingerichtet ✔' : 'einrichten') + '</summary>' +
+      '<p class="small">Adresse („Web-App-URL“, endet auf /exec) und PIN deines Google-Skripts. Beides bleibt nur in diesem Handy.</p>' +
+      '<p><input id="bauUrl" type="url" autocomplete="off" placeholder="https://script.google.com/macros/s/…/exec" value="' + esc(c ? c.url : '') + '"></p>' +
+      '<p><input id="bauPin" type="password" autocomplete="off" placeholder="' + (c ? 'PIN (leer = unverändert)' : 'PIN') + '"></p>' +
+      '<div class="actions"><button class="btn" type="button" data-a="baucfg">Speichern und testen</button>' +
+      (c ? '<button class="btn" type="button" data-a="baucfgdel">Entfernen</button>' : '') + '</div></details>';
+  }
+  function bauCfgSave() {
+    var old = bauCfg(), url = ($('bauUrl').value || '').trim(), pin = ($('bauPin').value || '').trim() || (old ? old.pin : '');
+    if (!/^https:\/\/script\.google\.com\/\S+$/.test(url)) { toast('Die Adresse beginnt mit https://script.google.com/ …', 5000); return; }
+    if (!pin) { toast('Bitte die PIN eintragen', 3000); return; }
+    toast('Teste die Verbindung …', 2000);
+    bauCall({ aktion: 'status' }, { url: url, pin: pin }).then(function (r) {
+      LS.set('rf.bau', { url: url, pin: pin });
+      toast('Verbunden ✔ (' + (r['läufe'] || []).length + ' letzte Läufe gesehen)', 4000);
+      if (!$('sheet').hidden && $('sheetBody').getAttribute('data-view') === 'data') dataSheet();
+    }, function (e) { toast('Test fehlgeschlagen: ' + e.message, 7000); });
+  }
+  window.__rfBau = { tick: bauTick }; // test hook, like __rfMap
+  if (BAU.job) bauSchedule(4000); // a running build is followed again after the app was closed and opened
 
   // ------------------------------------------------------ OSM files (v0.12.0)
   // Prepared by the GitHub Action osm-daten.yml (Geofabrik extract, monthly). index.json: {land, stand, erstellt, orte, kacheln: {key: count}}.
@@ -2747,6 +2858,15 @@
           toast(PAKET.builtErr && !Object.keys(PAKET.built).length ? 'Liste: ' + PAKET.builtErr : Object.keys(PAKET.built).length + ' Länder gebaut', 3000);
           if (!$('sheet').hidden && $('sheetBody').getAttribute('data-view') === 'data') dataSheet();
         });
+      } else if (a === 'baubuild') {
+        var bd = paketList().filter(function (d) { return d.land === el.getAttribute('data-land'); })[0];
+        if (bd) bauStart(bd);
+      } else if (a === 'baudone') {
+        BAU.job = null; bauSave(); clearTimeout(BAU.timer); dataSheet();
+      } else if (a === 'baucfg') {
+        bauCfgSave();
+      } else if (a === 'baucfgdel') {
+        if (confirm('Adresse und PIN aus diesem Handy löschen?')) { LS.del('rf.bau'); BAU.job = null; bauSave(); clearTimeout(BAU.timer); dataSheet(); }
       } else if (a === 'pkload' || a === 'pkdel') {
         var pd2 = paketList().filter(function (d) { return d.land === el.getAttribute('data-land'); })[0];
         if (pd2) { if (a === 'pkload') paketInstall(pd2); else paketDelete(pd2); }
