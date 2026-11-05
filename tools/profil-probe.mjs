@@ -1,4 +1,4 @@
-// Einmaliger Test (nur Messung): Was ändert ein persönliches Interessenprofil an den Sternen einer Stadt?
+// Einmaliger Test (nur Messung, 2. Fassung): Was ändert ein persönliches Interessenprofil an den Sternen einer Stadt?
 // Heutiger Rang (wie der Länderbau ihn rechnet) gegen Rang mit Profil: Kunst-/Geschichtsmuseen hoch, Aussichtspunkte gleich wie Museen, Geschichte (Burg, Schloss …) etwas höher,
 // einfache Kirchen nur mit Denkmalstatus, fehlende Seitenaufrufe nachgemessen. Nichts wird gespeichert; die App ist unverändert.
 // Läuft nur auf GitHub (Workflow profil-test.yml). Env: LAT, LON, RADIUS_KM.
@@ -39,19 +39,34 @@ console.log('Fehlende Aufrufe nachgemessen: ' + missing.length + ' Ziele, ' + pm
 // --- das Profil (Annahmen aus dem Gespräch; nur hier im Test)
 const T = (x) => ((rawBy[x.q].cls || []).concat(rawBy[x.q].p31 || [])).join(' | ').toLowerCase();
 const RE = {
-  kunst: /art museum|kunstmuseum|art gallery|gallery|galerie|beaux-arts|musée d'art|photograph|design|contemporary|kunsthalle|art brut|museum of modern/,
+  kunst: /art museum|kunstmuseum|photography museum|design museum|museum of modern|musée des beaux-arts|musée d'art|art collection|kunsthalle/,
   geschichte: /history museum|historical museum|historisches|archaeolog|archéolog|archaeological|roman|römisch|musée historique|musée d'histoire|ethnograph|military|cultural history/,
   aussicht: /viewpoint|lookout|observation|aussicht|belvedere|panorama/
 };
-const rules = [];
+// OSM-Aussichtspunkte im Gebiet (aus den Dateien im Repository, nur Schweiz): welche haben eine Wikidata-Nummer?
+const osmDir = path.join(ROOT, 'docs/osm/ch');
+const viewWd = new Set(), viewAll = [];
+if (fs.existsSync(path.join(osmDir, 'index.json'))) {
+  const idx = JSON.parse(fs.readFileSync(path.join(osmDir, 'index.json'), 'utf8'));
+  for (const k of Object.keys(idx.kacheln)) {
+    const [a, b] = k.split(',').map(Number);
+    if (Math.abs(a - LAT) > 0.1 || Math.abs(b - LON) > 0.15 || !fs.existsSync(path.join(osmDir, k + '.json'))) continue;
+    for (const e of JSON.parse(fs.readFileSync(path.join(osmDir, k + '.json'), 'utf8'))) {
+      if (e.k !== 'tourism=viewpoint' || km(e.lat, e.lon, LAT, LON) > RAD) continue;
+      viewAll.push(e); if (e.wd) viewWd.add(e.wd);
+    }
+  }
+}
+console.log('OSM-Aussichtspunkte im Umkreis: ' + viewAll.length + ', davon mit Wikidata-Nummer: ' + [...new Set(viewAll.filter((e) => e.wd).map((e) => e.wd))].length);
 function profil(x, o) {
   const t = T(x), d = []; let delta = 0;
   if (o.typ === 'museum') {
-    if (RE.kunst.test(t) || RE.kunst.test(x.name.toLowerCase())) { delta += 2; d.push('Kunstmuseum +2'); }
+    if (RE.kunst.test(t)) { delta += 2; d.push('Kunstmuseum +2'); }
     else if (RE.geschichte.test(t) || RE.geschichte.test(x.name.toLowerCase())) { delta += 1.5; d.push('Geschichtsmuseum +1,5'); }
-    else { delta -= 1.5; d.push('anderes Museum −1,5'); }
+    else if (x.sl < 15) { delta -= 1.5; d.push('anderes Museum (wenig bekannt) −1,5'); }
+    else d.push('anderes Museum, aber bekannt (' + x.sl + ' Sprachen): kein Abzug');
   }
-  if (RE.aussicht.test(t) || o.typ === 'aussicht') { delta += 2; d.push('Aussicht +2'); }
+  if (RE.aussicht.test(t) || o.typ === 'aussicht' || viewWd.has(x.q)) { delta += 2; d.push('Aussicht +2' + (viewWd.has(x.q) ? ' (OSM-Aussichtspunkt)' : '')); }
   if (['burg', 'schloss', 'kloster', 'archaeologie', 'herrenhaus'].includes(o.typ)) { delta += 1; d.push('Geschichte +1'); }
   return { delta, d };
 }
@@ -60,8 +75,6 @@ const rows = near.map((x) => {
   let s = o.score; const why = [];
   if (x.pv === undefined && pvMissing[x.q]) { const add = Math.round(G * log10p(pvMissing[x.q]) * 10) / 10; s += add; why.push('Aufrufe +' + add); }
   const p = profil(x, o); s += p.delta; why.push(...p.d);
-  const isChurch = o.typ === 'kirche' && !(r.h && r.h.length) && !o.unesco;
-  if (isChurch && stars(s) > 0) { s = th['1'] - 0.1; why.push('Kirche ohne Denkmalstatus: kein Stern'); }
   s = Math.round(s * 10) / 10;
   return { name: x.name, typ: o.typ, sl: x.sl, was: o.score, st: o.st, neu: s, st2: stars(s), why: why.join('; '), cls: (r.cls || []).slice(0, 3).join(' / '), h: (r.h || []).length };
 });
@@ -76,3 +89,11 @@ console.log('\n=== Alle Museen: Einordnung (Klassen aus Wikidata)');
 rows.filter((w) => w.typ === 'museum').sort((a, b) => b.neu - a.neu).forEach((w) => console.log(pad(w.name, 38) + ' ' + pad(w.neu, 5) + ' ★' + w.st2 + ' | ' + pad(w.why, 40) + ' | ' + w.cls));
 console.log('\n=== Kirchen, Türme, Aussicht (Einordnung)');
 rows.filter((w) => ['kirche', 'turm', 'aussicht', 'kathedrale'].includes(w.typ)).sort((a, b) => b.neu - a.neu).forEach((w) => console.log(pad(w.name, 38) + ' ' + pad(w.typ, 10) + ' ' + pad(w.was, 5) + '→' + pad(w.neu, 5) + ' ★' + w.st2 + ' Denkmal ' + w.h + ' | ' + w.why));
+
+console.log('\n=== Mögliche Doppelte (zwei Ziele mit Stern im Abstand unter 200 m)');
+const st = rows.map((w, i) => Object.assign({}, w, { lat: near[i].lat, lon: near[i].lon })).filter((w) => w.st2 > 0);
+let dup = 0;
+for (let i = 0; i < st.length; i++) for (let j = i + 1; j < st.length; j++) { const d = km(st[i].lat, st[i].lon, st[j].lat, st[j].lon) * 1000; if (d < 200) { dup++; console.log(pad(st[i].name, 38) + ' ★' + st[i].st2 + '  <->  ' + pad(st[j].name, 38) + ' ★' + st[j].st2 + '  ' + Math.round(d) + ' m'); } }
+if (!dup) console.log('keine');
+console.log('\n=== OSM-Aussichtspunkte im Umkreis (Name | Wikidata | Höhe)');
+viewAll.forEach((e) => console.log('  ' + (e.name || '(ohne Name)') + ' | ' + (e.wd || '–') + ' | ' + ((e.x || {}).ele || '–')));
