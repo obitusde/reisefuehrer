@@ -998,7 +998,7 @@
     if (!inst.length && !built.length) html += '<p>Noch kein Land gebaut. Wähle unten ein Land und lass es bauen.</p>';
     html += '<details class="why"' + (!inst.length && !built.length ? ' open' : '') + '><summary>Weiteres Land bauen lassen (' + rest.length + ' zur Wahl)</summary>' +
       '<p class="small">So geht es: Tippe auf „Bauen ↗“. GitHub öffnet sich. Dort „Run workflow“ tippen, bei „Land“ das Land wählen, noch einmal „Run workflow“. ' +
-      'Nach 5 Minuten (kleines Land) bis etwa 90 Minuten (Deutschland, Frankreich) steht es hier unter „Fertig gebaut“. Dann „Liste prüfen“ tippen.</p>' +
+      'Nach wenigen Minuten (kleines Land) bis zu einigen Stunden (Deutschland, Frankreich) steht es hier unter „Fertig gebaut“. Dann „Liste prüfen“ tippen.</p>' +
       '<ul class="pk-list">' + rest.map(function (d) {
         return '<li><span>' + esc(d.name) + '</span>' + (url ? '<a class="btn small" href="' + esc(url) + '" target="_blank" rel="noopener">Bauen ↗</a>' : '') + '</li>';
       }).join('') + '</ul></details>' +
