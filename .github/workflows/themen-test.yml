@@ -1,0 +1,32 @@
+# Einmaliger Test (nur Messung): Themen zu einem Ort automatisch aus Wikipedia ableiten (Abschnitte, Verweise in beide Richtungen, Aufrufe, Art aus Wikidata). Schreibt nichts ins Repository.
+name: Themen-Test (Ort)
+on:
+  workflow_dispatch:
+    inputs:
+      ort:
+        description: 'Artikeltitel des Ortes'
+        default: 'Werdohl'
+      sprache:
+        description: 'Wikipedia-Sprache'
+        default: 'de'
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ORT: ${{ inputs.ort }}
+      SPRACHE: ${{ inputs.sprache }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Eingaben prüfen
+        run: |
+          for v in "$ORT" "$SPRACHE"; do
+            if ! [[ "$v" =~ ^[^[:cntrl:]]{0,200}$ ]]; then echo "Ungültig"; exit 1; fi
+          done
+      - name: Abfragen
+        run: node tools/themen-probe.mjs
