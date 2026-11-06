@@ -1,0 +1,36 @@
+# Einmaliger Test (nur Messung): Fotos auf Wikimedia Commons gegen heutigen Rang einer Stadt. Schreibt nichts ins Repository.
+name: Commons-Test (Stadt)
+on:
+  workflow_dispatch:
+    inputs:
+      lat:
+        description: 'Breite der Stadtmitte'
+        default: '46.5197'
+      lon:
+        description: 'Länge der Stadtmitte'
+        default: '6.6323'
+      radius:
+        description: 'Umkreis in km'
+        default: '3'
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      LAT: ${{ inputs.lat }}
+      LON: ${{ inputs.lon }}
+      RADIUS_KM: ${{ inputs.radius }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Eingaben prüfen
+        run: |
+          for v in "$LAT" "$LON" "$RADIUS_KM"; do
+            if ! [[ "$v" =~ ^-?[0-9]{1,3}(\.[0-9]{1,6})?$ ]]; then echo "Ungültig: $v"; exit 1; fi
+          done
+      - name: Messen
+        run: node tools/commons-probe.mjs
