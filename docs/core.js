@@ -1,5 +1,5 @@
 /*
- * Reiseführer – core logic (v0.21.0)
+ * Reiseführer – core logic (v0.21.1)
  * Shared by the app (index.html), the diagnostics page (diag.html) and Node tests.
  * No DOM access here. Network access only through the injected fetch function.
  */
@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var CORE_VERSION = '0.21.0';
+  var CORE_VERSION = '0.21.1';
 
   // ---------------------------------------------------------------- helpers
 
@@ -1122,7 +1122,7 @@
       prop: 'extracts|pageimages', explaintext: 1, exsectionformat: 'wiki',
       piprop: 'thumbnail', pithumbsize: 640, titles: a.title
     };
-    if (level === 'kurz' && !p.abschnitt) params.exintro = 1; // a section of an article needs the whole text (v0.21.0)
+    if (level === 'kurz' && !p.abschnitt) params.exintro = 1; // a section of an article needs the whole text (v0.21.1)
     var url = 'https://' + a.lang + '.wikipedia.org/w/api.php?' + qs(params);
     return getJsonRetry(url, f, retryDelays).then(function (d) {
       var pg = (d.query && d.query.pages && d.query.pages[0]) || {};
@@ -1152,7 +1152,7 @@
     var level = o.level || 'kurz';
     var art = o.article;
     var name = p.name + (p.name2 ? ' (deutsch: ' + p.name2 + ')' : '') + (p.ort && p.name.indexOf(p.ort) < 0 ? ', ' + p.ort : '');
-    var tpl = (p.thema && cfg.gegend && cfg.gegend.vorlage) || e.vorlage; // v0.21.0: topics of the area have their own template
+    var tpl = (p.thema && cfg.gegend && cfg.gegend.vorlage) || e.vorlage; // v0.21.1: topics of the area have their own template
     if (p.thema) name = p.name + (p.abschnitt ? ', Abschnitt „' + p.abschnitt + '“' : '');
     var vars = {
       name: name, ort: p.ort || '', abschnitt: p.abschnitt || '', ortbezug: p.ortbezug || '',
@@ -1211,7 +1211,7 @@
     return { text: text, length: text.length, truncated: false };
   }
 
-  /** v0.21.0: link to the Google AI search with the short review prompt (Google answers, the app reads nothing). */
+  /** v0.21.1: link to the Google AI search with the short review prompt (Google answers, the app reads nothing). */
   function reviewGoogleUrl(p, loc, cfg) {
     var g = cfg.google || {};
     return 'https://www.google.com/search?hl=' + encodeURIComponent(g.sprache || 'de') + (g.ki_param ? '&' + g.ki_param : '') +
@@ -1220,7 +1220,7 @@
 
   function claudeNewUrl(prompt) { return 'claude://claude.ai/new?q=' + encodeURIComponent(prompt); }
 
-  // ---------------------------------------------- "Gegend": topics of a place from its Wikipedia article (v0.21.0)
+  // ---------------------------------------------- "Gegend": topics of a place from its Wikipedia article (v0.21.1)
   // No curated list: the sections of the town article, the articles that the town article links to AND that link back (local things),
   // their kind from Wikidata (P31, labels in German whatever the article language) and their reading numbers give the groups.
   // Administration, politics, districts and settlements are left out; people come last. Everything is configured in config.json → gegend.
@@ -1363,8 +1363,11 @@
       return Promise.all([pages('links', 'pl', null, []), back(null, []), wp({ action: 'query', list: 'search', srsearch: '"' + title + '"', srlimit: 30, srnamespace: 0, srprop: 'wordcount' })]);
     }).then(function (r) {
       var bset = {}; r[1].forEach(function (t) { bset[t] = 1; });
-      data.both = r[0].filter(function (t) { return bset[t] && t !== title; }).slice(0, g.max_kandidaten || 200);
       data.hits = ((r[2].query || {}).search || []).map(function (h) { return { title: h.title, wordcount: h.wordcount }; });
+      // links in both directions, plus hits that carry the town's name in their title (the town article links the railway as "Hönnetalbahn", a redirect, so the link test misses it)
+      var cand = {}, both = [];
+      r[0].filter(function (t) { return bset[t] && t !== title; }).concat(data.hits.map(function (h) { return h.title; }).filter(function (t) { return t !== title && t.indexOf(title) >= 0; })).forEach(function (t) { if (!cand[t]) { cand[t] = 1; both.push(t); } });
+      data.both = both.slice(0, g.max_kandidaten || 200);
       step('Lade Angaben zu ' + data.both.length + ' Artikeln …');
       var batches = [];
       for (var i = 0; i < data.both.length; i += 50) batches.push(data.both.slice(i, i + 50));
@@ -2286,7 +2289,7 @@
     });
     // the same place twice (building and collection, "Musée Ariana" in two items): keep the better one
     sights.sort(function (a, b) { return b.score - a.score; });
-    var seen = {}, uniq = [], twinGrid = {}, TC = 0.002; // twinGrid: cells of 0.002° (about 140 m or more), so that the near-twin check looks at 9 cells, not at all sights (v0.21.0: was quadratic)
+    var seen = {}, uniq = [], twinGrid = {}, TC = 0.002; // twinGrid: cells of 0.002° (about 140 m or more), so that the near-twin check looks at 9 cells, not at all sights (v0.21.1: was quadratic)
     sights.forEach(function (s) {
       var k = sameNameKey(s.x.name), dup = (seen[k] || []).filter(function (o) { return haversine(o.x.lat, o.x.lon, s.x.lat, s.x.lon) < (v.doppelt_m || 500); })[0];
       var ci = Math.floor(s.x.lat / TC), cj = Math.floor(s.x.lon / TC);

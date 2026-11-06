@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.21.1 – 06.11.2026 – Gegend: die Strecke selbst kommt in „Verkehr und Technik“
+
+Beim Live-Test in Neuenrade (v0.21.0) waren die Bahnhöfe anderer Städte und der Sport weg, aber auch die Bahnstrecke selbst („Bahnstrecke Menden–Neuenrade“) stand nicht in „Verkehr und Technik“, sondern nur unter „Erwähnt in“. Der Ortsartikel verlinkt sie unter dem Namen „Hönnetalbahn“ (eine Weiterleitung), deshalb fand der Test „verlinkt hin und zurück“ sie nicht.
+
+- **Behoben**: Treffer der Volltextsuche, die den Ortsnamen im Titel tragen (z. B. „Bahnstrecke Menden–Neuenrade“, „Flugplatz Werdohl-Küntrop“), laufen jetzt wie die wechselseitigen Verweise durch Lesezahlen, Art und Entfernung und landen in ihrer Gruppe.
+- Gemessen am 6.11.: In Neuenrade stehen die Sätze des Ortsartikels zu Hönne, Quitmannsturm, Stift Berentrop, Naturschutzgebiet Klef und Vaterland (Fahrrad) schon im Audioguide-Prompt; Bahnhof Fröndenberg und Bahnhof Menden sind weg.
+
 ## v0.21.0 – 06.11.2026 – Gegend: nur Themen des Ortes, kein Sport, neuer Audioguide-Prompt für Themen
 
 Wunsch Nutzer: Der Audioguide zu einem Thema (Test: Hönnetalbahn in Neuenrade) soll mehr Bezug zum Ort haben und interessante Einzelheiten behalten, aber keine Alltagsdetails; ein einfacher Prompt, der bei allem klappt. Sport als Thema weg. Keine Bahnhöfe anderer Städte (Fröndenberg, Menden) bei Neuenrade.

@@ -610,20 +610,20 @@ eq(core.iconFor('sonstiges', cfg), '', 'other: plain dot');
           if (/extracts/.test(a.get('prop') || '')) return J({ query: { pages: [{ title: 'Werdohl', extract: EX }] } });
           if (/pageviews/.test(a.get('prop') || '')) {
             // the reading numbers come in two portions (continuation), like the real API
-            if (!a.get('picontinue') && !a.get('pvipcontinue')) return J({ continue: { pvipcontinue: 'x' }, query: { pages: [{ title: 'Lenne (Ruhr)', length: 30000, pageprops: { wikibase_item: 'Q1' }, pageviews: { '2026-01-01': 30 } }, { title: 'Altena', length: 50000, pageprops: { wikibase_item: 'Q3' }, pageviews: { '2026-01-01': 60 } }] } });
+            if (!a.get('picontinue') && !a.get('pvipcontinue')) return J({ continue: { pvipcontinue: 'x' }, query: { pages: [{ title: 'Lenne (Ruhr)', length: 30000, pageprops: { wikibase_item: 'Q1' }, pageviews: { '2026-01-01': 30 } }, { title: 'Altena', length: 50000, pageprops: { wikibase_item: 'Q3' }, pageviews: { '2026-01-01': 60 } }, { title: 'Flugplatz Werdohl-Küntrop', length: 8000, pageprops: { wikibase_item: 'Q11' }, pageviews: { '2026-01-01': 6 } }] } });
             return J({ query: { pages: [{ title: 'Lenne (Ruhr)', pageviews: { '2026-01-02': 90 } }, { title: 'Altena', pageviews: { '2026-01-02': 10 } }] } });
           }
         }
         if (u.hostname === 'www.wikidata.org') {
-          if (a.get('props') === 'claims') return J({ entities: { Q1: { claims: { P31: [{ mainsnak: { datavalue: { value: { id: 'C1' } } } }] } }, Q3: { claims: { P31: [{ mainsnak: { datavalue: { value: { id: 'C2' } } } }] } } } });
-          if (a.get('props') === 'labels') return J({ entities: { C1: { labels: { de: { value: 'Fluss' } } }, C2: { labels: { en: { value: 'Stadt in Deutschland' } } } } });
+          if (a.get('props') === 'claims') return J({ entities: { Q11: { claims: { P31: [{ mainsnak: { datavalue: { value: { id: 'C11' } } } }] } }, Q1: { claims: { P31: [{ mainsnak: { datavalue: { value: { id: 'C1' } } } }] } }, Q3: { claims: { P31: [{ mainsnak: { datavalue: { value: { id: 'C2' } } } }] } } } });
+          if (a.get('props') === 'labels') return J({ entities: { C11: { labels: { de: { value: 'Flugplatz' } } }, C1: { labels: { de: { value: 'Fluss' } } }, C2: { labels: { en: { value: 'Stadt in Deutschland' } } } } });
         }
         return { ok: false, status: 404, json: async () => ({}) };
       };
       const steps = [];
       const gl = await core.loadGegend('Werdohl', 'de', f, cfg, (s) => steps.push(s));
-      ok(gl.title === 'Werdohl' && gl.groups.length === 1 && gl.groups[0].items[0].title === 'Lenne (Ruhr)' && gl.groups[0].items[0].views === 2 && gl.sections.length === 3 && gl.mentioned.length === 1 &&
-        !JSON.stringify(gl).includes('Nur hin') && !JSON.stringify(gl).includes('Fremd') && steps.length >= 3 && gl.url === 'https://de.wikipedia.org/wiki/Werdohl', 'v0.20.0 loadGegend: links in both directions only, reading numbers over two portions (120/60 = 2 a day), steps: ' + JSON.stringify(gl).slice(0, 200) + ' | ' + steps.join(' / '));
+      ok(gl.title === 'Werdohl' && gl.groups.length === 2 && gl.groups[0].items[0].title === 'Lenne (Ruhr)' && gl.groups[0].items[0].views === 2 && gl.groups[1].items[0].title === 'Flugplatz Werdohl-Küntrop' && gl.sections.length === 3 && gl.mentioned.length === 0 &&
+        !JSON.stringify(gl).includes('Nur hin') && !JSON.stringify(gl).includes('Fremd') && steps.length >= 3 && gl.url === 'https://de.wikipedia.org/wiki/Werdohl', 'v0.20.0/v0.21.1 loadGegend: links in both directions plus search hits with the town name in the title (the railway), reading numbers over two portions (120/60 = 2 a day), steps: ' + JSON.stringify(gl).slice(0, 200) + ' | ' + steps.join(' / '));
       ok((await core.wikiTitleFor('Q5575', ['fr', 'de', 'en'], async () => ({ ok: true, status: 200, json: async () => ({ entities: { Q5575: { sitelinks: { dewiki: { title: 'Werdohl' }, enwiki: { title: 'Werdohl' } } } } }) }))).lang === 'de', 'v0.20.0 article language: the first available of the list');
       const sh = await core.searchTopics('Reformation Neuenrade', 'de', async () => ({ ok: true, status: 200, json: async () => ({ query: { search: [{ title: 'Geschichte Westfalens', sectiontitle: 'Reformation und Gegenreformation', wordcount: 12584, snippet: 'in <span class="searchmatch">Neuenrade</span>, Plettenberg' }] } }) }), cfg);
       ok(sh[0].section === 'Reformation und Gegenreformation' && sh[0].snippet === 'in Neuenrade, Plettenberg', 'v0.20.0 topic search: hit with section and clean snippet');
