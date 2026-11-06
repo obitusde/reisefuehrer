@@ -1,5 +1,5 @@
 /*
- * Reiseführer – core logic (v0.20.0)
+ * Reiseführer – core logic (v0.21.0)
  * Shared by the app (index.html), the diagnostics page (diag.html) and Node tests.
  * No DOM access here. Network access only through the injected fetch function.
  */
@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var CORE_VERSION = '0.20.0';
+  var CORE_VERSION = '0.21.0';
 
   // ---------------------------------------------------------------- helpers
 
@@ -1122,7 +1122,7 @@
       prop: 'extracts|pageimages', explaintext: 1, exsectionformat: 'wiki',
       piprop: 'thumbnail', pithumbsize: 640, titles: a.title
     };
-    if (level === 'kurz' && !p.abschnitt) params.exintro = 1; // a section of an article needs the whole text (v0.20.0)
+    if (level === 'kurz' && !p.abschnitt) params.exintro = 1; // a section of an article needs the whole text (v0.21.0)
     var url = 'https://' + a.lang + '.wikipedia.org/w/api.php?' + qs(params);
     return getJsonRetry(url, f, retryDelays).then(function (d) {
       var pg = (d.query && d.query.pages && d.query.pages[0]) || {};
@@ -1152,10 +1152,10 @@
     var level = o.level || 'kurz';
     var art = o.article;
     var name = p.name + (p.name2 ? ' (deutsch: ' + p.name2 + ')' : '') + (p.ort && p.name.indexOf(p.ort) < 0 ? ', ' + p.ort : '');
-    var tpl = (p.thema && cfg.gegend && cfg.gegend.vorlage) || e.vorlage; // v0.20.0: topics of the area have their own template
+    var tpl = (p.thema && cfg.gegend && cfg.gegend.vorlage) || e.vorlage; // v0.21.0: topics of the area have their own template
     if (p.thema) name = p.name + (p.abschnitt ? ', Abschnitt „' + p.abschnitt + '“' : '');
     var vars = {
-      name: name, ort: p.ort || '', abschnitt: p.abschnitt || '',
+      name: name, ort: p.ort || '', abschnitt: p.abschnitt || '', ortbezug: p.ortbezug || '',
       lat: p.lat != null ? p.lat.toFixed(5) : '', lon: p.lon != null ? p.lon.toFixed(5) : '',
       entfernung: o.distance != null ? ', etwa ' + formatDistance(o.distance) + ' von mir entfernt' : '',
       typ: p.typ_label || 'Sehenswürdigkeit',
@@ -1179,7 +1179,7 @@
       return tpl.map(function (line) {
         return line.replace(/\{(\w+)\}/g, function (m, k) { return vars[k] != null ? vars[k] : ''; });
       }).filter(function (line) {
-        return !(/^Reisetipp/.test(line) && !vars.wikivoyage); // drop the Wikivoyage line when empty
+        return !(/^Reisetipp/.test(line) && !vars.wikivoyage) && !(/^Was Wikipedia im Artikel/.test(line) && !vars.ortbezug); // drop lines without content
       }).join('\n').replace(/\n{3,}/g, '\n\n');
     }
     var max = e.max_zeichen || 12000;
@@ -1211,7 +1211,7 @@
     return { text: text, length: text.length, truncated: false };
   }
 
-  /** v0.20.0: link to the Google AI search with the short review prompt (Google answers, the app reads nothing). */
+  /** v0.21.0: link to the Google AI search with the short review prompt (Google answers, the app reads nothing). */
   function reviewGoogleUrl(p, loc, cfg) {
     var g = cfg.google || {};
     return 'https://www.google.com/search?hl=' + encodeURIComponent(g.sprache || 'de') + (g.ki_param ? '&' + g.ki_param : '') +
@@ -1220,7 +1220,7 @@
 
   function claudeNewUrl(prompt) { return 'claude://claude.ai/new?q=' + encodeURIComponent(prompt); }
 
-  // ---------------------------------------------- "Gegend": topics of a place from its Wikipedia article (v0.20.0)
+  // ---------------------------------------------- "Gegend": topics of a place from its Wikipedia article (v0.21.0)
   // No curated list: the sections of the town article, the articles that the town article links to AND that link back (local things),
   // their kind from Wikidata (P31, labels in German whatever the article language) and their reading numbers give the groups.
   // Administration, politics, districts and settlements are left out; people come last. Everything is configured in config.json → gegend.
@@ -1253,6 +1253,26 @@
     return out.join('\n');
   }
   function reOf(s) { try { return new RegExp(s, 'i'); } catch (e) { return null; } }
+  /** Sentences of the town article (plain text) that name the topic, with their section: "[Verkehr] In Neuenrade endet die Strecke …" ('' if none). */
+  function topicContext(extract, title) {
+    var base = String(title || '').replace(/\s*\([^)]*\)\s*$/, ''), words = base.split(/\s+/), keys = [base];
+    if (words.length > 1) keys.push(words.slice(1).join(' ')); // "Bahnstrecke Menden–Neuenrade" → "Menden–Neuenrade"
+    var res = keys.filter(function (k) { return k.length >= 5; }).map(function (k) {
+      try { return new RegExp('(?<![\\p{L}])' + k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\p{L}])', 'iu'); } catch (e) { return null; }
+    }).filter(Boolean);
+    if (!res.length) return '';
+    var out = [], section = '';
+    String(extract || '').split('\n').forEach(function (line) {
+      var h = line.match(/^\s*(=+)\s*(.*?)\s*\1\s*$/);
+      if (h) { section = h[2]; return; }
+      if (out.length >= 2 || !line.trim()) return;
+      var hit = function (s) { return res.some(function (r) { return r.test(s); }); };
+      if (!hit(line)) return;
+      var sents = line.split(/(?<=[.!?])\s+(?=[A-ZÄÖÜ„"])/), i = sents.findIndex(hit);
+      out.push((section ? '[' + section + '] ' : '') + sents.slice(Math.max(i, 0), Math.max(i, 0) + 2).join(' ').slice(0, 420));
+    });
+    return out.join(' / ');
+  }
 
   /**
    * data: {title, lang, extract, both: [titles], info: {title: {len, views, q}}, p31: {Q: [classId]}, clsLabel: {classId: label}, hits: [{title, wordcount, sectiontitle}]}
@@ -1269,11 +1289,14 @@
     var excl = reOf(g.ausschluss_klassen || '^$'), person = reOf(g.person_klasse || '^Mensch$');
     var groups = (g.gruppen || []).map(function (x) { return { id: x.id, label: x.label, re: reOf(x.klassen), items: [] }; });
     var people = [], more = [];
+    var maxM = (g.max_km || 8) * 1000, ctr = data.center;
     Object.keys(data.info || {}).forEach(function (t) {
       var x = data.info[t], labels = (data.p31[x.q] || []).map(function (c) { return data.clsLabel[c] || ''; }), lab = labels.join(' / ');
       var item = { title: x.title || t, lab: lab, views: x.views || 0, len: x.len || 0, score: Math.log10(1 + (x.views || 0)) * 2 + Math.log10(1 + (x.len || 0) / 1000) };
       if (labels.some(function (l) { return person.test(l); })) { people.push(item); return; }
       var grp = groups.filter(function (gr) { return gr.re && labels.some(function (l) { return gr.re.test(l); }); })[0];
+      // far from the place (a station of the next town): not a topic of this place; nature (rivers have their coordinates anywhere) stays
+      if (ctr && x.lat != null && !(grp && grp.id === 'natur') && haversine(ctr.lat, ctr.lon, x.lat, x.lon) > maxM) return;
       if (grp) grp.items.push(item);
       else if (!(excl && excl.test(lab)) && lab) more.push(item);
     });
@@ -1315,12 +1338,13 @@
     function info(titles) { // reading numbers need continuation: the API hands them out in portions
       var acc = {};
       function req(cont) {
-        return wp(Object.assign({ action: 'query', prop: 'info|pageprops|pageviews', ppprop: 'wikibase_item', pvipdays: 60, redirects: 1, titles: titles.join('|') }, cont || {})).then(function (d) {
+        return wp(Object.assign({ action: 'query', prop: 'info|pageprops|pageviews|coordinates', ppprop: 'wikibase_item', pvipdays: 60, coprimary: 'primary', colimit: 'max', redirects: 1, titles: titles.join('|') }, cont || {})).then(function (d) {
           (d.query.pages || []).forEach(function (p) {
             if (p.missing) return;
             var a = acc[p.title] = acc[p.title] || { title: p.title, len: 0, views: 0, q: '', pv: {} };
             if (p.length) a.len = p.length;
             if (p.pageprops && p.pageprops.wikibase_item) a.q = p.pageprops.wikibase_item;
+            if (p.coordinates && p.coordinates[0]) { a.lat = p.coordinates[0].lat; a.lon = p.coordinates[0].lon; }
             Object.keys(p.pageviews || {}).forEach(function (k) { a.pv[k] = p.pageviews[k] || 0; });
           });
           return d.continue ? req(d.continue) : acc;
@@ -1329,10 +1353,11 @@
       return req();
     }
     step('Lade den Ortsartikel …');
-    return wp({ action: 'query', prop: 'extracts|pageprops', explaintext: 1, exsectionformat: 'wiki', redirects: 1, titles: title }).then(function (d) {
+    return wp({ action: 'query', prop: 'extracts|pageprops|coordinates', coprimary: 'primary', colimit: 1, explaintext: 1, exsectionformat: 'wiki', redirects: 1, titles: title }).then(function (d) {
       var pg = (d.query.pages || [])[0] || {};
       if (pg.missing || !pg.extract) throw new Error('Kein Artikel „' + title + '“ (' + lang + ')');
       data.title = pg.title; data.extract = pg.extract;
+      if (pg.coordinates && pg.coordinates[0]) data.center = { lat: pg.coordinates[0].lat, lon: pg.coordinates[0].lon };
       title = pg.title;
       step('Lade Verweise …');
       return Promise.all([pages('links', 'pl', null, []), back(null, []), wp({ action: 'query', list: 'search', srsearch: '"' + title + '"', srlimit: 30, srnamespace: 0, srprop: 'wordcount' })]);
@@ -1349,7 +1374,7 @@
         Object.keys(acc).forEach(function (t) {
           var a = acc[t], n = 0;
           Object.keys(a.pv).forEach(function (k) { n += a.pv[k]; });
-          data.info[t] = { title: a.title, len: a.len, views: Math.round(n / 60 * 10) / 10, q: a.q };
+          data.info[t] = { title: a.title, len: a.len, views: Math.round(n / 60 * 10) / 10, q: a.q, lat: a.lat, lon: a.lon };
         });
       });
       var qs2 = Object.keys(data.info).map(function (t) { return data.info[t].q; }).filter(Boolean), jobs = [];
@@ -1374,6 +1399,9 @@
       }));
     }).then(function () {
       var res = gegendTopics(data, cfg);
+      // what the town article says about each topic goes into its Audioguide prompt
+      res.groups.forEach(function (gr) { gr.items.forEach(function (i) { i.ctx = topicContext(data.extract, i.title) || undefined; }); });
+      res.more.concat(res.people).forEach(function (i) { i.ctx = topicContext(data.extract, i.title) || undefined; });
       res.title = data.title; res.lang = lang; res.extractLen = data.extract.length; res.q = '';
       res.url = 'https://' + lang + '.wikipedia.org/wiki/' + encodeURIComponent(data.title.replace(/ /g, '_'));
       return res;
@@ -2258,7 +2286,7 @@
     });
     // the same place twice (building and collection, "Musée Ariana" in two items): keep the better one
     sights.sort(function (a, b) { return b.score - a.score; });
-    var seen = {}, uniq = [], twinGrid = {}, TC = 0.002; // twinGrid: cells of 0.002° (about 140 m or more), so that the near-twin check looks at 9 cells, not at all sights (v0.20.0: was quadratic)
+    var seen = {}, uniq = [], twinGrid = {}, TC = 0.002; // twinGrid: cells of 0.002° (about 140 m or more), so that the near-twin check looks at 9 cells, not at all sights (v0.21.0: was quadratic)
     sights.forEach(function (s) {
       var k = sameNameKey(s.x.name), dup = (seen[k] || []).filter(function (o) { return haversine(o.x.lat, o.x.lon, s.x.lat, s.x.lon) < (v.doppelt_m || 500); })[0];
       var ci = Math.floor(s.x.lat / TC), cj = Math.floor(s.x.lon / TC);
@@ -2505,6 +2533,6 @@
     tripadvisorUrl: tripadvisorUrl, merkZeile: merkZeile,
     iconFor: iconFor, cityTiles: cityTiles, tileKey: tileKey, splitTile: splitTile, citySparql: citySparql, parseCityRows: parseCityRows,
     loadCityTiles: loadCityTiles, isCityItem: isCityItem, cityRadius: cityRadius, sightScore: sightScore,
-    profileDelta: profileDelta, sectionList: sectionList, sectionRaw: sectionRaw, gegendTopics: gegendTopics, loadGegend: loadGegend, searchTopics: searchTopics, wikiTitleFor: wikiTitleFor, applyViewpoints: applyViewpoints, computeCities: computeCities, loadPageviews: loadPageviews, loadSitelinks: loadSitelinks, directoryCandidates: directoryCandidates, computeDirectory: computeDirectory, lineDistance: lineDistance, routePlan: routePlan, lineLength: lineLength, corridorWidths: corridorWidths, corridorTiles: corridorTiles, corridorPick: corridorPick, directoryConfig: directoryConfig, prepareDirectoryTile: prepareDirectoryTile, directoryTiles: directoryTiles, cityStars: cityStars, ortStars: ortStars, loadCountryCities: loadCountryCities, bboxOf: bboxOf, cityWikiUrl: cityWikiUrl
+    profileDelta: profileDelta, sectionList: sectionList, sectionRaw: sectionRaw, topicContext: topicContext, gegendTopics: gegendTopics, loadGegend: loadGegend, searchTopics: searchTopics, wikiTitleFor: wikiTitleFor, applyViewpoints: applyViewpoints, computeCities: computeCities, loadPageviews: loadPageviews, loadSitelinks: loadSitelinks, directoryCandidates: directoryCandidates, computeDirectory: computeDirectory, lineDistance: lineDistance, routePlan: routePlan, lineLength: lineLength, corridorWidths: corridorWidths, corridorTiles: corridorTiles, corridorPick: corridorPick, directoryConfig: directoryConfig, prepareDirectoryTile: prepareDirectoryTile, directoryTiles: directoryTiles, cityStars: cityStars, ortStars: ortStars, loadCountryCities: loadCountryCities, bboxOf: bboxOf, cityWikiUrl: cityWikiUrl
   };
 });

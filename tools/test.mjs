@@ -586,6 +586,18 @@ eq(core.iconFor('sonstiges', cfg), '', 'other: plain dot');
       ok(!allT.includes('Altena') && !allT.includes('Eveking') && !allT.includes('Tibet (Band)') && !allT.includes('Radio X'), 'v0.20.0 towns, districts, bands and radio stations are left out');
       ok(gt.more.map((i) => i.title).join() === 'Saline' && gt.people.map((i) => i.title).join() === 'Alfred Colsman', 'v0.20.0 unsorted things under "more", people separate');
       eq(gt.mentioned.map((h) => h.title).join(), 'Flugplatz Werdohl-Küntrop', 'v0.20.0 "mentioned in": not the town itself, no lists, nothing already listed');
+      // v0.21.0: far away things are no topics of this place (stations of the next town), sport is no topic, the town article's sentences go into the prompt
+      const data2 = { lang: 'de', title: 'Neuenrade', extract: EX, center: { lat: 51.2851, lon: 7.7835 },
+        info: { 'Bahnhof Neuenrade': { title: 'Bahnhof Neuenrade', len: 5000, views: 3, q: 'Q21', lat: 51.2845, lon: 7.784 }, 'Bahnhof Fröndenberg': { title: 'Bahnhof Fröndenberg', len: 8000, views: 2.5, q: 'Q22', lat: 51.4693, lon: 7.7627 },
+          'Hönne': { title: 'Hönne', len: 11000, views: 4, q: 'Q23', lat: 51.46, lon: 7.77 }, 'TuS Neuenrade': { title: 'TuS Neuenrade', len: 4000, views: 1, q: 'Q24', lat: 51.28, lon: 7.78 } },
+        p31: { Q21: ['C21'], Q22: ['C21'], Q23: ['C23'], Q24: ['C24'] }, clsLabel: { C21: 'Bahnhof', C23: 'Fluss', C24: 'Sportverein' }, hits: [] };
+      const g2 = core.gegendTopics(data2, cfg), t2 = [].concat(...g2.groups.map((g) => g.items.map((i) => i.title)), g2.more.map((i) => i.title));
+      ok(t2.includes('Bahnhof Neuenrade') && !t2.includes('Bahnhof Fröndenberg') && t2.includes('Hönne') && !t2.includes('TuS Neuenrade') && !g2.groups.some((g) => g.id === 'sport'), 'v0.21.0 station 20 km away left out, river kept although its coordinate is far, sport club left out: ' + t2.join(', '));
+      const TX = 'Neuenrade ist eine Stadt.\n\n== Verkehr ==\nIn Neuenrade endet die Eisenbahnstrecke Menden–Neuenrade, auf der die Hönnetal-Bahn verkehrt. Im Stadtgebiet liegt der Haltepunkt „Küntrop“.\nDas Wasser wird versetzt.\n\n== Natur ==\nDie Hönne entspringt am Attig. Sie fließt nach Norden.';
+      ok(core.topicContext(TX, 'Bahnstrecke Menden–Neuenrade').startsWith('[Verkehr] In Neuenrade endet die Eisenbahnstrecke Menden–Neuenrade') && core.topicContext(TX, 'Hönne').includes('[Natur] Die Hönne entspringt am Attig.') && core.topicContext(TX, 'Verse') === '' && core.topicContext(TX, 'Gibt es nicht') === '',
+        'v0.21.0 sentences of the town article about the topic (whole words only): ' + core.topicContext(TX, 'Bahnstrecke Menden–Neuenrade').slice(0, 90));
+      const pt = core.buildPrompt({ id: 'g', name: 'Bahnstrecke Menden–Neuenrade', ort: 'Neuenrade', typ_label: 'Eisenbahnstrecke', thema: true, lat: 51.28, lon: 7.78, ortbezug: '[Verkehr] In Neuenrade endet die Strecke.' }, { level: 'kurz', article: { lang: 'de', intro: 'Quelltext.', text: 'Quelltext.', url: 'u' }, schwerpunkt: '' }, cfg);
+      ok(pt.text.includes('Was Wikipedia im Artikel über Neuenrade dazu sagt: [Verkehr] In Neuenrade endet die Strecke.') && pt.text.includes('Worauf es mir ankommt') && pt.text.includes('Ergänze aus dem Internet nur, was du dort wirklich findest') && pt.text.length < 3200, 'v0.21.0 final topic prompt: short, town article sentences inside (' + pt.text.length + ' characters)');
       // the whole loading with a fake Wikipedia/Wikidata
       const log = [];
       const f = async (url) => {
@@ -616,7 +628,7 @@ eq(core.iconFor('sonstiges', cfg), '', 'other: plain dot');
       const sh = await core.searchTopics('Reformation Neuenrade', 'de', async () => ({ ok: true, status: 200, json: async () => ({ query: { search: [{ title: 'Geschichte Westfalens', sectiontitle: 'Reformation und Gegenreformation', wordcount: 12584, snippet: 'in <span class="searchmatch">Neuenrade</span>, Plettenberg' }] } }) }), cfg);
       ok(sh[0].section === 'Reformation und Gegenreformation' && sh[0].snippet === 'in Neuenrade, Plettenberg', 'v0.20.0 topic search: hit with section and clean snippet');
       const tp = core.buildPrompt({ id: 'gt', name: 'Geschichte', abschnitt: 'Neuzeit', ort: 'Werdohl', typ_label: 'Thema', thema: true, lat: 51.26, lon: 7.77 }, { level: 'kurz', article: { lang: 'de', intro: 'Quelltext Neuzeit.', text: 'Quelltext Neuzeit.', url: 'https://de.wikipedia.org/wiki/Werdohl' }, schwerpunkt: '' }, cfg);
-      ok(tp.text.includes('Thema: Geschichte, Abschnitt „Neuzeit“') && tp.text.includes('Gegend: Werdohl') && tp.text.includes('Quelltext Neuzeit.') && !tp.text.includes('Wo:') && !tp.text.includes('von außen'), 'v0.20.0 prompt of a topic: own template: ' + tp.text.slice(0, 160).replace(/\n/g, ' / '));
+      ok(tp.text.includes('Thema: Geschichte, Abschnitt „Neuzeit“') && tp.text.includes('Ort, in dem ich bin: Werdohl') && tp.text.includes('Quelltext Neuzeit.') && !tp.text.includes('Wo:') && !tp.text.includes('von außen') && !tp.text.includes('Was Wikipedia im Artikel'), 'v0.20.0 prompt of a topic: own template, no empty town-article line: ' + tp.text.slice(0, 160).replace(/\n/g, ' / '));
     }
     // v0.19.1: no quadratic work (25 000 items took 32 s with the near-twin check, now well below a second)
     const big = [];

@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.21.0 – 06.11.2026 – Gegend: nur Themen des Ortes, kein Sport, neuer Audioguide-Prompt für Themen
+
+Wunsch Nutzer: Der Audioguide zu einem Thema (Test: Hönnetalbahn in Neuenrade) soll mehr Bezug zum Ort haben und interessante Einzelheiten behalten, aber keine Alltagsdetails; ein einfacher Prompt, der bei allem klappt. Sport als Thema weg. Keine Bahnhöfe anderer Städte (Fröndenberg, Menden) bei Neuenrade.
+
+- **Neuer Prompt für Themen** (`config.json` → `gegend.vorlage`, ein Testlauf auf GitHub mit dem echten Artikel hat ihn vorbereitet: `tools/prompt-labor/`): Er sagt der KI die Absicht („ich höre unterwegs zu und will verstehen, was das mit {Ort} und der Gegend zu tun hat“) und was zählt: konkrete Einzelheiten (Ereignisse, Zahlen, Namen, Geschichten) mit Bezug zum Ort; weglassen: Alltagsdetails (Ausstattung, Fahrpläne, Wetter, Stimmung) und Allgemeines ohne Bezug zur Gegend (höchstens zwei Sätze). Gibt es keinen Bezug, sagt sie das in einem Satz. **Quellen**: Der Wikipedia-Text ist die Hauptquelle; Ergänzungen aus dem Netz nur mit „laut …“ im Satz; Himmelsrichtungen, Entfernungen, Anzahlen und Sichtbares nur, wenn eine Quelle es sagt; nichts steigern, keine Schlüsse ohne Quelle, nicht „überraschend“ schreiben. Etwa 2 800 Zeichen statt 3 500.
+- **Der Ortsartikel liefert den Bezug mit**: Die Sätze des Ortsartikels, die das Thema nennen (ganze Wörter, z. B. „… endet die Eisenbahnstrecke Menden–Neuenrade, auf der die Hönnetal-Bahn …“), stehen mit ihrem Abschnitt im Prompt („Was Wikipedia im Artikel über Neuenrade dazu sagt: …“). Ohne Treffer entfällt die Zeile.
+- **Nur Themen dieses Ortes**: Was Koordinaten hat und mehr als 8 km vom Ort entfernt liegt (`gegend.max_km`), erscheint nicht mehr, z. B. Bahnhof Fröndenberg und Bahnhof Menden bei Neuenrade. Natur bleibt (Flüsse haben ihre Koordinate irgendwo).
+- **Kein Sport**: Gruppe „Sport und Vereine“ und Abschnitte „Sport“ fallen weg; Sportvereine und Stadien werden auch nicht unter „Weiteres“ gezeigt.
+
+### Gemessen und geprüft
+
+- Der Testlauf zeigte beim Vergleich mit dem vollen Wikipedia-Artikel: Der Audioguide-Text enthielt Angaben, die nicht im Artikel stehen („letzter Abschnitt Balve–Neuenrade“, „Elsetal“, „vier Tunnel“) und eine falsche Wegbeschreibung (Haltepunkt Küntrop „im Norden“, vom Bahnhof aus zu sehen; tatsächlich liegt Küntrop 2 km östlich). Die neuen Quellenregeln zielen darauf. Ob die KI sie einhält, hängt von der KI ab; ein vollständiger Test mit dem endgültigen Prompt (außer dem Quelltext) steht in `tools/prompt-labor/gegend-v4.json`.
+
+### Annahmen/Abweichungen
+
+- Die Entfernung stammt aus den Wikipedia-Koordinaten (nur Artikel mit Koordinaten); Linien, Firmen und Personen ohne Koordinaten bleiben, auch wenn sie woanders sitzen. 8 km sind ein Startwert.
+- Die Sätze aus dem Ortsartikel werden über den Namen des Themas gefunden; steht dort ein anderer Name (z. B. „Hönnetal-Bahn“ für „Bahnstrecke Menden–Neuenrade“), nimmt die App den hinteren Teil des Titels („Menden–Neuenrade“) als zweiten Suchbegriff. Gelingt das nicht, fehlt die Zeile, der Prompt funktioniert trotzdem.
+- Bereits gemerkte Themenlisten (7 Tage Zwischenspeicher) haben noch Sport und weit entfernte Bahnhöfe und keine Ortsartikel-Sätze; „Aktualisieren“ in der Gegend lädt neu.
+
 ## v0.20.0 – 06.11.2026 – „📖 Gegend“: Themen zum Ort aus Wikipedia
 
 Wunsch Nutzer: Artikel zu dem, was auf der Karte nicht als Punkt steht (die Stadt selbst, ein Fluss wie die Lenne, ein Thema wie die Reformation in Neuenrade), mit Verweis auf die Wikipedia-Artikel in der besten Sprache und einem Audioguide dazu. Themensuche dabei. Ortsteile und Verwaltung nicht, Persönlichkeiten am Ende.

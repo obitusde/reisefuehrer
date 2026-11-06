@@ -1,8 +1,8 @@
-/* Reiseführer – app (v0.20.0). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.21.0). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.20.0';
+  var VERSION = '0.21.0';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
@@ -1235,11 +1235,11 @@
       html += '<h4>Der Ort</h4><ul class="gg-list">' + gegRow({ title: r.title }, 'Der ganze Artikel') + '</ul>';
       if (r.sections.length) html += '<h4>Aus dem Ortsartikel</h4><ul class="gg-list">' + r.sections.map(function (s) { return gegRow({ title: r.title, abschnitt: s.name, show: s.name }, 'Abschnitt · ' + gegSize(s.size)); }).join('') + '</ul>';
       r.groups.forEach(function (g) {
-        html += '<h4>' + esc(g.label) + '</h4><ul class="gg-list">' + g.items.map(function (i) { return gegRow({ title: i.title, lab: String(i.lab).split(' / ')[0] }, [String(i.lab).split(' / ')[0], gegSize(i.len)].filter(Boolean).join(' · ')); }).join('') + '</ul>';
+        html += '<h4>' + esc(g.label) + '</h4><ul class="gg-list">' + g.items.map(function (i) { return gegRow({ title: i.title, lab: String(i.lab).split(' / ')[0], ctx: i.ctx }, [String(i.lab).split(' / ')[0], gegSize(i.len)].filter(Boolean).join(' · ')); }).join('') + '</ul>';
       });
-      if (r.more.length) html += '<details class="why"><summary>Weiteres (' + r.more.length + ')</summary><ul class="gg-list">' + r.more.map(function (i) { return gegRow({ title: i.title, lab: String(i.lab).split(' / ')[0] }, String(i.lab).split(' / ')[0]); }).join('') + '</ul></details>';
+      if (r.more.length) html += '<details class="why"><summary>Weiteres (' + r.more.length + ')</summary><ul class="gg-list">' + r.more.map(function (i) { return gegRow({ title: i.title, lab: String(i.lab).split(' / ')[0], ctx: i.ctx }, String(i.lab).split(' / ')[0]); }).join('') + '</ul></details>';
       if (r.mentioned.length) html += '<h4>Erwähnt in</h4><ul class="gg-list">' + r.mentioned.map(function (i) { return gegRow({ title: i.title }, i.wordcount + ' Wörter'); }).join('') + '</ul>';
-      if (r.people.length) html += '<h4>Persönlichkeiten</h4><ul class="gg-list">' + r.people.map(function (i) { return gegRow({ title: i.title, lab: 'Person' }, 'Person'); }).join('') + '</ul>';
+      if (r.people.length) html += '<h4>Persönlichkeiten</h4><ul class="gg-list">' + r.people.map(function (i) { return gegRow({ title: i.title, lab: 'Person', ctx: i.ctx }, 'Person'); }).join('') + '</ul>';
       html += '<p class="small">Stand ' + esc(dateText(GEG.stand)) + ' · die Liste entsteht aus dem Ortsartikel und seinen Verweisen (ohne Ortsteile und Verwaltung). <button class="btn small" type="button" data-a="ggreload">Aktualisieren</button></p>';
     }
     var title = 'Gegend: ' + pl.name;
@@ -1261,7 +1261,7 @@
     var pl = GEG.place, id = 'gt:' + GEG.lang + ':' + t.title + (t.abschnitt ? '#' + t.abschnitt : '');
     var p = DIR.places[id] || (DIR.places[id] = {
       id: id, name: t.title, abschnitt: t.abschnitt || '', ort: pl.name, lat: pl.lat, lon: pl.lon, thema: true, sterne: 0, quellen: [],
-      typ_label: t.lab || (t.abschnitt ? 'Abschnitt' : 'Thema'), wikipedia: GEG.lang + ':' + t.title
+      typ_label: t.lab || (t.abschnitt ? 'Abschnitt' : 'Thema'), wikipedia: GEG.lang + ':' + t.title, ortbezug: t.ctx || ''
     });
     openPlace(p);
   }

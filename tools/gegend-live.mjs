@@ -15,6 +15,7 @@ const r = await core.loadGegend(ORT, L, f, cfg, (s) => console.log('  … ' + s)
 console.log('Dauer ' + ((Date.now() - t0) / 1000).toFixed(1) + ' s; Artikel ' + r.title + ' (' + r.lang + '), ' + r.extractLen + ' Zeichen');
 console.log('Abschnitte: ' + r.sections.map((s) => s.name + ' (' + s.size + ')').join(' | '));
 r.groups.forEach((g) => console.log(g.label + ': ' + g.items.map((i) => i.title + ' [' + String(i.lab).split(' / ')[0] + '; ' + i.views + '/Tag; ' + Math.round(i.len / 1000) + ' kB]').join(' | ')));
+r.groups.forEach((g) => g.items.filter((i) => i.ctx).forEach((i) => console.log('  Bezug im Ortsartikel zu „' + i.title + '“: ' + i.ctx.slice(0, 260))));
 console.log('Weiteres: ' + r.more.map((i) => i.title + ' [' + String(i.lab).split(' / ')[0] + ']').join(' | '));
 console.log('Erwähnt in: ' + r.mentioned.map((i) => i.title + ' (' + i.wordcount + ')').join(' | '));
 console.log('Persönlichkeiten: ' + r.people.map((i) => i.title + ' [' + i.views + '/Tag]').join(' | '));
