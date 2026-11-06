@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.21.2 – 06.11.2026 – Gegend: alte Listen verwerfen, Überschriften sichtbar von Einträgen getrennt
+
+Meldung Nutzer (Bild vom Handy): In „Gegend: Neuenrade“ standen noch „Bahnhof Fröndenberg“, „Bahnhof Menden“ und der Sport, und „Verkehr und Technik“ sah aus wie ein Eintrag.
+
+- **Alte Listen**: Die Themenliste eines Ortes bleibt 7 Tage im Handy. Das Handy hatte noch die Liste aus v0.20.0 (mit Sport und weit entfernten Bahnhöfen) gespeichert und zeigte sie weiter. Jetzt merkt sich die Liste die App-Version; eine Liste aus einer anderen Version wird nicht benutzt, sondern neu geladen (etwa 3 Sekunden). Nach jedem Update werden die Listen also einmal neu gebaut, danach gelten wieder 7 Tage.
+- **Überschriften** („Verkehr und Technik“, „Der Ort“ usw.): kleine Großbuchstaben in der Akzentfarbe auf einem getönten Streifen, mehr Abstand davor. Einträge darunter in normaler Schrift (größer, nicht fett). So sehen Überschriften nicht mehr wie Einträge aus.
+- Der Sport bleibt ausgeschlossen (Gruppe, Abschnitt „Sport“, Vereine und Stadien auch unter „Weiteres“); er war nur noch in der alten gespeicherten Liste.
+
 ## v0.21.1 – 06.11.2026 – Gegend: die Strecke selbst kommt in „Verkehr und Technik“
 
 Beim Live-Test in Neuenrade (v0.21.0) waren die Bahnhöfe anderer Städte und der Sport weg, aber auch die Bahnstrecke selbst („Bahnstrecke Menden–Neuenrade“) stand nicht in „Verkehr und Technik“, sondern nur unter „Erwähnt in“. Der Ortsartikel verlinkt sie unter dem Namen „Hönnetalbahn“ (eine Weiterleitung), deshalb fand der Test „verlinkt hin und zurück“ sie nicht.

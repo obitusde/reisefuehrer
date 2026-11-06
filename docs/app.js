@@ -1,8 +1,8 @@
-/* Reiseführer – app (v0.21.1). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.21.2). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.21.1';
+  var VERSION = '0.21.2';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
@@ -1192,13 +1192,14 @@
       if (GEG.place !== pl) return null;
       var key = t.lang + ':' + t.title, hit = gegCache()[key], ttl = ((cfg.gegend && cfg.gegend.cache_tage) || 7) * 864e5;
       GEG.lang = t.lang; GEG.title = t.title;
-      if (!force && hit && Date.now() - hit.t < ttl) { GEG.res = hit.res; GEG.stand = hit.t; GEG.busy = ''; gegRender(); return null; }
+      // a list made by an older version (other rules, e.g. sport, far stations) is not used
+      if (!force && hit && hit.app === VERSION && Date.now() - hit.t < ttl) { GEG.res = hit.res; GEG.stand = hit.t; GEG.busy = ''; gegRender(); return null; }
       GEG.busy = 'Lade Themen …'; gegRender();
       return C.loadGegend(t.title, t.lang, gegFetch, cfg, function (s) { if (GEG.place === pl) { GEG.busy = s; gegRender(); } }).then(function (res) {
         if (GEG.place !== pl) return;
         var c = gegCache(), ks = Object.keys(c);
         if (ks.length >= 15) { ks.sort(function (a, b) { return c[a].t - c[b].t; }); delete c[ks[0]]; }
-        c[key] = { t: Date.now(), res: res }; LS.set('rf.gegend', c);
+        c[key] = { t: Date.now(), app: VERSION, res: res }; LS.set('rf.gegend', c);
         GEG.res = res; GEG.stand = Date.now(); GEG.busy = ''; gegRender();
       });
     }).catch(function (e) { if (GEG.place !== pl) return; GEG.busy = ''; GEG.err = (e && e.message) || 'Fehler'; gegRender(); });
@@ -1232,14 +1233,14 @@
     if (GEG.busy) html += '<p class="small">⏳ ' + esc(GEG.busy) + '</p>';
     if (GEG.err) html += '<p class="small gg-err">' + esc(GEG.err) + '</p><div class="actions"><button class="btn" type="button" data-a="ggretry">Nochmal versuchen</button></div>';
     if (r) {
-      html += '<h4>Der Ort</h4><ul class="gg-list">' + gegRow({ title: r.title }, 'Der ganze Artikel') + '</ul>';
-      if (r.sections.length) html += '<h4>Aus dem Ortsartikel</h4><ul class="gg-list">' + r.sections.map(function (s) { return gegRow({ title: r.title, abschnitt: s.name, show: s.name }, 'Abschnitt · ' + gegSize(s.size)); }).join('') + '</ul>';
+      html += '<h4 class="gg-h">Der Ort</h4><ul class="gg-list">' + gegRow({ title: r.title }, 'Der ganze Artikel') + '</ul>';
+      if (r.sections.length) html += '<h4 class="gg-h">Aus dem Ortsartikel</h4><ul class="gg-list">' + r.sections.map(function (s) { return gegRow({ title: r.title, abschnitt: s.name, show: s.name }, 'Abschnitt · ' + gegSize(s.size)); }).join('') + '</ul>';
       r.groups.forEach(function (g) {
-        html += '<h4>' + esc(g.label) + '</h4><ul class="gg-list">' + g.items.map(function (i) { return gegRow({ title: i.title, lab: String(i.lab).split(' / ')[0], ctx: i.ctx }, [String(i.lab).split(' / ')[0], gegSize(i.len)].filter(Boolean).join(' · ')); }).join('') + '</ul>';
+        html += '<h4 class="gg-h">' + esc(g.label) + '</h4><ul class="gg-list">' + g.items.map(function (i) { return gegRow({ title: i.title, lab: String(i.lab).split(' / ')[0], ctx: i.ctx }, [String(i.lab).split(' / ')[0], gegSize(i.len)].filter(Boolean).join(' · ')); }).join('') + '</ul>';
       });
-      if (r.more.length) html += '<details class="why"><summary>Weiteres (' + r.more.length + ')</summary><ul class="gg-list">' + r.more.map(function (i) { return gegRow({ title: i.title, lab: String(i.lab).split(' / ')[0], ctx: i.ctx }, String(i.lab).split(' / ')[0]); }).join('') + '</ul></details>';
-      if (r.mentioned.length) html += '<h4>Erwähnt in</h4><ul class="gg-list">' + r.mentioned.map(function (i) { return gegRow({ title: i.title }, i.wordcount + ' Wörter'); }).join('') + '</ul>';
-      if (r.people.length) html += '<h4>Persönlichkeiten</h4><ul class="gg-list">' + r.people.map(function (i) { return gegRow({ title: i.title, lab: 'Person', ctx: i.ctx }, 'Person'); }).join('') + '</ul>';
+      if (r.more.length) html += '<details class="why gg-more"><summary class="gg-h">Weiteres (' + r.more.length + ')</summary><ul class="gg-list">' + r.more.map(function (i) { return gegRow({ title: i.title, lab: String(i.lab).split(' / ')[0], ctx: i.ctx }, String(i.lab).split(' / ')[0]); }).join('') + '</ul></details>';
+      if (r.mentioned.length) html += '<h4 class="gg-h">Erwähnt in</h4><ul class="gg-list">' + r.mentioned.map(function (i) { return gegRow({ title: i.title }, i.wordcount + ' Wörter'); }).join('') + '</ul>';
+      if (r.people.length) html += '<h4 class="gg-h">Persönlichkeiten</h4><ul class="gg-list">' + r.people.map(function (i) { return gegRow({ title: i.title, lab: 'Person', ctx: i.ctx }, 'Person'); }).join('') + '</ul>';
       html += '<p class="small">Stand ' + esc(dateText(GEG.stand)) + ' · die Liste entsteht aus dem Ortsartikel und seinen Verweisen (ohne Ortsteile und Verwaltung). <button class="btn small" type="button" data-a="ggreload">Aktualisieren</button></p>';
     }
     var title = 'Gegend: ' + pl.name;

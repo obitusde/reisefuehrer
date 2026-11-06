@@ -171,7 +171,7 @@ try {
   if (process.env.DEBUG) { page.on('request', (r) => { if (/extracts|mymemory/.test(r.url())) console.log('REQ', decodeURIComponent(r.url()).slice(0, 160)); }); page.on('requestfailed', (r) => console.log('FAILED', r.url().slice(0, 120), r.failure() && r.failure().errorText)); page.on('console', (m) => console.log('CONSOLE', m.text())); }
   await page.goto(BASE + 'index.html');
   await page.waitForSelector('.empty');
-  ok((await page.textContent('#version')) === 'v0.21.1', 'footer version');
+  ok((await page.textContent('#version')) === 'v0.21.2', 'footer version');
   if (OUT) await page.screenshot({ path: OUT + '/01-start.png' });
 
   await menuClick(page, '#btnLocate');
@@ -480,10 +480,10 @@ try {
   ok(splitNow && +splitNow > 12, 'split persisted: ' + splitNow);
 
   // update banner (fake newer version, then ?testupdate=1)
-  fakeVersion = '0.21.2';
+  fakeVersion = '0.21.3';
   await page.reload();
   await page.waitForSelector('#banner:not([hidden])');
-  ok((await page.textContent('#bannerText')).includes('v0.21.2'), 'banner shows remote version');
+  ok((await page.textContent('#bannerText')).includes('v0.21.3'), 'banner shows remote version');
   if (OUT) await page.screenshot({ path: OUT + '/05-banner.png' });
   fakeVersion = null;
   await page.click('#bannerBtn');
@@ -616,9 +616,9 @@ try {
   const swOk = await p3.evaluate(() => navigator.serviceWorker.ready.then((r) => !!r.active)).catch(() => false);
   ok(swOk, 'service worker active');
   const cacheKeys = await p3.evaluate(async () => { await new Promise((r) => setTimeout(r, 800)); return caches.keys(); });
-  ok(cacheKeys.includes('rf-app-0.21.1'), 'app cache with version: ' + cacheKeys.join(','));
-  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.21.1')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
-  ok(cached.some((u) => u.includes('app.js?v=0.21.1')), 'shell precached');
+  ok(cacheKeys.includes('rf-app-0.21.2'), 'app cache with version: ' + cacheKeys.join(','));
+  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.21.2')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
+  ok(cached.some((u) => u.includes('app.js?v=0.21.2')), 'shell precached');
   ok(errs3.length === 0, 'sw: no JS errors ' + errs3.join(' | '));
   await ctx3.close();
 
@@ -960,6 +960,7 @@ try {
     const rows = await p20.$$eval('#sheetBody .gg-item b', (e) => e.map((x) => x.textContent));
     ok(/Gegend: Werdohl/.test(await p20.textContent('#sheetTitle')) && heads.join('|') === 'Der Ort|Aus dem Ortsartikel|Natur und Gewässer|Erwähnt in|Persönlichkeiten', 'v0.20.0 Gegend: groups, people last, no towns: ' + heads.join('|'));
     ok(rows.includes('Lenne (Ruhr)') && rows.includes('Neuzeit') && rows.includes('Bauwerke') && !rows.includes('Altena') && !rows.includes('Politik') && rows[rows.length - 1] === 'Alfred Colsman', 'v0.20.0 Gegend rows: ' + rows.join(', '));
+    if (OUT) await p20.screenshot({ path: OUT + '/21-gegend.png' });
     // a topic opens like a place, without stars, map link, Google question
     await p20.click('#sheetBody .gg-item:has(b:text-is("Lenne (Ruhr)"))');
     await p20.waitForSelector('#sheetBody [data-a="tell"]');
@@ -995,6 +996,14 @@ try {
     await menuClick(p20, '#btnGegend');
     await p20.waitForSelector('#sheetBody .gg-item');
     ok(calls.links === linksR && /Stand/.test(await p20.textContent('#sheetBody')), 'v0.20.0 second time from the phone (cache), with "Aktualisieren"');
+    // a list made by an older version is not used any more (it may still have sport or far stations): cache entries without this version are loaded again
+    await p20.evaluate(() => { const c = JSON.parse(localStorage.getItem('rf.gegend') || '{}'); Object.keys(c).forEach((k) => { c[k].app = '0.0.1'; }); localStorage.setItem('rf.gegend', JSON.stringify(c)); });
+    await p20.reload(); await p20.waitForSelector('#btnMenu');
+    await p20.evaluate(() => window.__rfMap.setView([51.2646, 7.7699], 13, { animate: false }));
+    const linksOld = calls.links;
+    await menuClick(p20, '#btnGegend');
+    await p20.waitForSelector('#sheetBody .gg-item');
+    ok(calls.links === linksOld + 1 && (await p20.$$eval('#sheetBody h4.gg-h', (e) => e.length)) >= 3, 'v0.21.2 a list from an older version is loaded again; headings are separate from entries (class gg-h)');
     ok(e20.length === 0, 'v0.20.0 no JS errors ' + e20.join(' | '));
     await c20.close();
   }
