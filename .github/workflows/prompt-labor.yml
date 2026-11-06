@@ -1,0 +1,52 @@
+# Prompt-Labor (nur Messung, ändert die App nicht): baut den fertigen Audioguide-Prompt eines Themas der „Gegend“ mit einer Vorlage aus tools/prompt-labor/. Schreibt nichts ins Repository.
+name: Prompt-Labor
+on:
+  workflow_dispatch:
+    inputs:
+      ort:
+        description: 'Ort, in dem man ist (Artikeltitel)'
+        default: 'Neuenrade'
+      thema:
+        description: 'Thema (Artikeltitel)'
+        default: 'Bahnstrecke Menden–Neuenrade'
+      abschnitt:
+        description: 'Abschnitt des Artikels (leer = ganzer Artikel)'
+        default: ''
+      typ:
+        description: 'Art des Themas'
+        default: 'Eisenbahnstrecke'
+      sprache:
+        description: 'Wikipedia-Sprache'
+        default: 'de'
+      variante:
+        description: 'Vorlage in tools/prompt-labor/ (ohne .json)'
+        default: 'gegend-v2'
+      stufe:
+        description: 'kurz, normal oder ausfuehrlich'
+        default: 'normal'
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ORT: ${{ inputs.ort }}
+      THEMA: ${{ inputs.thema }}
+      ABSCHNITT: ${{ inputs.abschnitt }}
+      TYP: ${{ inputs.typ }}
+      SPRACHE: ${{ inputs.sprache }}
+      VARIANTE: ${{ inputs.variante }}
+      STUFE: ${{ inputs.stufe }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Eingaben prüfen
+        run: |
+          for v in "$ORT" "$THEMA" "$ABSCHNITT" "$TYP" "$SPRACHE" "$VARIANTE" "$STUFE"; do
+            if ! [[ "$v" =~ ^[^[:cntrl:]]{0,200}$ ]]; then echo "Ungültig"; exit 1; fi
+          done
+      - name: Prompt bauen
+        run: node tools/prompt-labor.mjs
