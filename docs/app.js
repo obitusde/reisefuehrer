@@ -1,8 +1,8 @@
-/* Reiseführer – app (v0.22.0). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.23.0). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.22.0';
+  var VERSION = '0.23.0';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
@@ -304,7 +304,7 @@
     var ic = C.iconFor(p.typ, cfg);
     var html = '<span class="mk mk' + p.sterne + (ic ? ' ic' : '') + (sel ? ' sel' : '') + (tier ? ' t-' + tier : '') + '">' + iconSvg(ic) + '</span>';
     // label: array of up to two lines (v0.9.3)
-    if (label && label.length) html += '<span class="mk-lbl l' + p.sterne + (ic ? ' lic' : '') + (side === 'left' ? ' left' : '') + (tier === 'top' ? ' top' : '') + '">' + label.map(esc).join('<br>') + '</span>';
+    if (label && label.length) html += '<span class="mk-lbl l' + p.sterne + (ic ? ' lic' : '') + (side === 'left' ? ' left' : '') + (tier === 'top' ? ' top' : '') + (tier === 'osm' ? ' osm' : '') + '">' + label.map(esc).join('<br>') + '</span>';
     return L.divIcon({ className: 'mk-wrap', html: html, iconSize: [36, 36], iconAnchor: [18, 18] });
   }
 
@@ -326,9 +326,10 @@
     var mc = cfg.marker || {};
     return (mc.typ_vorrang || []).indexOf(p.typ) >= 0 ? 1 : (mc.typ_nachrang || []).indexOf(p.typ) >= 0 ? -1 : 0;
   }
+  var MAPQ = { m: {}, c: {} }; // v0.23.0: Wikidata numbers of what the map shows right now (markers, towns): "Gegend" lists only what is not on the map
   function renderMarkers() {
     if (!map) return;
-    markerLayer.clearLayers();
+    markerLayer.clearLayers(); MAPQ.m = {};
     if (cityMode() || ROUTE) return; // zoomed out: city stars instead of single places (v0.7.0); route: its own layer
     var mc = cfg.marker || {}, maxChars = mc.beschriftung_max_zeichen || 16, lines = mc.beschriftung_zeilen || 2;
     var zNow = map.getZoom();
@@ -358,19 +359,36 @@
     // v0.10.0: at a glance what is worth it in this section: the best `top` big with a bold name, up to `mit_name` named,
     // the rest only as a small dot; OSM only (no Wikipedia article): grey ring without a name
     var nTop = mc.top || 5, nNamed = mc.mit_name || 15, nDrawn = 0, nPlain = 0, plainMax = plainLimit(zNow);
-    var boxes = [];
+    var boxes = [], osmTxt = [];
     function free(bx) {
       return !boxes.some(function (o) { return bx.x1 < o.x2 && bx.x2 > o.x1 && bx.y1 < o.y2 && bx.y2 > o.y1; });
+    }
+    var deferred = [];
+    function put(p, sel, label, side, tier, osm) {
+      var m = L.marker([p.lat, p.lon], {
+        icon: markerIcon(p, sel, label, side, tier), keyboard: false, title: C.displayName(p.name),
+        zIndexOffset: sel ? 2500 : (tier === 'top' ? 1200 : 0) + p.sterne * 400 - (osm ? 300 : 0)
+      });
+      m.on('click', function (e) {
+        if (e.originalEvent) L.DomEvent.stopPropagation(e);
+        if (p.vz && p.vz.q) openDirPlace({ k: 'o', x: p.vz, s: p.vz.st, vz: true });
+        else if (p.osmEl) openOsmPlace(p.osmEl);
+        else select(p.id, 'map');
+      });
+      markerLayer.addLayer(m);
+      var mq = (p.vz && p.vz.q) || p.wikidata; if (mq) MAPQ.m[mq] = 1;
     }
     shown.forEach(function (p) {
       var sel = p.id === selectedId, osm = isOsmOnly(p);
       var tier = sel ? 'top' : osm ? 'osm' : nDrawn < nTop ? 'top' : nDrawn < nNamed ? 'name' : 'dot';
       var pt = map.latLngToContainerPoint([p.lat, p.lon]);
-      var r = dotR(p) * ({ top: 1.3, dot: 0.7, osm: 0.6 }[tier] || 1), px = (LBL_PX[p.sterne] || 11) + (tier === 'top' ? 2 : 0);
+      var r = dotR(p) * ({ top: 1.3, dot: 0.7, osm: 0.6 }[tier] || 1), px = tier === 'osm' ? 10.5 : (LBL_PX[p.sterne] || 11) + (tier === 'top' ? 2 : 0);
       // crowded: a less important dot on top of a more important one is left out
       var gap = sel || p.sterne >= 2 ? 0 : (mc.abstand_px != null ? mc.abstand_px : 5); // small dots keep a little distance (v0.18.0)
       if (!sel && p.sterne < 3 && !free({ x1: pt.x - r - gap, y1: pt.y - r - gap, x2: pt.x + r + gap, y2: pt.y + r + gap })) return;
       if (!osm) nDrawn++;
+      // v0.23.0: grey rings: first all rings, then their texts (a text never lies on a ring, never pushes one out)
+      if (osm) { boxes.push({ x1: pt.x - r, y1: pt.y - r, x2: pt.x + r, y2: pt.y + r }); deferred.push({ p: p, pt: pt, r: r, px: px }); return; }
       var label = tier === 'top' || tier === 'name' ? C.mapLabel(p.name, last && last.ort, maxChars, lines) : null, side = '';
       if (label) {
         var w = Math.max.apply(null, label.map(function (l) { return textWidth(l, px); })) + 3, hh = px * 0.6 * label.length + px * 0.15;
@@ -382,17 +400,18 @@
       // v0.18.0: marks without a name (one would have to tap each) are limited per zoom; ★★ and better never count
       if (!side && !sel && p.sterne < 2) { if (nPlain >= plainMax) return; nPlain++; }
       boxes.push({ x1: pt.x - r, y1: pt.y - r, x2: pt.x + r, y2: pt.y + r });
-      var m = L.marker([p.lat, p.lon], {
-        icon: markerIcon(p, sel, side ? label : null, side, tier), keyboard: false, title: C.displayName(p.name),
-        zIndexOffset: sel ? 2500 : (tier === 'top' ? 1200 : 0) + p.sterne * 400 - (osm ? 300 : 0)
-      });
-      m.on('click', function (e) {
-        if (e.originalEvent) L.DomEvent.stopPropagation(e);
-        if (p.vz && p.vz.q) openDirPlace({ k: 'o', x: p.vz, s: p.vz.st, vz: true });
-        else if (p.osmEl) openOsmPlace(p.osmEl);
-        else select(p.id, 'map');
-      });
-      markerLayer.addLayer(m);
+      put(p, sel, side ? label : null, side, tier, false);
+    });
+    deferred.forEach(function (d) {
+      var p = d.p, pt = d.pt, r = d.r, mcz = mc.osm_beschriftung_max_zeichen || 14;
+      var label = p.name ? C.mapLabel(p.name, last && last.ort, mcz, 1) : [C.typeInfo(p.typ, cfg).label], side = '';
+      var w = Math.max.apply(null, label.map(function (l) { return textWidth(l, d.px); })) + 3, hh = d.px * 0.6 + d.px * 0.15;
+      var right = { x1: pt.x + r + 2, y1: pt.y - hh, x2: pt.x + r + 2 + w, y2: pt.y + hh };
+      var left = { x1: pt.x - r - 2 - w, y1: right.y1, x2: pt.x - r - 2, y2: right.y2 };
+      side = free(right) ? 'right' : free(left) ? 'left' : '';
+      if (side) boxes.push(side === 'right' ? right : left);
+      else { if (nPlain >= plainMax) return; nPlain++; }
+      put(p, false, side ? label : null, side, 'osm', true);
     });
   }
 
@@ -1166,19 +1185,34 @@
     if (dr) dr.staedte.forEach(function (x) { if (x.q) list.push({ q: x.q, name: x.name, lat: x.lat, lon: x.lon, d: C.haversine(c.lat, c.lng, x.lat, x.lon) }); });
     return list.sort(function (a, b) { return a.d - b.d; }).slice(0, 8);
   }
+  // v0.23.0: the place depends on the zoom: close up (from gegend.ort_dorf_ab_zoom) the village of the map middle comes first (Le Brassus, not
+  // only the municipality Le Chenit), further away the nearest town of the directory. The articles of the visible section come with it (area).
+  function gegArea() {
+    var b = viewBbox(), c = map.getCenter(), sz = C.bboxSize(b);
+    return { lat: c.lat, lon: c.lng, radius: Math.max(300, Math.min(10000, Math.round(Math.max(sz.w, sz.h) / 2 / 500) * 500)) };
+  }
   function gegendSheet() {
-    var c = map.getCenter(), cand = gegCandidates();
+    var c = map.getCenter(), cand = gegCandidates(), z = map.getZoom(), g = cfg.gegend || {};
+    GEG.zoom = z; GEG.area = gegArea(); GEG.tried = {};
+    GEG.mapQ = Object.assign({}, cityMode() ? MAPQ.c : MAPQ.m); // what the map shows now (not repeated in the list)
     GEG.alts = cand;
-    if (cand.length) { gegendOpen(cand[0]); return; }
-    // no town of the directory in the section: the place of the middle of the map (Nominatim)
+    var village = z >= (g.ort_dorf_ab_zoom || 13);
+    if (cand.length && !village) { gegendOpen(cand[0]); return; }
+    // the place of the middle of the map (Nominatim): the village close up, else only where the directory has no town in the section
     GEG.place = { q: '', name: '…', lat: c.lat, lon: c.lng }; GEG.res = null; GEG.err = ''; GEG.hits = null; GEG.busy = 'Suche den Ort …'; gegRender();
     var here = GEG.place;
-    C.reverseGeocode(c.lat, c.lng, gegFetch).then(function (loc) {
+    C.reverseGeocode(c.lat, c.lng, gegFetch, village ? 13 : 10).then(function (loc) {
       if (GEG.place !== here) return;
-      if (!loc || !loc.name) throw new Error('Kein Ort in der Kartenmitte gefunden. Zoome näher an eine Stadt.');
+      if (!loc || !loc.name) { if (cand.length) { gegendOpen(cand[0]); return; } throw new Error('Kein Ort in der Kartenmitte gefunden. Zoome näher an eine Stadt.'); }
       GLOC[gKey(here)] = loc;
-      gegendOpen({ q: '', name: loc.name, lat: c.lat, lon: c.lng, loc: loc });
-    }).catch(function (e) { if (GEG.place !== here) return; GEG.busy = ''; GEG.err = (e && e.message) || 'Kein Ort gefunden (offline?).'; gegRender(); });
+      var vp = { q: '', name: loc.name, lat: c.lat, lon: c.lng, loc: loc };
+      GEG.alts = [vp].concat(cand.filter(function (a) { return !C.sameName(a.name, loc.name); }));
+      gegendOpen(vp);
+    }).catch(function (e) {
+      if (GEG.place !== here) return;
+      if (cand.length) { gegendOpen(cand[0]); return; }
+      GEG.busy = ''; GEG.err = (e && e.message) || 'Kein Ort gefunden (offline?).'; gegRender();
+    });
   }
   function gegendOpen(pl, force) {
     GEG.place = pl; GEG.res = null; GEG.err = ''; GEG.hits = null; GEG.busy = 'Suche den Artikel …'; gegRender();
@@ -1190,19 +1224,31 @@
       return pl.q ? C.wikiTitleFor(pl.q, langs, gegFetch).then(function (t) { return t || { lang: langs[0], title: pl.name }; }) : { lang: langs[0], title: pl.name };
     }).then(function (t) {
       if (GEG.place !== pl) return null;
-      var key = t.lang + ':' + t.title, hit = gegCache()[key], ttl = ((cfg.gegend && cfg.gegend.cache_tage) || 7) * 864e5;
+      var ar = GEG.area, key = t.lang + ':' + t.title + (ar ? '@' + ar.lat.toFixed(2) + ',' + ar.lon.toFixed(2) + ',' + ar.radius : ''), hit = gegCache()[key], ttl = ((cfg.gegend && cfg.gegend.cache_tage) || 7) * 864e5;
       GEG.lang = t.lang; GEG.title = t.title;
       // a list made by an older version (other rules, e.g. sport, far stations) is not used
       if (!force && hit && hit.app === VERSION && Date.now() - hit.t < ttl) { GEG.res = hit.res; GEG.stand = hit.t; GEG.busy = ''; gegRender(); return null; }
       GEG.busy = 'Lade Themen …'; gegRender();
-      return C.loadGegend(t.title, t.lang, gegFetch, cfg, function (s) { if (GEG.place === pl) { GEG.busy = s; gegRender(); } }).then(function (res) {
+      return C.loadGegend(t.title, t.lang, gegFetch, cfg, function (s) { if (GEG.place === pl) { GEG.busy = s; gegRender(); } }, { area: ar }).then(function (res) {
         if (GEG.place !== pl) return;
         var c = gegCache(), ks = Object.keys(c);
         if (ks.length >= 15) { ks.sort(function (a, b) { return c[a].t - c[b].t; }); delete c[ks[0]]; }
         c[key] = { t: Date.now(), app: VERSION, res: res }; LS.set('rf.gegend', c);
         GEG.res = res; GEG.stand = Date.now(); GEG.busy = ''; gegRender();
       });
-    }).catch(function (e) { if (GEG.place !== pl) return; GEG.busy = ''; GEG.err = (e && e.message) || 'Fehler'; gegRender(); });
+    }).catch(function (e) {
+      if (GEG.place !== pl) return;
+      // a village without an article of its own: the next place of the list (the municipality)
+      GEG.tried = GEG.tried || {}; GEG.tried[pl.name] = 1;
+      var nx = /^Kein Artikel/.test((e && e.message) || '') ? (GEG.alts || []).filter(function (a) { return a !== pl && !GEG.tried[a.name]; })[0] : null;
+      if (nx) { gegendOpen(nx); return; }
+      GEG.busy = ''; GEG.err = (e && e.message) || 'Fehler'; gegRender();
+    });
+  }
+  function gegCount(z) { // entries per group shown at once, more the closer you are (gegend.pro_gruppe_nach_zoom)
+    var t = (cfg.gegend || {}).pro_gruppe_nach_zoom || { '0': 6 }, n = 6;
+    Object.keys(t).map(Number).sort(function (a, b) { return a - b; }).forEach(function (k) { if ((z || 0) >= k) n = t[k]; });
+    return n;
   }
   // v0.22.0: every entry has the button "KI-Überblick" (Google AI search); "Wikipedia (de)" only where a German article of at least wikipedia_de_min_zeichen exists
   function gegRow(t, sub) {
@@ -1240,10 +1286,16 @@
     if (r) {
       html += '<h4 class="gg-h">Der Ort</h4><ul class="gg-list">' + gegRow({ title: r.title, de: r.de }, 'Der ganze Artikel') + '</ul>';
       if (r.sections.length) html += '<h4 class="gg-h">Aus dem Ortsartikel</h4><ul class="gg-list">' + r.sections.map(function (s) { return gegRow({ title: r.title, abschnitt: s.name, show: s.name }, 'Abschnitt · ' + gegSize(s.size)); }).join('') + '</ul>';
+      // v0.23.0: how many show per group depends on the zoom (gegend.pro_gruppe_nach_zoom), the rest is behind "Mehr"; articles of the section that the map already shows are left out
+      var nShow = gegCount(GEG.zoom), onMap = GEG.mapQ || {}, rowOf = function (i) { return gegRow({ title: i.title, lab: String(i.lab).split(' / ')[0], ctx: i.ctx, de: i.de }, [String(i.lab).split(' / ')[0], gegSize(i.len)].filter(Boolean).join(' · ')); };
       r.groups.forEach(function (g) {
-        html += '<h4 class="gg-h">' + esc(g.label) + '</h4><ul class="gg-list">' + g.items.map(function (i) { return gegRow({ title: i.title, lab: String(i.lab).split(' / ')[0], ctx: i.ctx, de: i.de }, [String(i.lab).split(' / ')[0], gegSize(i.len)].filter(Boolean).join(' · ')); }).join('') + '</ul>';
+        var its = g.items.filter(function (i) { return !(i.geo && i.q && onMap[i.q]); });
+        if (!its.length) return;
+        html += '<h4 class="gg-h">' + esc(g.label) + '</h4><ul class="gg-list">' + its.slice(0, nShow).map(rowOf).join('') + '</ul>' +
+          (its.length > nShow ? '<details class="why gg-more"><summary>Mehr (' + (its.length - nShow) + ')</summary><ul class="gg-list">' + its.slice(nShow).map(rowOf).join('') + '</ul></details>' : '');
       });
-      if (r.more.length) html += '<details class="why gg-more"><summary class="gg-h">Weiteres (' + r.more.length + ')</summary><ul class="gg-list">' + r.more.map(function (i) { return gegRow({ title: i.title, lab: String(i.lab).split(' / ')[0], ctx: i.ctx, de: i.de }, String(i.lab).split(' / ')[0]); }).join('') + '</ul></details>';
+      var moreL = r.more.filter(function (i) { return !(i.geo && i.q && onMap[i.q]); });
+      if (moreL.length) html += '<details class="why gg-more"><summary class="gg-h">Weiteres (' + moreL.length + ')</summary><ul class="gg-list">' + moreL.map(function (i) { return gegRow({ title: i.title, lab: String(i.lab).split(' / ')[0], ctx: i.ctx, de: i.de }, String(i.lab).split(' / ')[0]); }).join('') + '</ul></details>';
       if (r.mentioned.length) html += '<h4 class="gg-h">Erwähnt in</h4><ul class="gg-list">' + r.mentioned.map(function (i) { return gegRow({ title: i.title }, i.wordcount + ' Wörter'); }).join('') + '</ul>';
       if (r.people.length) html += '<h4 class="gg-h">Persönlichkeiten</h4><ul class="gg-list">' + r.people.map(function (i) { return gegRow({ title: i.title, lab: 'Person', ctx: i.ctx, de: i.de }, 'Person'); }).join('') + '</ul>';
       html += '<p class="small">Stand ' + esc(dateText(GEG.stand)) + ' · die Liste entsteht aus dem Ortsartikel und seinen Verweisen (ohne Ortsteile und Verwaltung). <button class="btn small" type="button" data-a="ggreload">Aktualisieren</button></p>';
@@ -1413,7 +1465,7 @@
 
   function renderCities() {
     if (!cityLayer) return;
-    cityLayer.clearLayers();
+    cityLayer.clearLayers(); MAPQ.c = {};
     if (!cityMode() && !ROUTE) return;
     var c = SC(), z = map.getZoom(), big = z <= ((c.zoom && c.zoom.nur_grosse_bis) || 8);
     var b = viewBbox(), dy = (b.north - b.south) * 0.1, dx = (b.east - b.west) * 0.1;
@@ -1465,7 +1517,7 @@
         keyboard: false, title: C.displayName(x.name), zIndexOffset: it.s * 400 + (it.k === 'c' ? 1500 : 0) + (tier === 'top' ? 800 : 0)
       });
       m.on('click', function (e) { if (e.originalEvent) L.DomEvent.stopPropagation(e); if (it.vz && it.k === 'o') openDirPlace(it); else openCity(it); });
-      cityLayer.addLayer(m);
+      cityLayer.addLayer(m); if (x.q) MAPQ.c[x.q] = 1;
     });
     if (!list.length && !waiting && !cityHintShown && !dirOn()) {
       var none = landsIn(b).length === 0;
@@ -2311,7 +2363,7 @@
     var level = settings.level, t0 = Date.now();
     setTellStatus('Lade Text …');
     articleFor(level).catch(function () { return null; }).then(function (art) {
-      var pr = C.buildPrompt(p, { article: art, level: level, schwerpunkt: settings.focus, distance: p.thema ? null : distanceForPrompt(p) }, cfg);
+      var pr = C.buildPrompt(p, { article: art, level: level, schwerpunkt: settings.focus, distance: p.thema ? null : distanceForPrompt(p), loc: GLOC[gKey(p)] || null }, cfg);
       handOver(pr, (pr.truncated ? ', Quelltext gekürzt' : '') + (art ? '' : ', ohne Wikipedia-Text'), t0);
     });
   }

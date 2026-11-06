@@ -1,5 +1,5 @@
 /*
- * Reiseführer – core logic (v0.22.0)
+ * Reiseführer – core logic (v0.23.0)
  * Shared by the app (index.html), the diagnostics page (diag.html) and Node tests.
  * No DOM access here. Network access only through the injected fetch function.
  */
@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var CORE_VERSION = '0.22.0';
+  var CORE_VERSION = '0.23.0';
 
   // ---------------------------------------------------------------- helpers
 
@@ -415,6 +415,20 @@
    * adds words to the other: "Espace Horloger Vallée de Joux" = "Espace Horloger de la Vallée de Joux".
    * "Château de Morges" ≠ "Schloss Morges", "Manchester Cathedral" ≠ "Kathedrale von Manchester".
    */
+  /**
+   * v0.23.0: the name as it is written where the place is (local language of the region, from the reverse lookup): the OSM/Wikidata name in that
+   * language, else the title of its Wikipedia article in that language. '' if unknown. The prompts carry it, because the sources are written with it.
+   */
+  function originalName(p, loc, cfg) {
+    var lang = localLanguage(loc, cfg || {});
+    if (!lang || !p) return '';
+    var n = (p.namen && p.namen[lang]) || (p.artikel && p.artikel[lang] ? cleanTitle(p.artikel[lang]) : '');
+    return n || '';
+  }
+  /** Name for a prompt: the original name where it is known, else the displayed name. No German second name. */
+  function promptName(p, loc, cfg) {
+    return originalName(p, loc, cfg) || p.name;
+  }
   function sameName(a, b) {
     var wa = normName(a).split(' ').filter(Boolean), wb = normName(b).split(' ').filter(Boolean);
     if (!wa.length || !wb.length) return String(a || '').toLowerCase() === String(b || '').toLowerCase();
@@ -727,9 +741,9 @@
   }
 
   /** Place name, country and region via Nominatim reverse geocoding (one request per search). */
-  function reverseGeocode(lat, lon, f) {
+  function reverseGeocode(lat, lon, f, zoom) { // zoom: 10 = municipality/town (default), 13 = village (v0.23.0)
     var url = 'https://nominatim.openstreetmap.org/reverse?' + qs({
-      lat: lat.toFixed(4), lon: lon.toFixed(4), format: 'jsonv2', zoom: 10, 'accept-language': 'de'
+      lat: lat.toFixed(4), lon: lon.toFixed(4), format: 'jsonv2', zoom: zoom || 10, 'accept-language': 'de'
     });
     return getJson(url, f).then(function (d) {
       var a = (d && d.address) || {};
@@ -1151,7 +1165,7 @@
     var e = cfg.erzaehlen;
     var level = o.level || 'kurz';
     var art = o.article;
-    var name = p.name + (p.name2 ? ' (deutsch: ' + p.name2 + ')' : '') + (p.ort && p.name.indexOf(p.ort) < 0 ? ', ' + p.ort : '');
+    var pn = promptName(p, o.loc, cfg), name = pn + (p.ort && pn.indexOf(p.ort) < 0 ? ', ' + p.ort : ''); // v0.23.0: original name, no German second name
     var tpl = (p.thema && cfg.gegend && cfg.gegend.vorlage) || e.vorlage; // v0.21.2: topics of the area have their own template
     if (p.thema) name = p.name + (p.abschnitt ? ', Abschnitt „' + p.abschnitt + '“' : '');
     var vars = {
@@ -1198,7 +1212,7 @@
     // wo: region (canton/state from the reverse lookup, else the place), then the coordinates – "Waadt, 46.6191, 6.4116"
     var region = (loc && (loc.state || loc.name)) || p.ort || '';
     var vars = {
-      name: p.name + (p.name2 ? ' (deutsch: ' + p.name2 + ')' : ''),
+      name: promptName(p, loc, cfg),
       wo: [region, (+p.lat).toFixed(4), (+p.lon).toFixed(4)].filter(Boolean).join(', '),
       lat: p.lat.toFixed(5), lon: p.lon.toFixed(5),
       typ: p.typ_label || 'Sehenswürdigkeit',
@@ -1321,11 +1335,11 @@
     var maxM = (g.max_km || 8) * 1000, ctr = data.center;
     Object.keys(data.info || {}).forEach(function (t) {
       var x = data.info[t], labels = (data.p31[x.q] || []).map(function (c) { return data.clsLabel[c] || ''; }), lab = labels.join(' / ');
-      var item = { title: x.title || t, lab: lab, de: x.de, views: x.views || 0, len: x.len || 0, score: Math.log10(1 + (x.views || 0)) * 2 + Math.log10(1 + (x.len || 0) / 1000) };
+      var item = { title: x.title || t, q: x.q, geo: !!(data.geo || {})[x.title || t] || undefined, lab: lab, de: x.de, views: x.views || 0, len: x.len || 0, score: Math.log10(1 + (x.views || 0)) * 2 + Math.log10(1 + (x.len || 0) / 1000) };
       if (labels.some(function (l) { return person.test(l); })) { people.push(item); return; }
       var grp = groups.filter(function (gr) { return gr.re && labels.some(function (l) { return gr.re.test(l); }); })[0];
       // far from the place (a station of the next town): not a topic of this place; nature (rivers have their coordinates anywhere) stays
-      if (ctr && x.lat != null && !(grp && grp.id === 'natur') && haversine(ctr.lat, ctr.lon, x.lat, x.lon) > maxM) return;
+      if (!item.geo && ctr && x.lat != null && !(grp && grp.id === 'natur') && haversine(ctr.lat, ctr.lon, x.lat, x.lon) > maxM) return;
       if (grp) grp.items.push(item);
       else if (!(excl && excl.test(lab)) && lab) more.push(item);
     });
@@ -1333,10 +1347,11 @@
     var seen = {};
     sections.forEach(function (s) { seen[s.name] = 1; });
     var listed = {};
+    // v0.23.0: groups keep all that pass the filters (max_je_gruppe); how many show depends on the zoom (the app)
     var out = {
       sections: sections,
-      groups: groups.map(function (gr) { gr.items.sort(by); gr.items = gr.items.slice(0, g.pro_gruppe || 6); gr.items.forEach(function (i) { listed[i.title] = 1; }); return { id: gr.id, label: gr.label, items: gr.items }; }).filter(function (gr) { return gr.items.length; }),
-      more: more.sort(by).slice(0, g.weiteres || 6),
+      groups: groups.map(function (gr) { gr.items.sort(by); gr.items = gr.items.slice(0, g.max_je_gruppe || 30); gr.items.forEach(function (i) { listed[i.title] = 1; }); return { id: gr.id, label: gr.label, items: gr.items }; }).filter(function (gr) { return gr.items.length; }),
+      more: more.sort(by).slice(0, g.weiteres_max || 20),
       people: people.sort(by).slice(0, g.personen || 8),
       mentioned: (data.hits || []).filter(function (h) { return h.title !== data.title && !data.info[h.title] && !/^Liste (der|von) |Wahlkreis|Begriffsklärung/.test(h.title); })
         .slice(0, g.erwaehnt || 8).map(function (h) { return { title: h.title, wordcount: h.wordcount }; })
@@ -1345,12 +1360,13 @@
   }
 
   /** Loads the topics of a town: article (title in the given language) → sections, links both ways, readers, kinds. Returns Promise(gegendTopics result + {title, lang, url}). */
-  function loadGegend(title, lang, f, cfg, onStep) {
+  function loadGegend(title, lang, f, cfg, onStep, opts) {
+    opts = opts || {}; // v0.23.0: opts.area = {lat, lon, radius} – the articles of the visible map section as well
     var g = cfg.gegend || {}, base = 'https://' + lang + '.wikipedia.org/w/api.php?', delays = [800, 2000];
     var step = function (t) { if (onStep) onStep(t); };
     var wp = function (o) { return getJsonRetry(base + qs(Object.assign({ format: 'json', formatversion: 2, origin: '*' }, o)), f, delays); };
     var wd = function (o) { return getJsonRetry('https://www.wikidata.org/w/api.php?' + qs(Object.assign({ format: 'json', origin: '*' }, o)), f, delays); };
-    var data = { lang: lang, title: title, extract: '', both: [], info: {}, p31: {}, clsLabel: {}, hits: [], dewiki: {} };
+    var data = { lang: lang, title: title, extract: '', both: [], info: {}, p31: {}, clsLabel: {}, hits: [], dewiki: {}, geo: {} };
     function pages(prop, key, cont, acc) {
       return wp(Object.assign({ action: 'query', titles: title, prop: prop, [key + 'limit']: 500, [key + 'namespace']: 0 }, cont || {})).then(function (d) {
         var p = (d.query.pages || [])[0] || {};
@@ -1391,7 +1407,10 @@
       if (pg.coordinates && pg.coordinates[0]) data.center = { lat: pg.coordinates[0].lat, lon: pg.coordinates[0].lon };
       title = pg.title;
       step('Lade Verweise …');
-      return Promise.all([pages('links', 'pl', null, []), back(null, []), wp({ action: 'query', list: 'search', srsearch: '"' + title + '"', srlimit: 30, srnamespace: 0, srprop: 'wordcount' })]);
+      var area = opts.area;
+      // v0.23.0: what lies in the visible section (Wikipedia articles with coordinates): the company in the village that the town article does not link back
+      var geoP = area ? wp({ action: 'query', list: 'geosearch', gscoord: area.lat.toFixed(5) + '|' + area.lon.toFixed(5), gsradius: Math.max(10, Math.min(10000, Math.round(area.radius))), gslimit: g.geo_max || 100, gsnamespace: 0 }).catch(function () { return {}; }) : Promise.resolve({});
+      return Promise.all([pages('links', 'pl', null, []), back(null, []), wp({ action: 'query', list: 'search', srsearch: '"' + title + '"', srlimit: 30, srnamespace: 0, srprop: 'wordcount' }), geoP]);
     }).then(function (r) {
       var bset = {}; r[1].forEach(function (t) { bset[t] = 1; });
       data.hits = ((r[2].query || {}).search || []).map(function (h) { return { title: h.title, wordcount: h.wordcount }; });
@@ -1399,6 +1418,9 @@
       var cand = {}, both = [];
       r[0].filter(function (t) { return bset[t] && t !== title; }).concat(data.hits.map(function (h) { return h.title; }).filter(function (t) { return t !== title && t.indexOf(title) >= 0; })).forEach(function (t) { if (!cand[t]) { cand[t] = 1; both.push(t); } });
       data.both = both.slice(0, g.max_kandidaten || 200);
+      ((r[3] && r[3].query && r[3].query.geosearch) || []).forEach(function (h) {
+        if (h.title !== title && !cand[h.title]) { cand[h.title] = 1; data.both.push(h.title); data.geo[h.title] = 1; }
+      });
       step('Lade Angaben zu ' + data.both.length + ' Artikeln …');
       var batches = [];
       for (var i = 0; i < data.both.length; i += 50) batches.push(data.both.slice(i, i + 50));
@@ -1813,7 +1835,7 @@
     return '';
   }
   function googleLinks(p, loc, cfg) {
-    var g = (cfg && cfg.google) || {}, name = displayName(p.name), where = googleWhere(p, loc);
+    var g = (cfg && cfg.google) || {}, name = displayName(promptName(p, loc, cfg)), where = googleWhere(p, loc);
     var coords = p.lat != null && p.lon != null ? 'Koordinaten ' + (+p.lat).toFixed(4) + ', ' + (+p.lon).toFixed(4) : '';
     var at = where ? ' in ' + where : coords ? ' (' + coords + ')' : '';
     var frage = (g.frage || 'Was ist „{name}“{ort}?').replace('{name}', name).replace('{ort}', at);
@@ -2575,7 +2597,7 @@
     dropLocation: dropLocation, shortInfo: shortInfo, splitSentences: splitSentences,
     articleFor: articleFor, loadIntros: loadIntros, translate: translate,
     cleanArticle: cleanArticle, cutAtSentence: cutAtSentence, loadArticle: loadArticle,
-    buildPrompt: buildPrompt, buildReviewPrompt: buildReviewPrompt, reviewGoogleUrl: reviewGoogleUrl, topicGoogleUrl: topicGoogleUrl, cityLabel: cityLabel, claudeNewUrl: claudeNewUrl,
+    buildPrompt: buildPrompt, buildReviewPrompt: buildReviewPrompt, reviewGoogleUrl: reviewGoogleUrl, topicGoogleUrl: topicGoogleUrl, originalName: originalName, promptName: promptName, cityLabel: cityLabel, claudeNewUrl: claudeNewUrl,
     _setFetchTimeout: function (ms) { FETCH_TIMEOUT = ms; },
     tileKeys: tileKeys, overpassQuery: overpassQuery, compactOsm: compactOsm, loadOsm: loadOsm,
     nameSimilarity: nameSimilarity, mergeOsm: mergeOsm, osmFacts: osmFacts,

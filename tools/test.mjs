@@ -195,7 +195,7 @@ eq(artF.intro, 'Manchester Town Hall is a test place (synthetic). Second sentenc
 eq(artF.url, 'https://en.wikipedia.org/wiki/Manchester_Town_Hall', 'article url');
 const pK = core.buildPrompt(th, { article: artK, level: 'kurz', schwerpunkt: '', distance: 120 }, cfg);
 ok(pK.text.startsWith('Du bist mein Reiseführer. Erzähle mir gleich etwas über diesen Ort.'), 'prompt starts with template');
-ok(pK.text.includes('Ort: Manchester Town Hall (deutsch: Rathaus Manchester)') && pK.text.includes('Wo: 53.47940, -2.24460, etwa 120 m von mir entfernt'), 'prompt place and distance');
+ok(pK.text.includes('Ort: Manchester Town Hall') && !pK.text.includes('deutsch:') && pK.text.includes('Wo: 53.47940, -2.24460, etwa 120 m von mir entfernt'), 'prompt place and distance');
 ok(pK.text.includes('Länge: höchstens etwa eine Minute (ca. 150 Wörter), lieber kürzer als aufgefüllt') && pK.text.includes('Schwerpunkt: keiner, ein guter Überblick'), 'prompt length and focus');
 ok(pK.text.includes('Quelltext (Englisch, Wikipedia):\nManchester Town Hall is a test place') && !pK.text.includes('Reisetipp') && !pK.text.includes('\n\n\n'), 'prompt source, no empty Wikivoyage line');
 ok(pK.text.includes('Weitere Infos: https://en.wikipedia.org/wiki/Manchester_Town_Hall') && pK.text.endsWith('Beginne jetzt direkt mit dem gesprochenen Text.'), 'prompt ends with link and the start instruction');
@@ -246,7 +246,7 @@ ok(core.osmandIntentUrl(pin, 'net.osmand.plus').startsWith('intent://osmand.net/
   core.osmandIntentUrl(pin).endsWith(';end'), 'osmand intent url');
 ok(core.claudeNewUrl('a b?').startsWith('claude://claude.ai/new?q=a%20b%3F'), 'claude url');
 const rv = core.buildReviewPrompt(th, cfg, { name: 'Manchester', state: 'England' });
-eq(rv.text, 'Reiseführer: Lohnt sich Manchester Town Hall (deutsch: Rathaus Manchester) (England, ' + th.lat.toFixed(4) + ', ' + th.lon.toFixed(4) + ')? Suche aktuelle Besucherbewertungen, nenne Quelle und Stand, nichts raten. Antworte in zwei Abschnitten: 1. Lohnt sich der Besuch? 2. Praktische Tipps (Eintritt, Öffnungszeiten, Zeitbedarf, beste Zeit, Tipps). Sachlich, ohne Rückfrage am Ende', 'v0.17.0 review prompt (short form): region, coordinates');
+eq(rv.text, 'Reiseführer: Lohnt sich Manchester Town Hall (England, ' + th.lat.toFixed(4) + ', ' + th.lon.toFixed(4) + ')? Suche aktuelle Besucherbewertungen, nenne Quelle und Stand, nichts raten. Antworte in zwei Abschnitten: 1. Lohnt sich der Besuch? 2. Praktische Tipps (Eintritt, Öffnungszeiten, Zeitbedarf, beste Zeit, Tipps). Sachlich, ohne Rückfrage am Ende', 'v0.17.0 review prompt (short form): region, coordinates');
 ok(rv.text.length < 420 && !rv.text.includes('\n') && rv.text.includes('nichts raten') && rv.text.includes('Quelle und Stand'), 'v0.17.0 review prompt is short: ' + rv.text.length);
 ok(core.buildReviewPrompt(th, cfg, null).text.includes('(' + (th.ort ? th.ort + ', ' : '') + th.lat.toFixed(4)), 'v0.17.0 review prompt without lookup: place or just coordinates');
 const rgl = core.reviewGoogleUrl(th, { name: 'Manchester', state: 'England' }, cfg);
@@ -462,7 +462,7 @@ eq(rg.name + '|' + rg.cc + '|' + rg.region, 'Manchester|gb|GB-ENG', 'reverse geo
 // v0.13.0: Google links, info line, height
 {
   const g = cfg.google;
-  ok(g && g.ki_param === 'udm=50' && g.auftrag === 'Keine Rückfrage am Ende', 'config google: KI-Modus, Auftrag nur „Keine Rückfrage am Ende“');
+  ok(g && g.ki_param === 'udm=50' && g.auftrag === 'Antworte sachlich, ohne Rückfrage am Ende.', 'config google: KI-Modus, Auftrag als eigener Satz');
   const pl = { name: 'Crêt des Alouettes', lat: 46.69597, lon: 6.34803, ort: '' };
   const u = core.googleLinks(pl, { name: 'Vallorbe', state: 'Waadt' }, cfg);
   const dq = (x) => decodeURIComponent(x.replace(/^.*[?&]q=/, '').replace(/\+/g, ' '));
@@ -626,25 +626,40 @@ eq(core.iconFor('sonstiges', cfg), '', 'other: plain dot');
         !JSON.stringify(gl).includes('Nur hin') && !JSON.stringify(gl).includes('Fremd') && steps.length >= 3 && gl.url === 'https://de.wikipedia.org/wiki/Werdohl', 'v0.20.0/v0.21.1 loadGegend: links in both directions plus search hits with the town name in the title (the railway), reading numbers over two portions (120/60 = 2 a day), steps: ' + JSON.stringify(gl).slice(0, 200) + ' | ' + steps.join(' / '));
       // v0.22.0: German article of the topics (own length in German; else the German title via Wikidata and its length from de.wikipedia)
       ok(gl.groups[0].items[0].de && gl.groups[0].items[0].de.title === 'Lenne (Ruhr)' && gl.groups[0].items[0].de.len === 30000 && gl.groups[1].items[0].de.len === 8000, 'v0.22.0 loadGegend (de): each topic carries its German article and length');
+      const geoReq = [];
       const fr = async (url) => {
         const u = new URL(url), a = u.searchParams, J = (o) => ({ ok: true, status: 200, json: async () => o });
         if (u.hostname === 'fr.wikipedia.org') {
           if (a.get('list') === 'backlinks') return J({ query: { backlinks: [{ title: 'Château de Morges' }, { title: 'Quai Igor-Stravinsky' }] } });
           if (a.get('list') === 'search') return J({ query: { search: [] } });
+          if (a.get('list') === 'geosearch') { geoReq.push(a.get('gscoord') + ' r' + a.get('gsradius')); return J({ query: { geosearch: [{ title: 'Manufacture Beispiel', lat: 46.51, lon: 6.5, dist: 120 }, { title: 'Quai Igor-Stravinsky', lat: 46.51, lon: 6.5, dist: 300 }] } }); }
           if (a.get('prop') === 'links') return J({ query: { pages: [{ title: 'Morges', links: [{ title: 'Château de Morges' }, { title: 'Quai Igor-Stravinsky' }] }] } });
           if (/extracts/.test(a.get('prop') || '')) return J({ query: { pages: [{ title: 'Morges', length: 90000, pageprops: { wikibase_item: 'Q68' }, extract: 'Morges est une commune.\n\n== Histoire ==\n' + 'x'.repeat(900) }] } });
-          if (/pageviews/.test(a.get('prop') || '')) return J({ query: { pages: [{ title: 'Château de Morges', length: 40000, pageprops: { wikibase_item: 'Q21' }, pageviews: { '2026-01-01': 60 } }, { title: 'Quai Igor-Stravinsky', length: 900, pageprops: { wikibase_item: 'Q22' }, pageviews: { '2026-01-01': 6 } }] } });
+          if (/pageviews/.test(a.get('prop') || '')) return J({ query: { pages: [{ title: 'Château de Morges', length: 40000, pageprops: { wikibase_item: 'Q21' }, pageviews: { '2026-01-01': 60 } }, { title: 'Quai Igor-Stravinsky', length: 900, pageprops: { wikibase_item: 'Q22' }, pageviews: { '2026-01-01': 6 } }, { title: 'Manufacture Beispiel', length: 20000, pageprops: { wikibase_item: 'Q23' }, pageviews: { '2026-01-01': 120 }, coordinates: [{ lat: 46.51, lon: 6.5 }] }].filter((pg) => String(a.get('titles')).split('|').includes(pg.title)) } });
         }
         if (u.hostname === 'de.wikipedia.org' && a.get('prop') === 'info') return J({ query: { pages: [{ title: 'Schloss Morges', length: 7000 }, { title: 'Morges', length: 52000 }] } });
         if (u.hostname === 'www.wikidata.org') {
-          if (/claims/.test(a.get('props') || '')) return J({ entities: { Q68: { sitelinks: { dewiki: { title: 'Morges' } } }, Q21: { claims: { P31: [{ mainsnak: { datavalue: { value: { id: 'C5' } } } }] }, sitelinks: { dewiki: { title: 'Schloss Morges' } } }, Q22: { claims: { P31: [{ mainsnak: { datavalue: { value: { id: 'C5' } } } }] } } } });
-          if (a.get('props') === 'labels') return J({ entities: { C5: { labels: { de: { value: 'Bauwerk' } } } } });
+          if (/claims/.test(a.get('props') || '')) return J({ entities: { Q68: { sitelinks: { dewiki: { title: 'Morges' } } }, Q21: { claims: { P31: [{ mainsnak: { datavalue: { value: { id: 'C5' } } } }] }, sitelinks: { dewiki: { title: 'Schloss Morges' } } }, Q22: { claims: { P31: [{ mainsnak: { datavalue: { value: { id: 'C5' } } } }] } }, Q23: { claims: { P31: [{ mainsnak: { datavalue: { value: { id: 'C6' } } } }] } } } });
+          if (a.get('props') === 'labels') return J({ entities: { C5: { labels: { de: { value: 'Bauwerk' } } }, C6: { labels: { de: { value: 'Unternehmen' } } } } });
         }
         return { ok: false, status: 404, json: async () => ({}) };
       };
       const gf = await core.loadGegend('Morges', 'fr', fr, cfg);
       const gfi = gf.groups.reduce((acc, x) => acc.concat(x.items), []);
       ok(gf.de && gf.de.title === 'Morges' && gf.de.len === 52000 && gfi.find((i) => i.title === 'Château de Morges').de.title === 'Schloss Morges' && gfi.find((i) => i.title === 'Château de Morges').de.len === 7000 && !gfi.find((i) => i.title === 'Quai Igor-Stravinsky').de, 'v0.22.0 loadGegend (fr): German title via Wikidata, length from de.wikipedia, none where no German article: ' + JSON.stringify(gfi.map((i) => i.title + ':' + JSON.stringify(i.de))));
+      // v0.23.0: the articles of the visible section (geosearch): the company that the town article does not link back
+      const gfa = await core.loadGegend('Morges', 'fr', fr, cfg, null, { area: { lat: 46.5113, lon: 6.4986, radius: 1500 } });
+      const wi = gfa.groups.find((x) => x.id === 'wirtschaft');
+      ok(geoReq.length === 1 && geoReq[0] === '46.51130|6.49860 r1500' && wi && wi.items[0].title === 'Manufacture Beispiel' && wi.items[0].geo === true && wi.items[0].q === 'Q23', 'v0.23.0 loadGegend with area: geosearch of the section, company in "Wirtschaft", marked geo, with its Wikidata number: ' + JSON.stringify(gfa.groups.map((x) => x.id + ':' + x.items.map((i) => i.title + (i.geo ? '*' : '')))));
+      const linked = gfa.groups.reduce((acc, x) => acc.concat(x.items), []).find((i) => i.title === 'Quai Igor-Stravinsky');
+      ok(linked && !linked.geo && !gfi.find((i) => i.title === 'Manufacture Beispiel') && geoReq.length === 1, 'v0.23.0 without area no geosearch; an article that is linked both ways is no geo item');
+      // v0.23.0: original name (local language) in the prompts, no German second name
+      const hf = { name: 'Herrenhaus Forel', name2: '', namen: {}, artikel: { de: 'Herrenhaus Forel', fr: 'Manoir Forel (Saint-Prex)' }, lat: 46.4749, lon: 6.4608, typ: 'schloss' };
+      const chVD = { name: 'Saint-Prex', cc: 'ch', state: 'Waadt', region: 'CH-VD' };
+      eq(core.promptName(hf, chVD, cfg), 'Manoir Forel', 'v0.23.0 original name from the article title in the local language');
+      eq(core.promptName(hf, null, cfg) + '|' + core.promptName({ name: 'Château', namen: { fr: 'Château de X' }, artikel: {} }, chVD, cfg), 'Herrenhaus Forel|Château de X', 'v0.23.0 without region: the displayed name; OSM/Wikidata name in the local language first');
+      ok(new URL(core.googleLinks(hf, chVD, cfg).ai).searchParams.get('q').startsWith('Was ist „Manoir Forel“ in Saint-Prex (Waadt)? Antworte sachlich, ohne Rückfrage am Ende.'), 'v0.23.0 "Was ist" question with the original name and the instruction as its own sentence');
+      ok(core.reviewGoogleUrl(hf, chVD, cfg).includes(encodeURIComponent('Lohnt sich Manoir Forel (Waadt')) && !core.buildPrompt(hf, { level: 'kurz', article: { lang: 'fr', intro: 'Texte.', text: 'Texte.', url: 'u' }, loc: chVD }, cfg).text.includes('Herrenhaus Forel'), 'v0.23.0 review and Audioguide prompt: original name, not the German one');
       // KI-Überblick link and town label
       const ku = new URL(core.topicGoogleUrl({ title: 'Schloss Morges' }, { name: 'Morges' }, { state: 'Waadt' }, cfg)), kq = ku.searchParams.get('q');
       ok(ku.host === 'www.google.com' && ku.searchParams.get('udm') === '50' && kq.startsWith('Reiseführer: Gib mir einen guten Überblick über „Schloss Morges“ (in Morges, Waadt).') && kq.endsWith('ohne Rückfrage am Ende'), 'v0.22.0 KI-Überblick link: ' + kq.slice(0, 120));

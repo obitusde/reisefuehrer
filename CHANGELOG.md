@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.23.0 – 06.11.2026 – Gegend: Dorf nach Zoom, Artikel des Kartenausschnitts; Originalname in den Prompts; Text an grauen Ringen
+
+Wünsche Nutzer: (1) Neben den weißen Punkten soll, wo Platz ist, ein Text stehen („sonst muss ich alle anklicken“), (2) die Prompts sollen den Originalnamen enthalten, damit die KI Quellen findet, (3) die Anweisung „keine Rückfrage“ als eigener Satz, (4) bei Gegend soll man sehen, was es im Kartenausschnitt Interessantes gibt (Beispiel Audemars Piguet in Le Brassus), (5) Zoom steuert Ort und Zahl der Einträge, (7) nur was nicht auf der Karte steht, kommt zusätzlich in die Liste.
+
+- **Graue Ringe mit Text**: Wo neben dem Ring Platz ist, steht eine Zeile (Name, höchstens 14 Zeichen mit …, sonst die Art, z. B. „Kapelle“). Zuerst werden alle Ringe gesetzt, dann die Texte: ein Text schiebt nie einen Ring weg und liegt nie auf einem anderen Ring. Ohne Platz bleibt der Ring allein (wie bisher, begrenzt je Zoom). `marker.osm_beschriftung_max_zeichen`.
+- **Originalname in den Prompts**: „Praktisches und Bewertung“, „Was ist“ und der Audioguide nennen den Namen in der Landessprache der Region (Wikidata/OSM-Name, sonst Titel des Wikipedia-Artikels in dieser Sprache), nicht mehr „(deutsch: …)“. Ist er nicht bekannt, steht der angezeigte Name. Die „Was ist“-Frage endet mit „Antworte sachlich, ohne Rückfrage am Ende.“.
+- **Gegend, Ort nach Zoom**: Ab Zoom 13 (`gegend.ort_dorf_ab_zoom`) steht zuerst das Dorf der Kartenmitte (Nominatim, Ebene Dorf), darunter bei „Anderer Ort“ die Gemeinde und die Städte des Verzeichnisses. Hat das Dorf keinen eigenen Artikel, nimmt die App automatisch den nächsten Ort. Weiter weg bleibt es bei der nächsten Stadt.
+- **Gegend, Artikel des Kartenausschnitts**: Die Wikipedia-Artikel mit Koordinaten im sichtbaren Ausschnitt (Radius = halbe Breite, 300 m bis 10 km, eine Geosuche) kommen zu den Themen dazu und laufen durch dieselben Gruppen und Filter. Nicht aufgeführt werden die, die die Karte in diesem Moment zeigt (Wikidata-Nummer der Marker). Die Liste im Handy hat den Ausschnitt im Schlüssel.
+- **Zahl je Gruppe nach Zoom**: 6 bei kleinem Zoom, 10 ab 13, 20 ab 15 (`gegend.pro_gruppe_nach_zoom`); der Rest unter „Mehr (n)“. Die Liste hält bis 30 je Gruppe (`max_je_gruppe`), „Weiteres“ bis 20.
+- Das Messwerkzeug für Commons-Fotozahlen (`tools/commons-probe.mjs`, `commons-test.yml`) ist entfernt.
+
+Annahmen/Abweichungen: Der Originalname kommt nur aus dem, was die App zum Ziel kennt (Namen je Sprache, Artikeltitel in der Landessprache). Die Sprache der Region kommt aus der Ortsabfrage; ist sie noch nicht da, bleibt der angezeigte Name. Der deutsche Name steht in keinem Prompt mehr. Bei der Ortswahl mischt die Liste nicht Dorf und Gemeinde: Das Dorf steht oben, die Gemeinde unter „Anderer Ort“; die Artikel des Ausschnitts holen aber auch, was nur zur Gemeinde gehört. „Nur was nicht auf der Karte steht“ gilt für die Artikel aus dem Ausschnitt; die Themen aus dem Ortsartikel stehen weiter vollständig da. Nicht auf dem Handy geprüft (nur Tests und Messung auf Actions): wie Le Brassus mit dem Dorf-Lookup aussieht, ob Nominatim dort das Dorf liefert, und wie die Texte an den Ringen im echten Gedränge wirken. 417 Kern-Tests, 245 Oberflächen-Tests.
+
 ## v0.22.0 – 06.11.2026 – Gegend: Knopf „KI-Überblick“ und „Wikipedia (de)“ an jedem Eintrag; Städtenamen in zwei Zeilen
 
 Wunsch Nutzer: An den Einträgen von „Gegend“ soll es die Google-KI-Suche geben (für einen schnellen guten Überblick) und den deutschen Wikipedia-Artikel, wenn er lang genug ist. Dazu die Rückmeldung zum Kartenbild (Zoom 10): „Bad Homburg vor der Höhe“ steht in einer Zeile.

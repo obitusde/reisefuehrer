@@ -171,7 +171,7 @@ try {
   if (process.env.DEBUG) { page.on('request', (r) => { if (/extracts|mymemory/.test(r.url())) console.log('REQ', decodeURIComponent(r.url()).slice(0, 160)); }); page.on('requestfailed', (r) => console.log('FAILED', r.url().slice(0, 120), r.failure() && r.failure().errorText)); page.on('console', (m) => console.log('CONSOLE', m.text())); }
   await page.goto(BASE + 'index.html');
   await page.waitForSelector('.empty');
-  ok((await page.textContent('#version')) === 'v0.22.0', 'footer version');
+  ok((await page.textContent('#version')) === 'v0.23.0', 'footer version');
   if (OUT) await page.screenshot({ path: OUT + '/01-start.png' });
 
   await menuClick(page, '#btnLocate');
@@ -194,8 +194,8 @@ try {
   ok(await page.$$eval('.item.osm .it-stars', (els) => els.every((e) => e.textContent === '·')), 'v0.10.0 OSM only without stars');
   if (order.includes('O')) ok(/Weitere \(nur OpenStreetMap/.test(secs[secs.length - 1]), 'v0.10.0 OSM section at the end');
   const tiers = await page.$$eval('.mk-wrap', (els) => els.map((e) => { const m = e.querySelector('.mk'); return m ? (m.className.match(/t-(\w+)/) || [0, ''])[1] + (e.querySelector('.mk-lbl') ? '+' : '') : ''; }).filter(Boolean));
-  ok(tiers.filter((t) => t.startsWith('top')).length <= 5 && tiers.filter((t) => t.startsWith('top') || t.startsWith('name')).length <= 15 && tiers.every((t) => !/^(dot|osm)\+/.test(t)),
-    'v0.10.0 map: at most 5 big, 15 with a name, dots and OSM rings without a name: ' + tiers.join(' '));
+  ok(tiers.filter((t) => t.startsWith('top')).length <= 5 && tiers.filter((t) => t.startsWith('top') || t.startsWith('name')).length <= 15 && tiers.every((t) => !/^dot\+/.test(t)),
+    'v0.10.0 map: at most 5 big, 15 with a name, plain dots without a name (v0.23.0: grey rings get a short text where there is room): ' + tiers.join(' '));
   ok(await page.$$eval('.mk-lbl.top', (els) => els.length >= 1), 'v0.10.0 the best have a bold name');
   await page.click('#btnMenu');
   if (OUT) await page.screenshot({ path: OUT + '/17-menue.png' });
@@ -480,10 +480,10 @@ try {
   ok(splitNow && +splitNow > 12, 'split persisted: ' + splitNow);
 
   // update banner (fake newer version, then ?testupdate=1)
-  fakeVersion = '0.22.1';
+  fakeVersion = '0.23.1';
   await page.reload();
   await page.waitForSelector('#banner:not([hidden])');
-  ok((await page.textContent('#bannerText')).includes('v0.22.1'), 'banner shows remote version');
+  ok((await page.textContent('#bannerText')).includes('v0.23.1'), 'banner shows remote version');
   if (OUT) await page.screenshot({ path: OUT + '/05-banner.png' });
   fakeVersion = null;
   await page.click('#bannerBtn');
@@ -616,9 +616,9 @@ try {
   const swOk = await p3.evaluate(() => navigator.serviceWorker.ready.then((r) => !!r.active)).catch(() => false);
   ok(swOk, 'service worker active');
   const cacheKeys = await p3.evaluate(async () => { await new Promise((r) => setTimeout(r, 800)); return caches.keys(); });
-  ok(cacheKeys.includes('rf-app-0.22.0'), 'app cache with version: ' + cacheKeys.join(','));
-  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.22.0')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
-  ok(cached.some((u) => u.includes('app.js?v=0.22.0')), 'shell precached');
+  ok(cacheKeys.includes('rf-app-0.23.0'), 'app cache with version: ' + cacheKeys.join(','));
+  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.23.0')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
+  ok(cached.some((u) => u.includes('app.js?v=0.23.0')), 'shell precached');
   ok(errs3.length === 0, 'sw: no JS errors ' + errs3.join(' | '));
   await ctx3.close();
 
@@ -699,7 +699,7 @@ try {
     const lb12 = await p12.$$eval('.mk-wrap', (els) => els.map((e) => e.title));
     ok(lb12.includes('Kathedrale Unserer Lieben Frau') && lb12.includes('Testbrunnen') && (await p12.$$('.mk.t-osm')).length === 2, 'v0.12.0 zoom 15: sights and OSM ring from the package at once: ' + lb12.join(', '));
     ok(await p12.$eval('#zoomHint', (e) => e.hidden) && SPARQL_CALLS.length === sq0, 'v0.12.0 nothing loaded from Wikidata, no question at zoom 15');
-    await p12.click('.mk-wrap[title="Testbrunnen"]');
+    await p12.click('.mk-wrap[title="Testbrunnen"]', { force: true });
     await p12.waitForSelector('#sheet:not([hidden])');
     ok((await p12.textContent('#sheetTitle')) === 'Testbrunnen', 'v0.12.0 OSM ring opens its place');
     // v0.13.0: the line from the package (description + height), Google buttons in their own window, no empty field
@@ -708,14 +708,14 @@ try {
     ok(gl.length === 1 && gl.every((a) => a.t === '_blank' && /noopener/.test(a.r) && /^https:\/\/www\.google\.com\/search\?hl=de/.test(a.h)) && /udm=50/.test(gl[0].h), 'v0.13.0 Google button (KI-Modus) opens in its own window, no image button: ' + JSON.stringify(gl));
     await p12.waitForFunction(() => /Manchester/.test(decodeURIComponent(document.querySelector('#plGoogle a[data-g="ai"]').href)), null, { timeout: 5000 }).catch(() => {});
     const q12 = decodeURIComponent((await p12.getAttribute('#plGoogle a[data-g="ai"]', 'href')).replace(/^.*[?&]q=/, '').replace(/\+/g, ' '));
-    ok(/^Was ist „Testbrunnen“ in Manchester\?.*\\? Keine Rückfrage am Ende$/.test(q12), 'v0.13.0 question with the place from Nominatim and the instruction: ' + q12);
+    ok(/^Was ist „Testbrunnen“ in Manchester\?.* Antworte sachlich, ohne Rückfrage am Ende\.$/.test(q12), 'v0.13.0 question with the place from Nominatim and the instruction: ' + q12);
     if (OUT) { await p12.waitForTimeout(600); await p12.screenshot({ path: OUT + '/20-ortsfenster-google.png' }); }
     await p12.evaluate(() => history.back());
     await p12.waitForSelector('#sheet', { state: 'hidden' });
-    await p12.click('.mk-wrap[title="Stummer Stein"]');
+    await p12.click('.mk-wrap[title="Stummer Stein"]', { force: true });
     await p12.waitForSelector('#sheet:not([hidden])');
     if (OUT) { await p12.waitForTimeout(600); await p12.screenshot({ path: OUT + '/21-ortsfenster-leer.png' }); }
-    ok((await p12.textContent('#plDesc')) === 'Keine Beschreibung gefunden.' && !(await p12.$eval('#plDesc', (e) => e.hidden)) && (await p12.$$('#plGoogle a')).length === 1, 'v0.13.0 nothing known: "Keine Beschreibung gefunden." and the Google button');
+    ok((await p12.textContent('#plDesc')) === 'Keine Beschreibung gefunden.' && !(await p12.$eval('#plDesc', (e) => e.hidden)) && (await p12.$$('#plGoogle a')).length === 1, 'v0.13.0 nothing known: "Keine Beschreibung gefunden." and the Google button: ' + (await p12.textContent('#sheetTitle')) + ' / ' + (await p12.textContent('#plDesc')) + ' / ' + (await p12.$$('#plGoogle a')).length);
     await p12.evaluate(() => history.back());
     await p12.waitForSelector('#sheet', { state: 'hidden' });
     await p12.evaluate(() => window.__rfMap.setView([49.6105, 6.1325], 15, { animate: false })); await p12.waitForTimeout(500); // opening a place moved the map
@@ -932,23 +932,24 @@ try {
   {
     const EX = 'Werdohl ist eine Stadt an der Lenne.\n\n== Geschichte ==\n' + 'Geschichtssatz hier. '.repeat(30) + '\n=== Neuzeit ===\n' + 'Zeitsatz hier. '.repeat(170) +
       '\n== Politik ==\n' + 'Politiksatz hier. '.repeat(110) + '\n== Bauwerke ==\n' + 'Bausatz hier. '.repeat(110) + '\n== Weblinks ==\nl';
-    const calls = { links: 0, search: [], extract: [] };
+    const calls = { links: 0, search: [], extract: [], rev: [], geo: [] };
     const c20 = await newCtx(browser);
     const J = (route, o) => route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(o) });
-    await c20.route(/nominatim\.openstreetmap\.org\/reverse/, (r) => J(r, { address: { town: 'Werdohl', state: 'Nordrhein-Westfalen', country_code: 'de', 'ISO3166-2-lvl4': 'DE-NW' } }));
+    await c20.route(/nominatim\.openstreetmap\.org\/reverse/, (r) => { calls.rev.push(new URL(r.request().url()).searchParams.get('zoom')); return J(r, { address: { town: 'Werdohl', state: 'Nordrhein-Westfalen', country_code: 'de', 'ISO3166-2-lvl4': 'DE-NW' } }); });
     await c20.route(/de\.wikipedia\.org\/w\/api\.php/, (r) => {
       const a = new URL(r.request().url()).searchParams, prop = a.get('prop') || '';
+      if (a.get('list') === 'geosearch') { calls.geo.push(a.get('gscoord') + ' r' + a.get('gsradius')); return J(r, { query: { geosearch: [{ title: 'Uhrenmanufaktur Beispiel', lat: 51.26, lon: 7.77, dist: 100 }] } }); }
       if (a.get('list') === 'backlinks') return J(r, { query: { backlinks: [{ title: 'Lenne (Ruhr)' }, { title: 'Altena' }, { title: 'Alfred Colsman' }] } });
       if (a.get('list') === 'search') { calls.search.push(a.get('srsearch')); return J(r, { query: { search: /Reformation/.test(a.get('srsearch')) ? [{ title: 'Geschichte Westfalens', sectiontitle: 'Reformation und Gegenreformation', wordcount: 12584, snippet: 'in <span class="searchmatch">Werdohl</span>, Plettenberg' }] : [{ title: 'Flugplatz Werdohl-Küntrop', wordcount: 133 }] } }); }
       if (prop === 'links') { calls.links++; return J(r, { query: { pages: [{ title: 'Werdohl', links: [{ title: 'Lenne (Ruhr)' }, { title: 'Altena' }, { title: 'Alfred Colsman' }] }] } }); }
-      if (/pageviews/.test(prop)) return J(r, { query: { pages: [{ title: 'Lenne (Ruhr)', length: 30000, pageprops: { wikibase_item: 'Q1' }, pageviews: { a: 120 } }, { title: 'Altena', length: 50000, pageprops: { wikibase_item: 'Q3' }, pageviews: { a: 600 } }, { title: 'Alfred Colsman', length: 9000, pageprops: { wikibase_item: 'Q6' }, pageviews: { a: 60 } }] } });
+      if (/pageviews/.test(prop)) return J(r, { query: { pages: [{ title: 'Lenne (Ruhr)', length: 30000, pageprops: { wikibase_item: 'Q1' }, pageviews: { a: 120 } }, { title: 'Altena', length: 50000, pageprops: { wikibase_item: 'Q3' }, pageviews: { a: 600 } }, { title: 'Uhrenmanufaktur Beispiel', length: 20000, pageprops: { wikibase_item: 'Q7' }, pageviews: { a: 300 }, coordinates: [{ lat: 51.26, lon: 7.77 }] }, { title: 'Alfred Colsman', length: 9000, pageprops: { wikibase_item: 'Q6' }, pageviews: { a: 60 } }] } });
       if (/extracts/.test(prop)) { calls.extract.push(a.get('exintro') ? 'intro' : 'full'); return J(r, { query: { pages: [{ title: 'Werdohl', length: 60000, extract: EX }] } }); }
       return J(r, { query: { pages: [] } });
     });
     await c20.route(/www\.wikidata\.org\/w\/api\.php/, (r) => {
       const a = new URL(r.request().url()).searchParams;
-      if (/claims/.test(a.get('props') || '')) return J(r, { entities: { Q1: { claims: { P31: [{ mainsnak: { datavalue: { value: { id: 'C1' } } } }] } }, Q3: { claims: { P31: [{ mainsnak: { datavalue: { value: { id: 'C2' } } } }] } }, Q6: { claims: { P31: [{ mainsnak: { datavalue: { value: { id: 'C5' } } } }] } } } });
-      if (a.get('props') === 'labels') return J(r, { entities: { C1: { labels: { de: { value: 'Fluss' } } }, C2: { labels: { de: { value: 'Stadt in Deutschland' } } }, C5: { labels: { de: { value: 'Mensch' } } } } });
+      if (/claims/.test(a.get('props') || '')) return J(r, { entities: { Q1: { claims: { P31: [{ mainsnak: { datavalue: { value: { id: 'C1' } } } }] } }, Q3: { claims: { P31: [{ mainsnak: { datavalue: { value: { id: 'C2' } } } }] } }, Q6: { claims: { P31: [{ mainsnak: { datavalue: { value: { id: 'C5' } } } }] } }, Q7: { claims: { P31: [{ mainsnak: { datavalue: { value: { id: 'C7' } } } }] } } } });
+      if (a.get('props') === 'labels') return J(r, { entities: { C1: { labels: { de: { value: 'Fluss' } } }, C2: { labels: { de: { value: 'Stadt in Deutschland' } } }, C5: { labels: { de: { value: 'Mensch' } } }, C7: { labels: { de: { value: 'Unternehmen' } } } } });
       return J(r, { entities: {} });
     });
     const p20 = await c20.newPage(); const e20 = []; watch(p20, e20);
@@ -958,15 +959,17 @@ try {
     await p20.waitForSelector('#sheetBody .gg-item', { timeout: 15000 });
     const heads = await p20.$$eval('#sheetBody h4', (e) => e.map((x) => x.textContent));
     const rows = await p20.$$eval('#sheetBody .gg-item b', (e) => e.map((x) => x.textContent));
-    ok(/Gegend: Werdohl/.test(await p20.textContent('#sheetTitle')) && heads.join('|') === 'Der Ort|Aus dem Ortsartikel|Natur und Gewässer|Erwähnt in|Persönlichkeiten', 'v0.20.0 Gegend: groups, people last, no towns: ' + heads.join('|'));
+    ok(/Gegend: Werdohl/.test(await p20.textContent('#sheetTitle')) && heads.join('|') === 'Der Ort|Aus dem Ortsartikel|Natur und Gewässer|Wirtschaft|Erwähnt in|Persönlichkeiten', 'v0.20.0 Gegend: groups, people last, no towns: ' + heads.join('|'));
     ok(rows.includes('Lenne (Ruhr)') && rows.includes('Neuzeit') && rows.includes('Bauwerke') && !rows.includes('Altena') && !rows.includes('Politik') && rows[rows.length - 1] === 'Alfred Colsman', 'v0.20.0 Gegend rows: ' + rows.join(', '));
+    // v0.23.0: the village of the map middle comes first (Nominatim zoom 13 from map zoom 13), the articles of the visible section come with it
+    ok(calls.rev[0] === '13' && calls.geo.length === 1 && /^51\.\d+\|7\.\d+ r\d+$/.test(calls.geo[0]) && rows.includes('Uhrenmanufaktur Beispiel'), 'v0.23.0 Gegend close up: village lookup (zoom 13), articles of the section (' + calls.geo.join(';') + '), the company is listed');
     // v0.22.0: every entry has "KI-Überblick" (Google AI search), "Wikipedia (de)" only for German articles of 1500 characters and more
     const kiN = await p20.$$eval('#sheetBody .gg-act a.ki', (e) => e.length), itemN = await p20.$$eval('#sheetBody .gg-item', (e) => e.length);
     const kiHref = await p20.getAttribute('#sheetBody li:has(b:text-is("Lenne (Ruhr)")) a.ki', 'href'), kiQ = new URL(kiHref).searchParams.get('q');
-    ok(kiN === itemN && itemN >= 7 && (await p20.textContent('#sheetBody .gg-act a.ki')) === 'KI-Überblick' && new URL(kiHref).host === 'www.google.com' && new URL(kiHref).searchParams.get('udm') === '50' &&
+    ok(kiN === itemN && itemN >= 8 && (await p20.textContent('#sheetBody .gg-act a.ki')) === 'KI-Überblick' && new URL(kiHref).host === 'www.google.com' && new URL(kiHref).searchParams.get('udm') === '50' &&
       kiQ.startsWith('Reiseführer: Gib mir einen guten Überblick über „Lenne (Ruhr)“ (in Werdohl, Nordrhein-Westfalen).'), 'v0.22.0 KI-Überblick at every entry (' + kiN + '/' + itemN + '): ' + kiQ.slice(0, 110));
     const wde = await p20.$$eval('#sheetBody .gg-act a:not(.ki)', (e) => e.map((x) => x.textContent + '>' + x.getAttribute('href')));
-    ok(wde.length === 3 && wde.every((x) => x.startsWith('Wikipedia (de)>https://de.m.wikipedia.org/wiki/')) && wde.includes('Wikipedia (de)>https://de.m.wikipedia.org/wiki/Lenne_(Ruhr)') && !(await p20.$('#sheetBody li:has(b:text-is("Neuzeit")) a:not(.ki)')) && !(await p20.$('#ggHits a')), 'v0.22.0 Wikipedia (de) button for articles from 1500 characters; sections only with KI-Überblick: ' + wde.join(' | '));
+    ok(wde.length === 4 && wde.every((x) => x.startsWith('Wikipedia (de)>https://de.m.wikipedia.org/wiki/')) && wde.includes('Wikipedia (de)>https://de.m.wikipedia.org/wiki/Lenne_(Ruhr)') && !(await p20.$('#sheetBody li:has(b:text-is("Neuzeit")) a:not(.ki)')) && !(await p20.$('#ggHits a')), 'v0.22.0 Wikipedia (de) button for articles from 1500 characters; sections only with KI-Überblick: ' + wde.join(' | '));
     if (OUT) await p20.screenshot({ path: OUT + '/21-gegend.png' });
     // a topic opens like a place, without stars, map link, Google question
     await p20.click('#sheetBody .gg-item:has(b:text-is("Lenne (Ruhr)"))');
