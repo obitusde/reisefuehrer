@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.19.1 – 06.11.2026 – Schwenken beim Herauszoomen wieder flott
+
+Meldung Nutzer: Nach dem Herauszoomen ist das Bewegen der Karte sehr langsam.
+
+- **Ursache** (mit dem echten Deutschland-Paket im Browser gemessen): Die Prüfung auf doppelte Einträge „Abstand unter 60 m und gemeinsames langes Wort“ aus v0.16.0 verglich jedes Ziel mit allen anderen: Rechenzeit wächst mit dem Quadrat der Zahl der Ziele. Beim Herauszoomen kommen Zehntausende Ziele ins Bild (9 862 Einträge: 3,9 s, 25 226 Einträge: 32 s auf dem Rechner; das Handy ist langsamer). Die Berechnung läuft bei jedem Verschieben, wenn neue Kacheln ins Bild kommen.
+- **Behoben**: Die Prüfung schaut nur noch in die 9 Nachbarfelder (Rasterzellen von 0,002°). Gemessen auf dem Rechner: 25 226 Einträge 32 s → 0,35 s, 49 781 Einträge 0,7 s; die Zeit wächst jetzt gleichmäßig mit der Zahl der Einträge.
+- **Zwischenspeicher für die Berechnung**: Die Karte, die Liste und die Städteschicht fragten mit etwas unterschiedlichen Ausschnitten und verdrängten sich gegenseitig aus dem einen Speicherplatz, so dass bei jedem Schwenk neu gerechnet wurde. Jetzt werden die Ergebnisse der letzten 8 Kachelmengen behalten.
+- **Weniger Einträge beim Herauszoomen** (Zoom 11 und tiefer, Städteschicht): Es gehen nur Orte und Ziele über 5 Punkten in die Berechnung (nur die zählen für die Sterne der Städte). Die Liste unter der Karte zeigt dort nur noch diese Ziele; näher heran wie bisher alle.
+- Neuer Test: 20 000 Einträge werden in unter 5 Sekunden berechnet (quadratisch wären es Minuten).
+
+### Annahmen/Abweichungen
+
+- Die Sterne gesuchter Orte hängen nicht vom Zoom ab (die Berechnung für sie nimmt immer alle Ziele).
+- Gemessen am Rechner (Chromium, ohne Netz), nicht auf dem Handy; wie viel es dort ausmacht, siehst du beim Schwenken.
+
 ## v0.19.0 – 05.11.2026 – „Praktisches und Bewertung“ öffnet direkt die Google-KI-Suche
 
 Wunsch Nutzer: Der Knopf soll direkt mit der Google-KI-Suche arbeiten.

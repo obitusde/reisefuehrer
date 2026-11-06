@@ -1,8 +1,8 @@
-/* Reiseführer – app (v0.19.0). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.19.1). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.19.0';
+  var VERSION = '0.19.1';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
@@ -437,7 +437,7 @@
           delete DIR.reading[k];
           if (r && r.items) DIR.mem[k] = r; else delete DIR.index[k];
         });
-      })).then(function () { DIR.resKey = ''; scheduleCities(); scheduleMarkers(); });
+      })).then(function () { dirFlush(); scheduleCities(); scheduleMarkers(); });
     }
     // v0.8.1: nothing is downloaded by itself – "Hier suchen" loads the missing tiles (wish of the user)
     DIR.missing = missing;
@@ -470,7 +470,7 @@
     }).catch(function (e) {
       DIR.err[k] = Date.now(); DIR.lastErr = (e && e.message) || 'Fehler';
     }).then(function () {
-      DIR.job = null; DIR.done++; DIR.resKey = '';
+      DIR.job = null; DIR.done++; dirFlush();
       scheduleCities(); scheduleMarkers(); refreshSettings(); scheduleDir();
       dirRun();
     });
@@ -482,16 +482,31 @@
     renderHint();
   }
   /** Towns and sights of the directory around the section (computed again only when other tiles are involved). */
-  function dirResult(b) {
+  // v0.19.1: the results of the last 8 tile sets are kept (the map, the list and the town layer ask with slightly different boxes: one slot made them
+  // push each other out and recompute on every move). Zoomed out (town layer) only towns and sights above `basis` points go in: they are all the town stars need.
+  function dirFlush() { DIR.rc = []; DIR.res = null; DIR.resKey = ''; }
+  function dirResult(b, full) { // full: also the small sights (stars of searched places must not depend on the zoom)
     if (!dirOn() || !dcfg) return null;
     var keys = C.directoryTiles(padBox(b, 0.25), cfg).map(C.tileKey).filter(function (k) { return DIR.mem[k] && DIR.mem[k].items; }).sort();
-    var key = keys.join(';');
-    if (key === DIR.resKey) return DIR.res;
+    var sc = SC(), far = !full && map.getZoom() <= ((sc.zoom && sc.zoom.staedte_bis) || 11);
+    var key = keys.join(';') + (far ? '|f' : '');
+    DIR.rc = DIR.rc || [];
+    for (var i = 0; i < DIR.rc.length; i++) if (DIR.rc[i].key === key) { var hit = DIR.rc.splice(i, 1)[0]; DIR.rc.unshift(hit); return hit.res; }
+    var basis = (dcfg.verzeichnis.stadt && dcfg.verzeichnis.stadt.basis) || 5;
     var seen = {}, items = [];
-    keys.forEach(function (k) { DIR.mem[k].items.forEach(function (x) { if (!seen[x.q]) { seen[x.q] = 1; items.push(x); } }); });
-    DIR.res = items.length ? C.computeDirectory(items, dcfg, null, { copy: true }) : null;
-    DIR.resKey = key;
-    return DIR.res;
+    keys.forEach(function (k) {
+      DIR.mem[k].items.forEach(function (x) {
+        if (seen[x.q]) return;
+        seen[x.q] = 1;
+        if (far && !x._c && !(x._s && x._s.score > basis)) return;
+        items.push(x);
+      });
+    });
+    var res = items.length ? C.computeDirectory(items, dcfg, null, { copy: true }) : null;
+    DIR.rc.unshift({ key: key, res: res });
+    if (DIR.rc.length > 8) DIR.rc.length = 8;
+    DIR.res = res; DIR.resKey = key;
+    return res;
   }
   // v0.8.2: everything of the directory in the section, most important first (the map shows the first max_sichtbar)
   function dirInView(b) {
@@ -917,7 +932,7 @@
       PAKET.meta[d.land] = meta; PAKET.info[d.land] = st.info;
       paketRebuildCover();
       PAKET.osmMem = {};
-      DIR.res = null; DIR.resKey = ''; DIR.missing = [];
+      dirFlush(); DIR.missing = [];
       try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* ignore */ }
       scheduleDir();
       return meta;
@@ -947,7 +962,7 @@
       });
       return IDB.delMany(keys).then(function () { return sets.length ? IDB.setMany(sets) : null; });
     }).then(function () { return IDB.set('vz:index', DIR.index); }).then(function () {
-      DIR.res = null; DIR.resKey = ''; dataSheet(); scheduleMarkers(); scheduleCities(); scheduleDir();
+      dirFlush(); dataSheet(); scheduleMarkers(); scheduleCities(); scheduleDir();
       toast('Paket ' + d.name + ' gelöscht');
     });
   }
@@ -1237,7 +1252,7 @@
   function dirClear() {
     if (!confirm('Gespeichertes Verzeichnis löschen?')) return;
     dirCancel();
-    DIR.mem = {}; DIR.index = {}; DIR.res = null; DIR.resKey = '';
+    DIR.mem = {}; DIR.index = {}; dirFlush();
     paketList().forEach(function (d) { delete PAKET.meta[d.land]; IDB.del('paket:' + d.land); IDB.del('info:' + d.land); });
     PAKET.cover = {}; PAKET.osmMem = {}; PAKET.info = {};
     IDB.delPrefix('vz:').then(function () { refreshSettings(); scheduleCities(); scheduleMarkers(); scheduleDir(); });
@@ -1744,7 +1759,7 @@
   }
   function dirStars() {
     if (!last || !last.places) return false;
-    var dr = dirOn() && last.bbox ? dirResult(last.bbox) : null;
+    var dr = dirOn() && last.bbox ? dirResult(last.bbox, true) : null;
     var byQ = {};
     if (dr) dr.orte.forEach(function (x) { byQ[x.q] = x; });
     var changed = false;

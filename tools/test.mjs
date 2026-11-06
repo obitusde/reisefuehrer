@@ -564,6 +564,12 @@ eq(core.iconFor('sonstiges', cfg), '', 'other: plain dot');
     const vi = [{ q: 'Q9', _s: { score: 2.5, typ: 'turm' } }, { q: 'Q8', _s: { score: 3, typ: 'turm', av: true } }, { q: 'Q7', _s: { score: 4, typ: 'turm' } }];
     const nv = core.applyViewpoints(vi, [{ k: 'tourism=viewpoint', wd: 'Q9' }, { k: 'tourism=viewpoint', wd: 'Q8' }, { k: 'tourism=museum', wd: 'Q7' }, { k: 'tourism=viewpoint' }], cfg);
     ok(nv === 1 && vi[0]._s.score === 4.5 && vi[0]._s.av && vi[1]._s.score === 3 && vi[2]._s.score === 4, 'v0.16.0 OSM viewpoint with Wikidata number lifts the entry once (not twice, not other kinds): ' + JSON.stringify(vi));
+    // v0.19.1: no quadratic work (25 000 items took 32 s with the near-twin check, now well below a second)
+    const big = [];
+    for (let i = 0; i < 20000; i++) big.push(it('Qx' + i, 'Ort Nummer ' + i + ' Kirche', 51 + (i % 200) * 0.004, 7 + Math.floor(i / 200) * 0.006, 8 + (i % 5), ['church building'], { p31: ['Q16970'] }));
+    const tBig = Date.now();
+    core.computeDirectory(big, core.directoryConfig(cfg), null, { copy: true });
+    ok(Date.now() - tBig < 5000, 'v0.19.1 computeDirectory of 20 000 items is not quadratic: ' + (Date.now() - tBig) + ' ms');
     const dc = core.directoryConfig(cfg);
     const mk = (q, n, lat, lon, cls) => it(q, n, lat, lon, 12, cls, { p31: ['Q33506'] });
     const names = (l) => core.computeDirectory(l, dc, null, { copy: true }).orte.map((o) => o.name).sort().join(' | ');

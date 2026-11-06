@@ -1,5 +1,5 @@
 /*
- * Reiseführer – core logic (v0.19.0)
+ * Reiseführer – core logic (v0.19.1)
  * Shared by the app (index.html), the diagnostics page (diag.html) and Node tests.
  * No DOM access here. Network access only through the injected fetch function.
  */
@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var CORE_VERSION = '0.19.0';
+  var CORE_VERSION = '0.19.1';
 
   // ---------------------------------------------------------------- helpers
 
@@ -1207,7 +1207,7 @@
     return { text: text, length: text.length, truncated: false };
   }
 
-  /** v0.19.0: link to the Google AI search with the short review prompt (Google answers, the app reads nothing). */
+  /** v0.19.1: link to the Google AI search with the short review prompt (Google answers, the app reads nothing). */
   function reviewGoogleUrl(p, loc, cfg) {
     var g = cfg.google || {};
     return 'https://www.google.com/search?hl=' + encodeURIComponent(g.sprache || 'de') + (g.ki_param ? '&' + g.ki_param : '') +
@@ -2074,12 +2074,18 @@
     });
     // the same place twice (building and collection, "Musée Ariana" in two items): keep the better one
     sights.sort(function (a, b) { return b.score - a.score; });
-    var seen = {}, uniq = [];
+    var seen = {}, uniq = [], twinGrid = {}, TC = 0.002; // twinGrid: cells of 0.002° (about 140 m or more), so that the near-twin check looks at 9 cells, not at all sights (v0.19.1: was quadratic)
     sights.forEach(function (s) {
       var k = sameNameKey(s.x.name), dup = (seen[k] || []).filter(function (o) { return haversine(o.x.lat, o.x.lon, s.x.lat, s.x.lon) < (v.doppelt_m || 500); })[0];
-      if (!dup && v.doppelt_nah_m) dup = uniq.filter(function (o) { return haversine(o.x.lat, o.x.lon, s.x.lat, s.x.lon) < v.doppelt_nah_m && shareWord(o.x.name, s.x.name, v.doppelt_ignorieren); })[0];
+      var ci = Math.floor(s.x.lat / TC), cj = Math.floor(s.x.lon / TC);
+      if (!dup && v.doppelt_nah_m) {
+        for (var i = ci - 1; i <= ci + 1 && !dup; i++) for (var j = cj - 1; j <= cj + 1 && !dup; j++) {
+          dup = (twinGrid[i + ',' + j] || []).filter(function (o) { return haversine(o.x.lat, o.x.lon, s.x.lat, s.x.lon) < v.doppelt_nah_m && shareWord(o.x.name, s.x.name, v.doppelt_ignorieren); })[0];
+        }
+      }
       if (dup) { s.x.fate = 'doppelt zu ' + dup.x.name; return; }
       (seen[k] = seen[k] || []).push(s);
+      (twinGrid[ci + ',' + cj] = twinGrid[ci + ',' + cj] || []).push(s);
       uniq.push(s);
     });
     sights = uniq;
