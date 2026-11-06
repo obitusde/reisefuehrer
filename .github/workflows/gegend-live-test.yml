@@ -15,6 +15,9 @@ on:
       thema:
         description: 'Suchwort zusammen mit dem Ort'
         default: 'Lenne'
+      flaeche:
+        description: 'Kartenausschnitt als lat,lon,Radius in m (optional)'
+        default: ''
 permissions:
   contents: read
 jobs:
@@ -26,6 +29,7 @@ jobs:
       SPRACHE: ${{ inputs.sprache }}
       QID: ${{ inputs.qid }}
       THEMA: ${{ inputs.thema }}
+      FLAECHE: ${{ inputs.flaeche }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -33,7 +37,7 @@ jobs:
           node-version: 20
       - name: Eingaben prüfen
         run: |
-          for v in "$ORT" "$SPRACHE" "$QID" "$THEMA"; do
+          for v in "$ORT" "$SPRACHE" "$QID" "$THEMA" "$FLAECHE"; do
             if ! [[ "$v" =~ ^[^[:cntrl:]]{0,200}$ ]]; then echo "Ungültig"; exit 1; fi
           done
       - name: Abfragen
