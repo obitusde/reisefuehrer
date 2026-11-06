@@ -564,6 +564,60 @@ eq(core.iconFor('sonstiges', cfg), '', 'other: plain dot');
     const vi = [{ q: 'Q9', _s: { score: 2.5, typ: 'turm' } }, { q: 'Q8', _s: { score: 3, typ: 'turm', av: true } }, { q: 'Q7', _s: { score: 4, typ: 'turm' } }];
     const nv = core.applyViewpoints(vi, [{ k: 'tourism=viewpoint', wd: 'Q9' }, { k: 'tourism=viewpoint', wd: 'Q8' }, { k: 'tourism=museum', wd: 'Q7' }, { k: 'tourism=viewpoint' }], cfg);
     ok(nv === 1 && vi[0]._s.score === 4.5 && vi[0]._s.av && vi[1]._s.score === 3 && vi[2]._s.score === 4, 'v0.16.0 OSM viewpoint with Wikidata number lifts the entry once (not twice, not other kinds): ' + JSON.stringify(vi));
+    // ---- v0.20.0: "Gegend" – topics of a place from its Wikipedia article
+    {
+      const EX = 'Werdohl ist eine Stadt.\n\n== Geschichte ==\n' + 'x'.repeat(600) + '\n=== Mittelalter ===\n' + 'y'.repeat(900) + '\n=== Neuzeit ===\n' + 'z'.repeat(2500) +
+        '\n== Politik ==\n' + 'p'.repeat(2000) + '\n== Bauwerke ==\n' + 'b'.repeat(1500) + '\n== Wirtschaft ==\n' + 'w'.repeat(300) + '\n== Weblinks ==\nl';
+      const sl = core.sectionList(EX);
+      ok(sl.map((s) => s.name).join('|') === 'Geschichte|Mittelalter|Neuzeit|Politik|Bauwerke|Wirtschaft|Weblinks' && sl[0].total > sl[0].own && sl[0].total >= 600 + 900 + 2500 && sl[1].lvl === 3, 'v0.20.0 sections with own and total length: ' + sl.map((s) => s.name + ':' + s.own + '/' + s.total).join(' '));
+      const sr = core.sectionRaw(EX, 'Geschichte');
+      ok(sr.includes('Mittelalter') && sr.includes('zzzz') && !sr.includes('Politik') && core.sectionRaw(EX, 'Neuzeit').includes('zzzz') && !core.sectionRaw(EX, 'Neuzeit').includes('yyyy') && core.sectionRaw(EX, 'Gibt es nicht') === '', 'v0.20.0 section text: with subsections, up to the next heading of the same level');
+      const data = { lang: 'de', title: 'Werdohl', extract: EX,
+        info: { 'Lenne (Ruhr)': { title: 'Lenne (Ruhr)', len: 30000, views: 40, q: 'Q1' }, 'Verse': { title: 'Verse', len: 4000, views: 5, q: 'Q2' }, 'Altena': { title: 'Altena', len: 50000, views: 90, q: 'Q3' },
+          'Eveking': { title: 'Eveking', len: 3000, views: 2, q: 'Q4' }, 'Vossloh': { title: 'Vossloh', len: 37000, views: 20, q: 'Q5' }, 'Alfred Colsman': { title: 'Alfred Colsman', len: 9000, views: 4, q: 'Q6' },
+          'Tibet (Band)': { title: 'Tibet (Band)', len: 3000, views: 1, q: 'Q7' }, 'St. Michael (Werdohl)': { title: 'St. Michael (Werdohl)', len: 6000, views: 2, q: 'Q8' }, 'Radio X': { title: 'Radio X', len: 2000, views: 1, q: 'Q9' }, 'Saline': { title: 'Saline', len: 8000, views: 1, q: 'Q10' } },
+        p31: { Q1: ['C1'], Q2: ['C1'], Q3: ['C2'], Q4: ['C3'], Q5: ['C4'], Q6: ['C5'], Q7: ['C6'], Q8: ['C7'], Q9: ['C8'], Q10: ['C9'] },
+        clsLabel: { C1: 'Fluss', C2: 'Stadt in Deutschland', C3: 'Ortsteil', C4: 'Gewerbebetrieb', C5: 'Mensch', C6: 'Musikgruppe', C7: 'Kirchengebäude', C8: 'Lokalradio', C9: 'Saline' },
+        hits: [{ title: 'Werdohl', wordcount: 6000 }, { title: 'Flugplatz Werdohl-Küntrop', wordcount: 133 }, { title: 'Liste der Baudenkmäler in Werdohl', wordcount: 100 }, { title: 'Vossloh', wordcount: 5 }] };
+      const gt = core.gegendTopics(data, cfg);
+      ok(gt.sections.map((s) => s.name).join('|') === 'Geschichte|Neuzeit|Bauwerke', 'v0.20.0 section topics: politics, weblinks and short sections are left out, big subsection kept: ' + gt.sections.map((s) => s.name + ':' + s.size).join(' '));
+      ok(gt.groups.map((g) => g.id).join() === 'natur,bauwerke,wirtschaft' && gt.groups[0].items.map((i) => i.title).join() === 'Lenne (Ruhr),Verse', 'v0.20.0 groups by kind, ordered by readers and length: ' + gt.groups.map((g) => g.id + ':' + g.items.map((i) => i.title)).join(' | '));
+      const allT = [].concat(...gt.groups.map((g) => g.items.map((i) => i.title)), gt.more.map((i) => i.title));
+      ok(!allT.includes('Altena') && !allT.includes('Eveking') && !allT.includes('Tibet (Band)') && !allT.includes('Radio X'), 'v0.20.0 towns, districts, bands and radio stations are left out');
+      ok(gt.more.map((i) => i.title).join() === 'Saline' && gt.people.map((i) => i.title).join() === 'Alfred Colsman', 'v0.20.0 unsorted things under "more", people separate');
+      eq(gt.mentioned.map((h) => h.title).join(), 'Flugplatz Werdohl-Küntrop', 'v0.20.0 "mentioned in": not the town itself, no lists, nothing already listed');
+      // the whole loading with a fake Wikipedia/Wikidata
+      const log = [];
+      const f = async (url) => {
+        const u = new URL(url), a = u.searchParams; log.push(u.hostname + ' ' + (a.get('prop') || a.get('list') || a.get('action')));
+        const J = (o) => ({ ok: true, status: 200, json: async () => o });
+        if (u.hostname === 'de.wikipedia.org') {
+          if (a.get('list') === 'backlinks') return J({ query: { backlinks: [{ title: 'Lenne (Ruhr)' }, { title: 'Altena' }, { title: 'Fremd' }] } });
+          if (a.get('list') === 'search') return J({ query: { search: [{ title: 'Flugplatz Werdohl-Küntrop', wordcount: 133 }] } });
+          if (a.get('prop') === 'links') return J({ query: { pages: [{ title: 'Werdohl', links: [{ title: 'Lenne (Ruhr)' }, { title: 'Altena' }, { title: 'Nur hin' }] }] } });
+          if (/extracts/.test(a.get('prop') || '')) return J({ query: { pages: [{ title: 'Werdohl', extract: EX }] } });
+          if (/pageviews/.test(a.get('prop') || '')) {
+            // the reading numbers come in two portions (continuation), like the real API
+            if (!a.get('picontinue') && !a.get('pvipcontinue')) return J({ continue: { pvipcontinue: 'x' }, query: { pages: [{ title: 'Lenne (Ruhr)', length: 30000, pageprops: { wikibase_item: 'Q1' }, pageviews: { '2026-01-01': 30 } }, { title: 'Altena', length: 50000, pageprops: { wikibase_item: 'Q3' }, pageviews: { '2026-01-01': 60 } }] } });
+            return J({ query: { pages: [{ title: 'Lenne (Ruhr)', pageviews: { '2026-01-02': 90 } }, { title: 'Altena', pageviews: { '2026-01-02': 10 } }] } });
+          }
+        }
+        if (u.hostname === 'www.wikidata.org') {
+          if (a.get('props') === 'claims') return J({ entities: { Q1: { claims: { P31: [{ mainsnak: { datavalue: { value: { id: 'C1' } } } }] } }, Q3: { claims: { P31: [{ mainsnak: { datavalue: { value: { id: 'C2' } } } }] } } } });
+          if (a.get('props') === 'labels') return J({ entities: { C1: { labels: { de: { value: 'Fluss' } } }, C2: { labels: { en: { value: 'Stadt in Deutschland' } } } } });
+        }
+        return { ok: false, status: 404, json: async () => ({}) };
+      };
+      const steps = [];
+      const gl = await core.loadGegend('Werdohl', 'de', f, cfg, (s) => steps.push(s));
+      ok(gl.title === 'Werdohl' && gl.groups.length === 1 && gl.groups[0].items[0].title === 'Lenne (Ruhr)' && gl.groups[0].items[0].views === 2 && gl.sections.length === 3 && gl.mentioned.length === 1 &&
+        !JSON.stringify(gl).includes('Nur hin') && !JSON.stringify(gl).includes('Fremd') && steps.length >= 3 && gl.url === 'https://de.wikipedia.org/wiki/Werdohl', 'v0.20.0 loadGegend: links in both directions only, reading numbers over two portions (120/60 = 2 a day), steps: ' + JSON.stringify(gl).slice(0, 200) + ' | ' + steps.join(' / '));
+      ok((await core.wikiTitleFor('Q5575', ['fr', 'de', 'en'], async () => ({ ok: true, status: 200, json: async () => ({ entities: { Q5575: { sitelinks: { dewiki: { title: 'Werdohl' }, enwiki: { title: 'Werdohl' } } } } }) }))).lang === 'de', 'v0.20.0 article language: the first available of the list');
+      const sh = await core.searchTopics('Reformation Neuenrade', 'de', async () => ({ ok: true, status: 200, json: async () => ({ query: { search: [{ title: 'Geschichte Westfalens', sectiontitle: 'Reformation und Gegenreformation', wordcount: 12584, snippet: 'in <span class="searchmatch">Neuenrade</span>, Plettenberg' }] } }) }), cfg);
+      ok(sh[0].section === 'Reformation und Gegenreformation' && sh[0].snippet === 'in Neuenrade, Plettenberg', 'v0.20.0 topic search: hit with section and clean snippet');
+      const tp = core.buildPrompt({ id: 'gt', name: 'Geschichte', abschnitt: 'Neuzeit', ort: 'Werdohl', typ_label: 'Thema', thema: true, lat: 51.26, lon: 7.77 }, { level: 'kurz', article: { lang: 'de', intro: 'Quelltext Neuzeit.', text: 'Quelltext Neuzeit.', url: 'https://de.wikipedia.org/wiki/Werdohl' }, schwerpunkt: '' }, cfg);
+      ok(tp.text.includes('Thema: Geschichte, Abschnitt „Neuzeit“') && tp.text.includes('Gegend: Werdohl') && tp.text.includes('Quelltext Neuzeit.') && !tp.text.includes('Wo:') && !tp.text.includes('von außen'), 'v0.20.0 prompt of a topic: own template: ' + tp.text.slice(0, 160).replace(/\n/g, ' / '));
+    }
     // v0.19.1: no quadratic work (25 000 items took 32 s with the near-twin check, now well below a second)
     const big = [];
     for (let i = 0; i < 20000; i++) big.push(it('Qx' + i, 'Ort Nummer ' + i + ' Kirche', 51 + (i % 200) * 0.004, 7 + Math.floor(i / 200) * 0.006, 8 + (i % 5), ['church building'], { p31: ['Q16970'] }));

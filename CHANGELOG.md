@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.20.0 – 06.11.2026 – „📖 Gegend“: Themen zum Ort aus Wikipedia
+
+Wunsch Nutzer: Artikel zu dem, was auf der Karte nicht als Punkt steht (die Stadt selbst, ein Fluss wie die Lenne, ein Thema wie die Reformation in Neuenrade), mit Verweis auf die Wikipedia-Artikel in der besten Sprache und einem Audioguide dazu. Themensuche dabei. Ortsteile und Verwaltung nicht, Persönlichkeiten am Ende.
+
+- **Menü → „Gegend“**: nimmt die Stadt, die der Kartenmitte am nächsten ist (aus dem Verzeichnis; sonst der Ort der Kartenmitte laut Nominatim), und zeigt ihre Themen. „Anderer Ort“ wechselt zu anderen Städten im Ausschnitt.
+- **Woher die Themen kommen** (automatisch, keine Liste von Hand; Regeln in `config.json` → `gegend`): 1. „Der Ort“: der ganze Ortsartikel; 2. „Aus dem Ortsartikel“: seine Abschnitte ab 500 Zeichen (ohne Politik, Verwaltung, Einwohner, Wappen, Weblinks …; Unterabschnitte ab 2 000 Zeichen); 3. Gruppen „Natur und Gewässer“, „Verkehr und Technik“, „Bauwerke und Kultur“, „Wirtschaft“, „Sport und Vereine“: Artikel, die der Ortsartikel verlinkt und die zurück auf den Ort verlinken, nach ihrer Art in Wikidata (P31) und geordnet nach Lesezahlen (60 Tage) und Länge; 4. „Weiteres“ (eingeklappt); 5. „Erwähnt in“ (Volltextsuche); 6. „Persönlichkeiten“ am Ende. Orte, Ortsteile, Kreise, Ämter, Straßen, Parteien, Bands, Radiosender fallen weg.
+- **Sprache**: Sprache des Ortes (z. B. Französisch in Lausanne), dann Deutsch, dann Englisch (der erste Artikel, den es gibt). Steht über der Liste.
+- **Jedes Thema öffnet wie ein Ort**: „Wikipedia (de)“ (Fenster zum Schließen, bei Abschnitten mit Sprung zum Abschnitt), „🎧 Audioguide“ und „← Gegend“. Keine Sterne, kein Kartenknopf, keine Google-Frage. Der Audioguide hat einen eigenen Prompt (`gegend.vorlage`: Thema, Gegend, Quellenregeln, Aufbau, Stil wie bisher) und nimmt den Artikel als Quelle, bei Abschnitten nur den Text dieses Abschnitts.
+- **Themensuche**: Stichwort eintippen, die App sucht in Wikipedia zusammen mit dem Ortsnamen (z. B. „Neuenrade Reformation“) und zeigt Treffer mit Abschnitt und Textausschnitt.
+- **Zwischenspeicher**: Die Themenliste eines Ortes bleibt 7 Tage im Handy (bis 15 Orte); „Aktualisieren“ lädt neu. Laden: etwa 10 Anfragen, in der Messung 3 Sekunden.
+
+### Gemessen (GitHub, echte Server, 6.11.2026)
+
+- Werdohl: 63 kB Artikel, 121 Verweise in beide Richtungen, Themen u. a. Lenne (Ruhr), Verse, Kilianskirche, Stadtmuseum, Kreis Altenaer Eisenbahn, Vossloh, Basse & Selve. Neuenrade: Hönne, Borke, Quitmannsturm, Stift Berentrop, Vaterland (Fahrrad). Lesezahlen waren in der ersten Messung fast überall 0, weil die API sie in Portionen liefert; die App liest jetzt alle Portionen.
+- Neuenrade: Einen eigenen Artikel zum Konflikt zwischen Protestanten und Katholiken gibt es nicht; die Themensuche findet den Abschnitt „Reformation und Gegenreformation in den Städten und Territorien“ im Artikel „Geschichte Westfalens“.
+
+### Annahmen/Abweichungen
+
+- Die Wikidata-Beziehungen (z. B. „am Gewässer“) sind nicht eingebaut; die Verweise in beide Richtungen liefern Gewässer wie die Lenne und die Hönne bereits.
+- Bei sehr großen Städten (viele tausend Verweise auf den Ort) lese ich höchstens 2 000 Rückverweise; die Liste kann dort unvollständig sein.
+- Die Abschnittsfilter („Politik …“) gibt es für Deutsch, Englisch, Französisch und Italienisch; bei anderen Sprachen fallen nur die allgemeinen Regeln (Länge ab 500 Zeichen) und die Gruppen.
+- Die Klassenbezeichnungen für die Gruppen sind deutsche Wikidata-Bezeichnungen (die Gruppen funktionieren auch bei Artikeln anderer Sprachen).
+- **Bisher nur mit nachgebauten Servern in den Tests** und mit der Messung vom 6.11. geprüft; ein vollständiger Durchlauf der App-Funktion gegen die echten Server steht in `tools/gegend-live.mjs` (Workflow „Gegend-Live-Test“).
+- Das Menü hat nun 9 Einträge und scrollt, wenn der Kartenteil sehr niedrig ist.
+
 ## v0.19.1 – 06.11.2026 – Schwenken beim Herauszoomen wieder flott
 
 Meldung Nutzer: Nach dem Herauszoomen ist das Bewegen der Karte sehr langsam.

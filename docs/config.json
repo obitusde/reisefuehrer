@@ -264,6 +264,80 @@
 
   "osmand_paket": "net.osmand.plus",
 
+  "gegend": {
+    "_hinweis": "v0.20.0: Menü „Gegend“ – Themen zu einem Ort aus Wikipedia (kein Eintrag von Hand). Abschnitte des Ortsartikels (abschnitt_aus: je Sprache, was NICHT als Thema gilt: Politik, Verwaltung, Einwohner, Wappen …), Artikel, die der Ortsartikel verlinkt und die zurück auf den Ort verlinken (Wikidata P31 ergibt die Art; klassen/ausschluss_klassen sind Regeln auf die deutschen Klassenbezeichnungen), geordnet nach Lesezahlen (60 Tage) und Länge. Ortsteile, Verwaltung und Politik fehlen absichtlich, Personen stehen am Ende. vorlage: Prompt des Audioguides für ein Thema. cache_tage: so lange bleibt die Themenliste im Handy.",
+    "sprachen_danach": [
+      "de",
+      "en"
+    ],
+    "cache_tage": 7,
+    "max_kandidaten": 200,
+    "abschnitte": 8,
+    "pro_gruppe": 6,
+    "weiteres": 6,
+    "personen": 8,
+    "erwaehnt": 8,
+    "suche_treffer": 15,
+    "abschnitt_min_zeichen": 500,
+    "unterabschnitt_min_zeichen": 2000,
+    "abschnitt_aus": {
+      "de": "Einzelnachweise|Weblinks|Literatur|Anmerkung|Siehe auch|Politik|Stadtrat|Gemeinderat|Bürgermeister|Wahl|Wappen|Flagge|Partnerschaft|Partnerstädte|Verwaltung|Eingemeind|Einwohner|Bevölkerung|Statistik|Konfessionsstatistik|Klima|Nachbar|gliederung|Ausdehnung|Öffentliche|Medien|Bildung|Persönlichkeit|Ehrenbürger|Söhne|Gesundheit|Behörden|Gerichte|Justiz|Feuerwehr|Ortsteile|Stadtteile|Namensherkunft|^Name$|^Lage$|^Geographie$|^Geografie$|Geographische Lage",
+      "en": "References|External links|Further reading|See also|Notes|Politics|Government|Mayor|Elections|Coat of arms|Twin towns|Sister cities|Demographics|Population|Climate|^Geography$|Administration|^Education$|^Media$|Notable|^People$|Healthcare|Law enforcement|Districts|Neighbo",
+      "fr": "Notes et références|Références|Liens externes|Voir aussi|Bibliographie|Politique|Administration|Maires|Élections|Blason|Jumelages|Démographie|Population|Climat|^Géographie$|Personnalités|Santé|Enseignement|Médias|Quartiers|Communes limitrophes|Sécurité",
+      "it": "Note|Bibliografia|Collegamenti esterni|Voci correlate|Politica|Amministrazione|Sindaci|Stemma|Gemellaggi|Evoluzione demografica|Società|Demografia|Clima|^Geografia$|Persone legate|Istruzione|Media|Frazioni|Suddivisioni"
+    },
+    "person_klasse": "^Mensch$",
+    "gruppen": [
+      {
+        "id": "natur",
+        "label": "Natur und Gewässer",
+        "klassen": "Fluss|Bach|Nebenfluss|Berg|Gipfel|See$|Talsperre|Stausee|Tal$|Naturschutz|Landschaftsschutz|Naturpark|Wald|Gebirge|Höhle|Quelle|Gewässer|Naturdenkmal|Schutzgebiet"
+      },
+      {
+        "id": "verkehr",
+        "label": "Verkehr und Technik",
+        "klassen": "Bahnstrecke|Eisenbahn|Bahnhof|Brücke|Tunnel|Flugplatz|Bahn$|Haltepunkt|Kraftwerk|Staumauer"
+      },
+      {
+        "id": "bauwerke",
+        "label": "Bauwerke und Kultur",
+        "klassen": "Burg|Schloss|Kirche|Kapelle|Museum|Denkmal|Turm|Rathaus|Gut$|Herrenhaus|Kloster|Synagoge|Friedhof|Theater|Kunst|Skulptur|Gebäude|Bauwerk|Villa|Mühle|Fabrik|Hammer"
+      },
+      {
+        "id": "wirtschaft",
+        "label": "Wirtschaft",
+        "klassen": "Unternehmen|Firma|Hersteller|Gesellschaft|Betrieb|Aktiengesellschaft|Marke|Handelsunternehmen"
+      },
+      {
+        "id": "sport",
+        "label": "Sport und Vereine",
+        "klassen": "Sportverein|Verein|Stadion|Sport|Mannschaft|Fußball"
+      }
+    ],
+    "ausschluss_klassen": "Gemeinde|Stadt$|Kleinstadt|Großstadt|Ortsteil|Stadtteil|Ortschaft|Dorf|Landkreis|Kreis$|Kreis in|Amt$|Verwaltung|Partei|Bundesstraße|Landesstraße|Autobahn|Straße$|Wahlkreis|Gebietsreform|Begriffsklärung|Liste|Gemarkung|Regierungsbezirk|Bundesland|Staat|Gerichtsbezirk|Gericht|Behörde|Postleitzahl|Jahr$|Kalender|Land$|Region|Landschaftsverband|Zeitung|Radiosender|Lokalradio|Musikgruppe|Wikimedia|District",
+    "vorlage": [
+      "Du bist mein Reiseführer. Erzähle mir gleich etwas über dieses Thema aus der Gegend, in der ich gerade bin. Sprich mich mit „du“ an. Der Text wird mir vorgelesen.",
+      "",
+      "Thema: {name}",
+      "Gegend: {ort}",
+      "Art: {typ}",
+      "Länge: höchstens {laenge_text}, lieber kürzer als aufgefüllt",
+      "Schwerpunkt: {schwerpunkt}",
+      "",
+      "Quellen: Der Quelltext unten ist nur die Grundlage. Suche zusätzlich im Internet nach verlässlichen Angaben (andere Wikipedia-Sprachen, Heimatvereine, offizielle Seiten). Sage nur, was du in einer Quelle gefunden hast. Namen, Schreibweisen und Zahlen genau wie in der Quelle, nichts steigern. Schreibe „laut …“, wenn nur eine Quelle etwas behauptet oder etwas als einmalig oder als das Beste bezeichnet. Unsicheres lass weg.",
+      "",
+      "Aufbau, in dieser Reihenfolge (Fehlendes entfällt): 1. ein Satz, was das ist und was es mit {ort} zu tun hat; 2. die Geschichte und die Zusammenhänge (wer, wann, warum) mit einem überraschenden Detail, das in einer Quelle steht; 3. woran ich es heute in der Gegend erkenne oder wo ich etwas davon sehen kann, mit Seh-Anweisung (wohin, worauf); 4. wenn man etwas besuchen oder tun kann: was.",
+      "",
+      "Stil: ganze, kurze Sätze (höchstens zwanzig Wörter), keine Listen, Überschriften oder Klammern. Jeder Satz bringt eine Tatsache, Zahl, einen Namen, eine Geschichte oder eine Seh-Anweisung. Sachlich, ohne Prospektsprache und Wertungen wie beeindruckend, prachtvoll, einzigartig. Fachbegriffe beim ersten Mal in einem Halbsatz erklären. Zahlen und Jahreszahlen ausgesprochen, zum Beispiel neunzehnhundertvier. Kein Schlussappell, keine Rückfrage, keine Quellenliste.",
+      "",
+      "Quelltext ({quelle}{gekuerzt}):",
+      "{extrakt}",
+      "",
+      "Weitere Infos: {wikipedia_url}",
+      "",
+      "Beginne jetzt direkt mit dem gesprochenen Text."
+    ]
+  },
   "besucher": {
     "_hinweis": "Prompt für den Knopf „Praktisches und Bewertung“ (v0.17.0, vorher „Lohnt sich der Besuch?“; seit v0.19.0 öffnet der Knopf die Google-KI-Suche mit diesem Text, Einstellungen im Block google: ki_param, sprache): kurz gehalten, zum Lesen auf dem Handy. Die KI sucht aktuelle Besucherbewertungen und antwortet in zwei Abschnitten: lohnt sich der Besuch, praktische Tipps. Platzhalter: {name}, {wo} (Region oder Ort, dann Koordinaten), {lat}, {lon}, {typ}, {wikipedia_url}.",
     "knopf": "Praktisches und Bewertung",

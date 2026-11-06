@@ -69,6 +69,7 @@ button { cursor: pointer; }
 .menu {
   position: absolute; top: calc(62px + var(--safe-top)); right: 10px; z-index: 1400; min-width: 210px;
   display: flex; flex-direction: column; padding: 6px 0; border-radius: 14px; background: var(--card); box-shadow: var(--shadow);
+  max-height: calc(100% - 72px); overflow-y: auto; /* v0.20.0: nine entries: scrolls when the map part is short */
 }
 .menu[hidden] { display: none; }
 .banner:not([hidden]) ~ #mapWrap .menu { top: 62px; }
@@ -417,3 +418,11 @@ details.why summary { min-height: 40px; display: flex; align-items: center; colo
 /* v0.15.0: Bauen per Knopf */
 .sheet-body input[type="url"], .sheet-body input[type="password"] { width: 100%; box-sizing: border-box; min-height: 40px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg, transparent); }
 .pk-row.bau { padding: 6px 10px; border-left: 3px solid var(--accent); background: rgba(14, 107, 125, .08); border-radius: 6px; }
+/* v0.20.0: Gegend (Themen zum Ort) */
+.gg-form { display: flex; gap: 8px; margin: 10px 0; }
+.gg-form input { flex: 1; min-width: 0; min-height: 40px; box-sizing: border-box; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg, transparent); color: inherit; }
+.gg-list { list-style: none; margin: 4px 0 8px; padding: 0; }
+.gg-list li { border-bottom: 1px solid var(--line); }
+.gg-item { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; text-align: left; padding: 9px 2px; border: 0; background: transparent; color: inherit; font: inherit; }
+.gg-item b { font-weight: 600; }
+.gg-err { color: #b3261e; }

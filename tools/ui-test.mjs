@@ -171,7 +171,7 @@ try {
   if (process.env.DEBUG) { page.on('request', (r) => { if (/extracts|mymemory/.test(r.url())) console.log('REQ', decodeURIComponent(r.url()).slice(0, 160)); }); page.on('requestfailed', (r) => console.log('FAILED', r.url().slice(0, 120), r.failure() && r.failure().errorText)); page.on('console', (m) => console.log('CONSOLE', m.text())); }
   await page.goto(BASE + 'index.html');
   await page.waitForSelector('.empty');
-  ok((await page.textContent('#version')) === 'v0.19.1', 'footer version');
+  ok((await page.textContent('#version')) === 'v0.20.0', 'footer version');
   if (OUT) await page.screenshot({ path: OUT + '/01-start.png' });
 
   await menuClick(page, '#btnLocate');
@@ -199,7 +199,7 @@ try {
   ok(await page.$$eval('.mk-lbl.top', (els) => els.length >= 1), 'v0.10.0 the best have a bold name');
   await page.click('#btnMenu');
   if (OUT) await page.screenshot({ path: OUT + '/17-menue.png' });
-  ok(await page.isVisible('#menu') && (await page.$$eval('#menu .mi', (els) => els.map((e) => e.textContent))).join(',') === 'Hier suchen,Ort suchen,Mein Standort,Merkliste,Strecke,Liste ausblenden,Daten,Einstellungen', 'v0.10.0 menu with all buttons');
+  ok(await page.isVisible('#menu') && (await page.$$eval('#menu .mi', (els) => els.map((e) => e.textContent))).join(',') === 'Hier suchen,Ort suchen,Mein Standort,Merkliste,Strecke,Gegend,Liste ausblenden,Daten,Einstellungen', 'v0.20.0 menu with all buttons (Gegend new)');
   await page.mouse.click(60, 300);
   await page.waitForTimeout(200);
   ok(!(await page.isVisible('#menu')), 'v0.10.0 a tap beside the menu closes it');
@@ -480,10 +480,10 @@ try {
   ok(splitNow && +splitNow > 12, 'split persisted: ' + splitNow);
 
   // update banner (fake newer version, then ?testupdate=1)
-  fakeVersion = '0.19.2';
+  fakeVersion = '0.20.1';
   await page.reload();
   await page.waitForSelector('#banner:not([hidden])');
-  ok((await page.textContent('#bannerText')).includes('v0.19.2'), 'banner shows remote version');
+  ok((await page.textContent('#bannerText')).includes('v0.20.1'), 'banner shows remote version');
   if (OUT) await page.screenshot({ path: OUT + '/05-banner.png' });
   fakeVersion = null;
   await page.click('#bannerBtn');
@@ -616,9 +616,9 @@ try {
   const swOk = await p3.evaluate(() => navigator.serviceWorker.ready.then((r) => !!r.active)).catch(() => false);
   ok(swOk, 'service worker active');
   const cacheKeys = await p3.evaluate(async () => { await new Promise((r) => setTimeout(r, 800)); return caches.keys(); });
-  ok(cacheKeys.includes('rf-app-0.19.1'), 'app cache with version: ' + cacheKeys.join(','));
-  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.19.1')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
-  ok(cached.some((u) => u.includes('app.js?v=0.19.1')), 'shell precached');
+  ok(cacheKeys.includes('rf-app-0.20.0'), 'app cache with version: ' + cacheKeys.join(','));
+  const cached = await p3.evaluate(async () => (await (await caches.open('rf-app-0.20.0')).keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search));
+  ok(cached.some((u) => u.includes('app.js?v=0.20.0')), 'shell precached');
   ok(errs3.length === 0, 'sw: no JS errors ' + errs3.join(' | '));
   await ctx3.close();
 
@@ -927,6 +927,76 @@ try {
     ok((await p15.evaluate(() => localStorage.getItem('rf.bau'))) === null && /einrichten/.test(await tab('#sheetBody')), 'v0.15.0 "Entfernen" deletes address and PIN from the phone');
     ok(e15.length === 0, 'v0.15.0 no JS errors ' + e15.join(' | '));
     await c15.close();
+  }
+  // ---------------- v0.20.0: Gegend – topics of the place in the middle of the map (Wikipedia and Wikidata are simulated)
+  {
+    const EX = 'Werdohl ist eine Stadt an der Lenne.\n\n== Geschichte ==\n' + 'Geschichtssatz hier. '.repeat(30) + '\n=== Neuzeit ===\n' + 'Zeitsatz hier. '.repeat(170) +
+      '\n== Politik ==\n' + 'Politiksatz hier. '.repeat(110) + '\n== Bauwerke ==\n' + 'Bausatz hier. '.repeat(110) + '\n== Weblinks ==\nl';
+    const calls = { links: 0, search: [], extract: [] };
+    const c20 = await newCtx(browser);
+    const J = (route, o) => route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(o) });
+    await c20.route(/nominatim\.openstreetmap\.org\/reverse/, (r) => J(r, { address: { town: 'Werdohl', state: 'Nordrhein-Westfalen', country_code: 'de', 'ISO3166-2-lvl4': 'DE-NW' } }));
+    await c20.route(/de\.wikipedia\.org\/w\/api\.php/, (r) => {
+      const a = new URL(r.request().url()).searchParams, prop = a.get('prop') || '';
+      if (a.get('list') === 'backlinks') return J(r, { query: { backlinks: [{ title: 'Lenne (Ruhr)' }, { title: 'Altena' }, { title: 'Alfred Colsman' }] } });
+      if (a.get('list') === 'search') { calls.search.push(a.get('srsearch')); return J(r, { query: { search: /Reformation/.test(a.get('srsearch')) ? [{ title: 'Geschichte Westfalens', sectiontitle: 'Reformation und Gegenreformation', wordcount: 12584, snippet: 'in <span class="searchmatch">Werdohl</span>, Plettenberg' }] : [{ title: 'Flugplatz Werdohl-Küntrop', wordcount: 133 }] } }); }
+      if (prop === 'links') { calls.links++; return J(r, { query: { pages: [{ title: 'Werdohl', links: [{ title: 'Lenne (Ruhr)' }, { title: 'Altena' }, { title: 'Alfred Colsman' }] }] } }); }
+      if (/pageviews/.test(prop)) return J(r, { query: { pages: [{ title: 'Lenne (Ruhr)', length: 30000, pageprops: { wikibase_item: 'Q1' }, pageviews: { a: 120 } }, { title: 'Altena', length: 50000, pageprops: { wikibase_item: 'Q3' }, pageviews: { a: 600 } }, { title: 'Alfred Colsman', length: 9000, pageprops: { wikibase_item: 'Q6' }, pageviews: { a: 60 } }] } });
+      if (/extracts/.test(prop)) { calls.extract.push(a.get('exintro') ? 'intro' : 'full'); return J(r, { query: { pages: [{ title: 'Werdohl', extract: EX }] } }); }
+      return J(r, { query: { pages: [] } });
+    });
+    await c20.route(/www\.wikidata\.org\/w\/api\.php/, (r) => {
+      const a = new URL(r.request().url()).searchParams;
+      if (a.get('props') === 'claims') return J(r, { entities: { Q1: { claims: { P31: [{ mainsnak: { datavalue: { value: { id: 'C1' } } } }] } }, Q3: { claims: { P31: [{ mainsnak: { datavalue: { value: { id: 'C2' } } } }] } }, Q6: { claims: { P31: [{ mainsnak: { datavalue: { value: { id: 'C5' } } } }] } } } });
+      if (a.get('props') === 'labels') return J(r, { entities: { C1: { labels: { de: { value: 'Fluss' } } }, C2: { labels: { de: { value: 'Stadt in Deutschland' } } }, C5: { labels: { de: { value: 'Mensch' } } } } });
+      return J(r, { entities: {} });
+    });
+    const p20 = await c20.newPage(); const e20 = []; watch(p20, e20);
+    await p20.goto(BASE + 'index.html'); await p20.waitForSelector('#btnMenu');
+    await p20.evaluate(() => window.__rfMap.setView([51.2646, 7.7699], 13, { animate: false }));
+    await menuClick(p20, '#btnGegend');
+    await p20.waitForSelector('#sheetBody .gg-item', { timeout: 15000 });
+    const heads = await p20.$$eval('#sheetBody h4', (e) => e.map((x) => x.textContent));
+    const rows = await p20.$$eval('#sheetBody .gg-item b', (e) => e.map((x) => x.textContent));
+    ok(/Gegend: Werdohl/.test(await p20.textContent('#sheetTitle')) && heads.join('|') === 'Der Ort|Aus dem Ortsartikel|Natur und Gewässer|Erwähnt in|Persönlichkeiten', 'v0.20.0 Gegend: groups, people last, no towns: ' + heads.join('|'));
+    ok(rows.includes('Lenne (Ruhr)') && rows.includes('Neuzeit') && rows.includes('Bauwerke') && !rows.includes('Altena') && !rows.includes('Politik') && rows[rows.length - 1] === 'Alfred Colsman', 'v0.20.0 Gegend rows: ' + rows.join(', '));
+    // a topic opens like a place, without stars, map link, Google question
+    await p20.click('#sheetBody .gg-item:has(b:text-is("Lenne (Ruhr)"))');
+    await p20.waitForSelector('#sheetBody [data-a="tell"]');
+    ok(/Lenne \(Ruhr\)/.test(await p20.textContent('#sheetTitle')) && !(await p20.$('#sheetBody .pl-stars')) && !(await p20.$('#sheetBody a[data-g]')) && !(await p20.$('#sheetBody [data-a="merk"]')) && !(await p20.$('#sheetBody a[href^="geo:"]')) &&
+      (await p20.getAttribute('#sheetBody a.btn.primary', 'href')) === 'https://de.m.wikipedia.org/wiki/Lenne_(Ruhr)' && !!(await p20.$('#sheetBody [data-a="ggback"]')), 'v0.20.0 topic window: Wikipedia (de) in a window, Audioguide, back to the area; no stars, map link, review link');
+    await p20.click('[data-a=tell]');
+    await p20.waitForFunction(() => /Prompt kopiert/.test(document.getElementById('tellStatus').textContent), null, { timeout: 8000 });
+    const tprompt = await p20.evaluate(() => navigator.clipboard.readText());
+    ok(tprompt.includes('Thema: Lenne (Ruhr)') && tprompt.includes('Gegend: Werdohl') && tprompt.includes('Aufbau, in dieser Reihenfolge') && !tprompt.includes('Wo:') && !tprompt.includes('von außen'), 'v0.20.0 Audioguide prompt of a topic: ' + tprompt.slice(0, 140).replace(/\n/g, ' / '));
+    // back to the list (from the cache: no new link request), a section: anchor and only its own text
+    const linksBefore = calls.links;
+    await p20.click('[data-a="ggback"]');
+    await p20.waitForSelector('#sheetBody .gg-item:has(b:text-is("Neuzeit"))');
+    ok(calls.links === linksBefore, 'v0.20.0 back to the area: no new loading');
+    await p20.click('#sheetBody .gg-item:has(b:text-is("Neuzeit"))');
+    await p20.waitForSelector('#sheetBody [data-a="tell"]');
+    ok((await p20.getAttribute('#sheetBody a.btn.primary', 'href')) === 'https://de.m.wikipedia.org/wiki/Werdohl#Neuzeit' && /Werdohl: Neuzeit/.test(await p20.textContent('#sheetTitle')), 'v0.20.0 section: Wikipedia link with anchor');
+    await p20.click('[data-a=tell]');
+    await p20.waitForFunction(() => /Prompt kopiert/.test(document.getElementById('tellStatus').textContent), null, { timeout: 8000 });
+    const sprompt = await p20.evaluate(() => navigator.clipboard.readText());
+    ok(sprompt.includes('Abschnitt „Neuzeit“') && sprompt.includes('Zeitsatz hier') && !sprompt.includes('Bausatz') && !sprompt.includes('Politiksatz'), 'v0.20.0 Audioguide of a section: only the text of that section: ' + sprompt.slice(0, 200).replace(/\n/g, ' / ') + ' … ' + sprompt.length);
+    // search
+    await p20.click('[data-a="ggback"]');
+    await p20.waitForSelector('#ggTerm');
+    await p20.fill('#ggTerm', 'Reformation');
+    await p20.click('.gg-form button[type=submit]');
+    await p20.waitForSelector('#ggHits .gg-item', { timeout: 8000 });
+    ok(/Geschichte Westfalens – Reformation und Gegenreformation/.test(await p20.textContent('#ggHits')) && /in Werdohl, Plettenberg/.test(await p20.textContent('#ggHits')) && calls.search.some((s) => s === 'Werdohl Reformation'), 'v0.20.0 topic search with the place name: ' + calls.search.join(' | '));
+    // from the cache after a reload
+    await p20.reload(); await p20.waitForSelector('#btnMenu');
+    await p20.evaluate(() => window.__rfMap.setView([51.2646, 7.7699], 13, { animate: false }));
+    const linksR = calls.links;
+    await menuClick(p20, '#btnGegend');
+    await p20.waitForSelector('#sheetBody .gg-item');
+    ok(calls.links === linksR && /Stand/.test(await p20.textContent('#sheetBody')), 'v0.20.0 second time from the phone (cache), with "Aktualisieren"');
+    ok(e20.length === 0, 'v0.20.0 no JS errors ' + e20.join(' | '));
+    await c20.close();
   }
   // ---------------- v0.11.0: OSM from prepared files – no Overpass where they exist; "Daten" shows the state
   {

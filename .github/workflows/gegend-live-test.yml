@@ -1,0 +1,40 @@
+# Einmaliger Live-Test (nur Messung): core.loadGegend der App gegen die echten Server (Wikipedia, Wikidata). Schreibt nichts ins Repository.
+name: Gegend-Live-Test
+on:
+  workflow_dispatch:
+    inputs:
+      ort:
+        description: 'Artikeltitel des Ortes'
+        default: 'Werdohl'
+      sprache:
+        description: 'Wikipedia-Sprache'
+        default: 'de'
+      qid:
+        description: 'Wikidata-Nummer des Ortes (optional, prüft die Artikelsuche)'
+        default: 'Q5575'
+      thema:
+        description: 'Suchwort zusammen mit dem Ort'
+        default: 'Lenne'
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ORT: ${{ inputs.ort }}
+      SPRACHE: ${{ inputs.sprache }}
+      QID: ${{ inputs.qid }}
+      THEMA: ${{ inputs.thema }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Eingaben prüfen
+        run: |
+          for v in "$ORT" "$SPRACHE" "$QID" "$THEMA"; do
+            if ! [[ "$v" =~ ^[^[:cntrl:]]{0,200}$ ]]; then echo "Ungültig"; exit 1; fi
+          done
+      - name: Abfragen
+        run: node tools/gegend-live.mjs

@@ -1,5 +1,5 @@
 /*
- * Reiseführer – core logic (v0.19.1)
+ * Reiseführer – core logic (v0.20.0)
  * Shared by the app (index.html), the diagnostics page (diag.html) and Node tests.
  * No DOM access here. Network access only through the injected fetch function.
  */
@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var CORE_VERSION = '0.19.1';
+  var CORE_VERSION = '0.20.0';
 
   // ---------------------------------------------------------------- helpers
 
@@ -1122,13 +1122,15 @@
       prop: 'extracts|pageimages', explaintext: 1, exsectionformat: 'wiki',
       piprop: 'thumbnail', pithumbsize: 640, titles: a.title
     };
-    if (level === 'kurz') params.exintro = 1;
+    if (level === 'kurz' && !p.abschnitt) params.exintro = 1; // a section of an article needs the whole text (v0.20.0)
     var url = 'https://' + a.lang + '.wikipedia.org/w/api.php?' + qs(params);
     return getJsonRetry(url, f, retryDelays).then(function (d) {
       var pg = (d.query && d.query.pages && d.query.pages[0]) || {};
       if (!pg.extract) throw new Error('Artikeltext nicht gefunden');
-      var text = cleanArticle(pg.extract);
+      var raw = p.abschnitt ? (sectionRaw(pg.extract, p.abschnitt) || pg.extract) : pg.extract;
+      var text = cleanArticle(raw);
       var intro = text.split(/\n\n[^\n]+:\n/)[0].trim();
+      if (p.abschnitt) intro = text; // the section is the source
       return {
         lang: a.lang, title: pg.title || a.title, text: text, intro: intro,
         thumb: pg.thumbnail ? pg.thumbnail.source : '',
@@ -1150,9 +1152,11 @@
     var level = o.level || 'kurz';
     var art = o.article;
     var name = p.name + (p.name2 ? ' (deutsch: ' + p.name2 + ')' : '') + (p.ort && p.name.indexOf(p.ort) < 0 ? ', ' + p.ort : '');
+    var tpl = (p.thema && cfg.gegend && cfg.gegend.vorlage) || e.vorlage; // v0.20.0: topics of the area have their own template
+    if (p.thema) name = p.name + (p.abschnitt ? ', Abschnitt „' + p.abschnitt + '“' : '');
     var vars = {
-      name: name,
-      lat: p.lat.toFixed(5), lon: p.lon.toFixed(5),
+      name: name, ort: p.ort || '', abschnitt: p.abschnitt || '',
+      lat: p.lat != null ? p.lat.toFixed(5) : '', lon: p.lon != null ? p.lon.toFixed(5) : '',
       entfernung: o.distance != null ? ', etwa ' + formatDistance(o.distance) + ' von mir entfernt' : '',
       typ: p.typ_label || 'Sehenswürdigkeit',
       laenge_text: e.laenge_text[level],
@@ -1172,7 +1176,7 @@
       else if (p.beschreibung) src += '\nKurzbeschreibung: ' + p.beschreibung;
     }
     function render() {
-      return e.vorlage.map(function (line) {
+      return tpl.map(function (line) {
         return line.replace(/\{(\w+)\}/g, function (m, k) { return vars[k] != null ? vars[k] : ''; });
       }).filter(function (line) {
         return !(/^Reisetipp/.test(line) && !vars.wikivoyage); // drop the Wikivoyage line when empty
@@ -1207,7 +1211,7 @@
     return { text: text, length: text.length, truncated: false };
   }
 
-  /** v0.19.1: link to the Google AI search with the short review prompt (Google answers, the app reads nothing). */
+  /** v0.20.0: link to the Google AI search with the short review prompt (Google answers, the app reads nothing). */
   function reviewGoogleUrl(p, loc, cfg) {
     var g = cfg.google || {};
     return 'https://www.google.com/search?hl=' + encodeURIComponent(g.sprache || 'de') + (g.ki_param ? '&' + g.ki_param : '') +
@@ -1215,6 +1219,186 @@
   }
 
   function claudeNewUrl(prompt) { return 'claude://claude.ai/new?q=' + encodeURIComponent(prompt); }
+
+  // ---------------------------------------------- "Gegend": topics of a place from its Wikipedia article (v0.20.0)
+  // No curated list: the sections of the town article, the articles that the town article links to AND that link back (local things),
+  // their kind from Wikidata (P31, labels in German whatever the article language) and their reading numbers give the groups.
+  // Administration, politics, districts and settlements are left out; people come last. Everything is configured in config.json → gegend.
+
+  /** Sections of a plain-text extract (exsectionformat=wiki): [{lvl, name, own, total}] – own = text of the section itself, total = with its subsections. */
+  function sectionList(raw) {
+    var secs = [], cur = null;
+    String(raw || '').split('\n').forEach(function (line) {
+      var m = line.match(/^\s*(=+)\s*(.*?)\s*\1\s*$/);
+      if (m) { cur = { lvl: m[1].length, name: m[2], own: 0, total: 0 }; secs.push(cur); return; }
+      if (cur) cur.own += line.length + 1;
+    });
+    secs.forEach(function (s, i) {
+      s.total = s.own;
+      for (var j = i + 1; j < secs.length && secs[j].lvl > s.lvl; j++) s.total += secs[j].own;
+    });
+    return secs;
+  }
+  /** The raw text of one section (with its subsections), still with its headings; '' if there is none of that name. */
+  function sectionRaw(raw, name) {
+    var lines = String(raw || '').split('\n'), out = [], lvl = 0, on = false;
+    for (var i = 0; i < lines.length; i++) {
+      var m = lines[i].match(/^\s*(=+)\s*(.*?)\s*\1\s*$/);
+      if (m) {
+        if (on && m[1].length <= lvl) break;
+        if (!on && m[2] === name) { on = true; lvl = m[1].length; }
+      }
+      if (on) out.push(lines[i]);
+    }
+    return out.join('\n');
+  }
+  function reOf(s) { try { return new RegExp(s, 'i'); } catch (e) { return null; } }
+
+  /**
+   * data: {title, lang, extract, both: [titles], info: {title: {len, views, q}}, p31: {Q: [classId]}, clsLabel: {classId: label}, hits: [{title, wordcount, sectiontitle}]}
+   * -> {sections: [{name, size}], groups: [{id, label, items: [{title, lab, views, len}]}], more: [...], people: [...], mentioned: [{title, wordcount}]}
+   */
+  function gegendTopics(data, cfg) {
+    var g = cfg.gegend || {}, lang = data.lang || 'de';
+    var skip = reOf((g.abschnitt_aus || {})[lang] || (g.abschnitt_aus || {}).de || '^$'), min = g.abschnitt_min_zeichen || 500, big3 = g.unterabschnitt_min_zeichen || 2000;
+    var sections = sectionList(data.extract).filter(function (s) {
+      if (skip && skip.test(s.name) || s.name === data.title) return false;
+      return s.lvl === 2 ? s.total >= min : s.lvl === 3 ? s.own >= big3 : false;
+    }).map(function (s) { return { name: s.name, size: s.lvl === 2 ? s.total : s.own, lvl: s.lvl }; })
+      .sort(function (a, b) { return b.size - a.size; }).slice(0, g.abschnitte || 8);
+    var excl = reOf(g.ausschluss_klassen || '^$'), person = reOf(g.person_klasse || '^Mensch$');
+    var groups = (g.gruppen || []).map(function (x) { return { id: x.id, label: x.label, re: reOf(x.klassen), items: [] }; });
+    var people = [], more = [];
+    Object.keys(data.info || {}).forEach(function (t) {
+      var x = data.info[t], labels = (data.p31[x.q] || []).map(function (c) { return data.clsLabel[c] || ''; }), lab = labels.join(' / ');
+      var item = { title: x.title || t, lab: lab, views: x.views || 0, len: x.len || 0, score: Math.log10(1 + (x.views || 0)) * 2 + Math.log10(1 + (x.len || 0) / 1000) };
+      if (labels.some(function (l) { return person.test(l); })) { people.push(item); return; }
+      var grp = groups.filter(function (gr) { return gr.re && labels.some(function (l) { return gr.re.test(l); }); })[0];
+      if (grp) grp.items.push(item);
+      else if (!(excl && excl.test(lab)) && lab) more.push(item);
+    });
+    var by = function (a, b) { return b.score - a.score; };
+    var seen = {};
+    sections.forEach(function (s) { seen[s.name] = 1; });
+    var listed = {};
+    var out = {
+      sections: sections,
+      groups: groups.map(function (gr) { gr.items.sort(by); gr.items = gr.items.slice(0, g.pro_gruppe || 6); gr.items.forEach(function (i) { listed[i.title] = 1; }); return { id: gr.id, label: gr.label, items: gr.items }; }).filter(function (gr) { return gr.items.length; }),
+      more: more.sort(by).slice(0, g.weiteres || 6),
+      people: people.sort(by).slice(0, g.personen || 8),
+      mentioned: (data.hits || []).filter(function (h) { return h.title !== data.title && !data.info[h.title] && !/^Liste (der|von) |Wahlkreis|Begriffsklärung/.test(h.title); })
+        .slice(0, g.erwaehnt || 8).map(function (h) { return { title: h.title, wordcount: h.wordcount }; })
+    };
+    return out;
+  }
+
+  /** Loads the topics of a town: article (title in the given language) → sections, links both ways, readers, kinds. Returns Promise(gegendTopics result + {title, lang, url}). */
+  function loadGegend(title, lang, f, cfg, onStep) {
+    var g = cfg.gegend || {}, base = 'https://' + lang + '.wikipedia.org/w/api.php?', delays = [800, 2000];
+    var step = function (t) { if (onStep) onStep(t); };
+    var wp = function (o) { return getJsonRetry(base + qs(Object.assign({ format: 'json', formatversion: 2, origin: '*' }, o)), f, delays); };
+    var wd = function (o) { return getJsonRetry('https://www.wikidata.org/w/api.php?' + qs(Object.assign({ format: 'json', origin: '*' }, o)), f, delays); };
+    var data = { lang: lang, title: title, extract: '', both: [], info: {}, p31: {}, clsLabel: {}, hits: [] };
+    function pages(prop, key, cont, acc) {
+      return wp(Object.assign({ action: 'query', titles: title, prop: prop, [key + 'limit']: 500, [key + 'namespace']: 0 }, cont || {})).then(function (d) {
+        var p = (d.query.pages || [])[0] || {};
+        (p[prop] || []).forEach(function (x) { acc.push(x.title); });
+        return d.continue && acc.length < 1500 ? pages(prop, key, d.continue, acc) : acc;
+      });
+    }
+    function back(cont, acc) {
+      return wp(Object.assign({ action: 'query', list: 'backlinks', bltitle: title, blnamespace: 0, bllimit: 500 }, cont || {})).then(function (d) {
+        (d.query.backlinks || []).forEach(function (x) { acc.push(x.title); });
+        return d.continue && acc.length < 2000 ? back(d.continue, acc) : acc;
+      });
+    }
+    function info(titles) { // reading numbers need continuation: the API hands them out in portions
+      var acc = {};
+      function req(cont) {
+        return wp(Object.assign({ action: 'query', prop: 'info|pageprops|pageviews', ppprop: 'wikibase_item', pvipdays: 60, redirects: 1, titles: titles.join('|') }, cont || {})).then(function (d) {
+          (d.query.pages || []).forEach(function (p) {
+            if (p.missing) return;
+            var a = acc[p.title] = acc[p.title] || { title: p.title, len: 0, views: 0, q: '', pv: {} };
+            if (p.length) a.len = p.length;
+            if (p.pageprops && p.pageprops.wikibase_item) a.q = p.pageprops.wikibase_item;
+            Object.keys(p.pageviews || {}).forEach(function (k) { a.pv[k] = p.pageviews[k] || 0; });
+          });
+          return d.continue ? req(d.continue) : acc;
+        });
+      }
+      return req();
+    }
+    step('Lade den Ortsartikel …');
+    return wp({ action: 'query', prop: 'extracts|pageprops', explaintext: 1, exsectionformat: 'wiki', redirects: 1, titles: title }).then(function (d) {
+      var pg = (d.query.pages || [])[0] || {};
+      if (pg.missing || !pg.extract) throw new Error('Kein Artikel „' + title + '“ (' + lang + ')');
+      data.title = pg.title; data.extract = pg.extract;
+      title = pg.title;
+      step('Lade Verweise …');
+      return Promise.all([pages('links', 'pl', null, []), back(null, []), wp({ action: 'query', list: 'search', srsearch: '"' + title + '"', srlimit: 30, srnamespace: 0, srprop: 'wordcount' })]);
+    }).then(function (r) {
+      var bset = {}; r[1].forEach(function (t) { bset[t] = 1; });
+      data.both = r[0].filter(function (t) { return bset[t] && t !== title; }).slice(0, g.max_kandidaten || 200);
+      data.hits = ((r[2].query || {}).search || []).map(function (h) { return { title: h.title, wordcount: h.wordcount }; });
+      step('Lade Angaben zu ' + data.both.length + ' Artikeln …');
+      var batches = [];
+      for (var i = 0; i < data.both.length; i += 50) batches.push(data.both.slice(i, i + 50));
+      return Promise.all(batches.map(info));
+    }).then(function (parts) {
+      parts.forEach(function (acc) {
+        Object.keys(acc).forEach(function (t) {
+          var a = acc[t], n = 0;
+          Object.keys(a.pv).forEach(function (k) { n += a.pv[k]; });
+          data.info[t] = { title: a.title, len: a.len, views: Math.round(n / 60 * 10) / 10, q: a.q };
+        });
+      });
+      var qs2 = Object.keys(data.info).map(function (t) { return data.info[t].q; }).filter(Boolean), jobs = [];
+      for (var i = 0; i < qs2.length; i += 50) jobs.push(qs2.slice(i, i + 50));
+      step('Bestimme die Art der Themen …');
+      return Promise.all(jobs.map(function (ids) {
+        return wd({ action: 'wbgetentities', ids: ids.join('|'), props: 'claims' }).then(function (d) {
+          Object.keys(d.entities || {}).forEach(function (q) {
+            data.p31[q] = (((d.entities[q].claims || {}).P31) || []).map(function (c) { return c.mainsnak && c.mainsnak.datavalue && c.mainsnak.datavalue.value && c.mainsnak.datavalue.value.id; }).filter(Boolean);
+          });
+        });
+      }));
+    }).then(function () {
+      var cls = {}, ids = [];
+      Object.keys(data.p31).forEach(function (q) { data.p31[q].forEach(function (c) { if (!cls[c]) { cls[c] = 1; ids.push(c); } }); });
+      var jobs = [];
+      for (var i = 0; i < ids.length; i += 50) jobs.push(ids.slice(i, i + 50));
+      return Promise.all(jobs.map(function (b) {
+        return wd({ action: 'wbgetentities', ids: b.join('|'), props: 'labels', languages: 'de|en' }).then(function (d) {
+          Object.keys(d.entities || {}).forEach(function (c) { var l = (d.entities[c].labels || {}); data.clsLabel[c] = (l.de || l.en || {}).value || ''; });
+        });
+      }));
+    }).then(function () {
+      var res = gegendTopics(data, cfg);
+      res.title = data.title; res.lang = lang; res.extractLen = data.extract.length; res.q = '';
+      res.url = 'https://' + lang + '.wikipedia.org/wiki/' + encodeURIComponent(data.title.replace(/ /g, '_'));
+      return res;
+    });
+  }
+
+  /** Free search for a topic (Wikipedia full text): [{title, section, wordcount, snippet}] */
+  function searchTopics(term, lang, f, cfg) {
+    var url = 'https://' + lang + '.wikipedia.org/w/api.php?' + qs({ action: 'query', format: 'json', formatversion: 2, origin: '*', list: 'search', srsearch: term, srlimit: (cfg.gegend && cfg.gegend.suche_treffer) || 15, srnamespace: 0, srprop: 'snippet|wordcount|sectiontitle' });
+    return getJsonRetry(url, f, [800, 2000]).then(function (d) {
+      return ((d.query || {}).search || []).map(function (h) {
+        return { title: h.title, section: h.sectiontitle || '', wordcount: h.wordcount || 0, snippet: String(h.snippet || '').replace(/<[^>]+>/g, '').replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&#039;/g, "'").replace(/\s+/g, ' ').trim() };
+      });
+    });
+  }
+
+  /** Wikipedia article of a Wikidata item in the first of these languages that has one: Promise({lang, title}|null). */
+  function wikiTitleFor(qid, langs, f) {
+    var url = 'https://www.wikidata.org/w/api.php?' + qs({ action: 'wbgetentities', format: 'json', origin: '*', ids: qid, props: 'sitelinks', sitefilter: langs.map(function (l) { return l + 'wiki'; }).join('|') });
+    return getJsonRetry(url, f, [800, 2000]).then(function (d) {
+      var sl = ((d.entities || {})[qid] || {}).sitelinks || {};
+      for (var i = 0; i < langs.length; i++) if (sl[langs[i] + 'wiki']) return { lang: langs[i], title: sl[langs[i] + 'wiki'].title };
+      return null;
+    });
+  }
 
   // ---------------------------------------------- OpenStreetMap (v0.4)
 
@@ -2074,7 +2258,7 @@
     });
     // the same place twice (building and collection, "Musée Ariana" in two items): keep the better one
     sights.sort(function (a, b) { return b.score - a.score; });
-    var seen = {}, uniq = [], twinGrid = {}, TC = 0.002; // twinGrid: cells of 0.002° (about 140 m or more), so that the near-twin check looks at 9 cells, not at all sights (v0.19.1: was quadratic)
+    var seen = {}, uniq = [], twinGrid = {}, TC = 0.002; // twinGrid: cells of 0.002° (about 140 m or more), so that the near-twin check looks at 9 cells, not at all sights (v0.20.0: was quadratic)
     sights.forEach(function (s) {
       var k = sameNameKey(s.x.name), dup = (seen[k] || []).filter(function (o) { return haversine(o.x.lat, o.x.lon, s.x.lat, s.x.lon) < (v.doppelt_m || 500); })[0];
       var ci = Math.floor(s.x.lat / TC), cj = Math.floor(s.x.lon / TC);
@@ -2321,6 +2505,6 @@
     tripadvisorUrl: tripadvisorUrl, merkZeile: merkZeile,
     iconFor: iconFor, cityTiles: cityTiles, tileKey: tileKey, splitTile: splitTile, citySparql: citySparql, parseCityRows: parseCityRows,
     loadCityTiles: loadCityTiles, isCityItem: isCityItem, cityRadius: cityRadius, sightScore: sightScore,
-    profileDelta: profileDelta, applyViewpoints: applyViewpoints, computeCities: computeCities, loadPageviews: loadPageviews, loadSitelinks: loadSitelinks, directoryCandidates: directoryCandidates, computeDirectory: computeDirectory, lineDistance: lineDistance, routePlan: routePlan, lineLength: lineLength, corridorWidths: corridorWidths, corridorTiles: corridorTiles, corridorPick: corridorPick, directoryConfig: directoryConfig, prepareDirectoryTile: prepareDirectoryTile, directoryTiles: directoryTiles, cityStars: cityStars, ortStars: ortStars, loadCountryCities: loadCountryCities, bboxOf: bboxOf, cityWikiUrl: cityWikiUrl
+    profileDelta: profileDelta, sectionList: sectionList, sectionRaw: sectionRaw, gegendTopics: gegendTopics, loadGegend: loadGegend, searchTopics: searchTopics, wikiTitleFor: wikiTitleFor, applyViewpoints: applyViewpoints, computeCities: computeCities, loadPageviews: loadPageviews, loadSitelinks: loadSitelinks, directoryCandidates: directoryCandidates, computeDirectory: computeDirectory, lineDistance: lineDistance, routePlan: routePlan, lineLength: lineLength, corridorWidths: corridorWidths, corridorTiles: corridorTiles, corridorPick: corridorPick, directoryConfig: directoryConfig, prepareDirectoryTile: prepareDirectoryTile, directoryTiles: directoryTiles, cityStars: cityStars, ortStars: ortStars, loadCountryCities: loadCountryCities, bboxOf: bboxOf, cityWikiUrl: cityWikiUrl
   };
 });

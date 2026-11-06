@@ -1,8 +1,8 @@
-/* Reiseführer – app (v0.19.1). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.20.0). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.19.1';
+  var VERSION = '0.20.0';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
@@ -1155,6 +1155,117 @@
   window.__rfBau = { tick: bauTick }; // test hook, like __rfMap
   if (BAU.job) bauSchedule(4000); // a running build is followed again after the app was closed and opened
 
+  // ------------------------------------------------------ "Gegend" (v0.20.0): topics of the place in the middle of the map, from Wikipedia
+  // Menu → Gegend: the town nearest to the middle of the map (from the directory), its Wikipedia article in the best language
+  // (local language, then German, then English), and what belongs to it (core.loadGegend). Each topic opens like a place (Wikipedia, Audioguide).
+  var GEG = { place: null, alts: [], lang: '', title: '', res: null, stand: 0, items: [], busy: '', err: '', hits: null, term: '' };
+  function gegCache() { return LS.get('rf.gegend', {}) || {}; }
+  function gegFetch(u, o) { return fetch(u, o); }
+  function gegCandidates() {
+    var c = map.getCenter(), dr = dirResult(viewBbox(), true), list = [];
+    if (dr) dr.staedte.forEach(function (x) { if (x.q) list.push({ q: x.q, name: x.name, lat: x.lat, lon: x.lon, d: C.haversine(c.lat, c.lng, x.lat, x.lon) }); });
+    return list.sort(function (a, b) { return a.d - b.d; }).slice(0, 8);
+  }
+  function gegendSheet() {
+    var c = map.getCenter(), cand = gegCandidates();
+    GEG.alts = cand;
+    if (cand.length) { gegendOpen(cand[0]); return; }
+    // no town of the directory in the section: the place of the middle of the map (Nominatim)
+    GEG.place = { q: '', name: '…', lat: c.lat, lon: c.lng }; GEG.res = null; GEG.err = ''; GEG.hits = null; GEG.busy = 'Suche den Ort …'; gegRender();
+    var here = GEG.place;
+    C.reverseGeocode(c.lat, c.lng, gegFetch).then(function (loc) {
+      if (GEG.place !== here) return;
+      if (!loc || !loc.name) throw new Error('Kein Ort in der Kartenmitte gefunden. Zoome näher an eine Stadt.');
+      GLOC[gKey(here)] = loc;
+      gegendOpen({ q: '', name: loc.name, lat: c.lat, lon: c.lng, loc: loc });
+    }).catch(function (e) { if (GEG.place !== here) return; GEG.busy = ''; GEG.err = (e && e.message) || 'Kein Ort gefunden (offline?).'; gegRender(); });
+  }
+  function gegendOpen(pl, force) {
+    GEG.place = pl; GEG.res = null; GEG.err = ''; GEG.hits = null; GEG.busy = 'Suche den Artikel …'; gegRender();
+    var locP = pl.loc ? Promise.resolve(pl.loc) : GLOC[gKey(pl)] ? Promise.resolve(GLOC[gKey(pl)])
+      : C.reverseGeocode(pl.lat, pl.lon, gegFetch).then(function (l) { GLOC[gKey(pl)] = l; return l; }, function () { return null; });
+    locP.then(function (loc) {
+      var langs = [];
+      [C.localLanguage(loc, cfg)].concat((cfg.gegend && cfg.gegend.sprachen_danach) || ['de', 'en']).forEach(function (l) { if (l && langs.indexOf(l) < 0) langs.push(l); });
+      return pl.q ? C.wikiTitleFor(pl.q, langs, gegFetch).then(function (t) { return t || { lang: langs[0], title: pl.name }; }) : { lang: langs[0], title: pl.name };
+    }).then(function (t) {
+      if (GEG.place !== pl) return null;
+      var key = t.lang + ':' + t.title, hit = gegCache()[key], ttl = ((cfg.gegend && cfg.gegend.cache_tage) || 7) * 864e5;
+      GEG.lang = t.lang; GEG.title = t.title;
+      if (!force && hit && Date.now() - hit.t < ttl) { GEG.res = hit.res; GEG.stand = hit.t; GEG.busy = ''; gegRender(); return null; }
+      GEG.busy = 'Lade Themen …'; gegRender();
+      return C.loadGegend(t.title, t.lang, gegFetch, cfg, function (s) { if (GEG.place === pl) { GEG.busy = s; gegRender(); } }).then(function (res) {
+        if (GEG.place !== pl) return;
+        var c = gegCache(), ks = Object.keys(c);
+        if (ks.length >= 15) { ks.sort(function (a, b) { return c[a].t - c[b].t; }); delete c[ks[0]]; }
+        c[key] = { t: Date.now(), res: res }; LS.set('rf.gegend', c);
+        GEG.res = res; GEG.stand = Date.now(); GEG.busy = ''; gegRender();
+      });
+    }).catch(function (e) { if (GEG.place !== pl) return; GEG.busy = ''; GEG.err = (e && e.message) || 'Fehler'; gegRender(); });
+  }
+  function gegRow(t, sub) {
+    GEG.items.push(t);
+    return '<li><button class="gg-item" type="button" data-a="ggtopic" data-i="' + (GEG.items.length - 1) + '"><b>' + esc(t.show || t.title) + '</b>' + (sub ? '<span class="small">' + esc(sub) + '</span>' : '') + '</button></li>';
+  }
+  function gegSize(n) { return n >= 1000 ? Math.round(n / 100) / 10 + ' Tsd. Zeichen' : n + ' Zeichen'; }
+  function gegHitsHtml() {
+    if (!GEG.hits) return '';
+    if (!GEG.hits.length) return '<p class="small">Nichts gefunden.</p>';
+    return '<ul class="gg-list">' + GEG.hits.map(function (h) {
+      return gegRow({ title: h.title, abschnitt: h.section, show: h.title + (h.section ? ' – ' + h.section : '') }, h.snippet.slice(0, 130) + (h.snippet.length > 130 ? ' …' : ''));
+    }).join('') + '</ul>';
+  }
+  function gegRender() {
+    var pl = GEG.place;
+    if (!pl) return;
+    var cur = $('ggTerm'); if (cur) GEG.term = cur.value;
+    GEG.items = [];
+    var r = GEG.res, html = '';
+    html += '<p class="small">Themen aus Wikipedia' + (GEG.lang ? ' (' + esc(GEG.lang) + ')' : '') + ' zum Ort in der Kartenmitte: <b>' + esc(pl.name) + '</b>.</p>';
+    if (GEG.alts.length > 1) {
+      html += '<details class="why"><summary>Anderer Ort (' + (GEG.alts.length - 1) + ')</summary><div class="actions">' + GEG.alts.map(function (a, i) {
+        return a === pl || (a.q && a.q === pl.q) ? '' : '<button class="btn small" type="button" data-a="ggplace" data-i="' + i + '">' + esc(a.name) + '</button>';
+      }).join('') + '</div></details>';
+    }
+    html += '<form class="gg-form"><input id="ggTerm" type="search" enterkeyhint="search" autocomplete="off" placeholder="Stichwort, z. B. Reformation" value="' + esc(GEG.term) + '"><button class="btn" type="submit">Suchen</button></form>' +
+      '<div id="ggHits">' + gegHitsHtml() + '</div>';
+    if (GEG.busy) html += '<p class="small">⏳ ' + esc(GEG.busy) + '</p>';
+    if (GEG.err) html += '<p class="small gg-err">' + esc(GEG.err) + '</p><div class="actions"><button class="btn" type="button" data-a="ggretry">Nochmal versuchen</button></div>';
+    if (r) {
+      html += '<h4>Der Ort</h4><ul class="gg-list">' + gegRow({ title: r.title }, 'Der ganze Artikel') + '</ul>';
+      if (r.sections.length) html += '<h4>Aus dem Ortsartikel</h4><ul class="gg-list">' + r.sections.map(function (s) { return gegRow({ title: r.title, abschnitt: s.name, show: s.name }, 'Abschnitt · ' + gegSize(s.size)); }).join('') + '</ul>';
+      r.groups.forEach(function (g) {
+        html += '<h4>' + esc(g.label) + '</h4><ul class="gg-list">' + g.items.map(function (i) { return gegRow({ title: i.title, lab: String(i.lab).split(' / ')[0] }, [String(i.lab).split(' / ')[0], gegSize(i.len)].filter(Boolean).join(' · ')); }).join('') + '</ul>';
+      });
+      if (r.more.length) html += '<details class="why"><summary>Weiteres (' + r.more.length + ')</summary><ul class="gg-list">' + r.more.map(function (i) { return gegRow({ title: i.title, lab: String(i.lab).split(' / ')[0] }, String(i.lab).split(' / ')[0]); }).join('') + '</ul></details>';
+      if (r.mentioned.length) html += '<h4>Erwähnt in</h4><ul class="gg-list">' + r.mentioned.map(function (i) { return gegRow({ title: i.title }, i.wordcount + ' Wörter'); }).join('') + '</ul>';
+      if (r.people.length) html += '<h4>Persönlichkeiten</h4><ul class="gg-list">' + r.people.map(function (i) { return gegRow({ title: i.title, lab: 'Person' }, 'Person'); }).join('') + '</ul>';
+      html += '<p class="small">Stand ' + esc(dateText(GEG.stand)) + ' · die Liste entsteht aus dem Ortsartikel und seinen Verweisen (ohne Ortsteile und Verwaltung). <button class="btn small" type="button" data-a="ggreload">Aktualisieren</button></p>';
+    }
+    var title = 'Gegend: ' + pl.name;
+    if ($('sheet').hidden || $('sheetBody').getAttribute('data-view') !== 'gegend') { openSheet(title, html); $('sheetBody').setAttribute('data-view', 'gegend'); }
+    else { $('sheetTitle').textContent = title; $('sheetBody').innerHTML = html; }
+  }
+  function gegSearch() {
+    var inp = $('ggTerm'), term = inp ? inp.value.trim() : '';
+    if (!term || !GEG.place) return;
+    GEG.term = term;
+    var q = GEG.place.name && term.toLowerCase().indexOf(GEG.place.name.toLowerCase()) < 0 ? GEG.place.name + ' ' + term : term; // searched together with the place
+    $('ggHits').innerHTML = '<p class="small">⏳ Suche …</p>';
+    C.searchTopics(q, GEG.lang || 'de', gegFetch, cfg).then(function (h) { GEG.hits = h; if ($('ggHits')) $('ggHits').innerHTML = gegHitsHtml(); },
+      function (e) { if ($('ggHits')) $('ggHits').innerHTML = '<p class="small gg-err">Suche nicht möglich: ' + esc((e && e.message) || 'Fehler') + '</p>'; });
+  }
+  // a topic opens like a place: Wikipedia (in the window), Audioguide with its own prompt (core.buildPrompt, template gegend.vorlage)
+  function gegTopic(t) {
+    if (!t || !GEG.place) return;
+    var pl = GEG.place, id = 'gt:' + GEG.lang + ':' + t.title + (t.abschnitt ? '#' + t.abschnitt : '');
+    var p = DIR.places[id] || (DIR.places[id] = {
+      id: id, name: t.title, abschnitt: t.abschnitt || '', ort: pl.name, lat: pl.lat, lon: pl.lon, thema: true, sterne: 0, quellen: [],
+      typ_label: t.lab || (t.abschnitt ? 'Abschnitt' : 'Thema'), wikipedia: GEG.lang + ':' + t.title
+    });
+    openPlace(p);
+  }
+
   // ------------------------------------------------------ OSM files (v0.12.0)
   // Prepared by the GitHub Action osm-daten.yml (Geofabrik extract, monthly). index.json: {land, stand, erstellt, orte, kacheln: {key: count}}.
   var OSMF = { sets: [], ready: null };
@@ -2065,21 +2176,22 @@
   function openPlace(p) {
     var st = cfg.sterne_text || {}, dt = cfg.dauer_text || {};
     var d = distOf(p);
-    var meta = [p.typ_label, d != null ? C.formatDistance(d) + ' entfernt' : '', dt[String(p.sterne)] ? 'Dauer ' + dt[String(p.sterne)] : '']
-      .filter(Boolean).join(' · ');
-    var ml = mapsLinks(p);
+    var tp = !!p.thema; // v0.20.0: a topic of the area (no place on the map): no stars, map link, Google question or visit prompt
+    var meta = tp ? [p.typ_label, p.abschnitt ? 'Abschnitt im Artikel „' + p.name + '“' : '', 'Gegend ' + p.ort].filter(Boolean).join(' · ')
+      : [p.typ_label, d != null ? C.formatDistance(d) + ' entfernt' : '', dt[String(p.sterne)] ? 'Dauer ' + dt[String(p.sterne)] : ''].filter(Boolean).join(' · ');
+    var ml = tp ? null : mapsLinks(p);
     var on = isMerk(p.id);
     var lv = settings.level;
     var foci = (cfg.erzaehlen && cfg.erzaehlen.schwerpunkte) || [];
     var html =
       '<div id="plImg" class="pl-img" hidden></div>' +
-      (p.name2 ? '<p class="pl-name2">Deutsch: ' + esc(p.name2) + '</p>' : '') +
-      (C.displayName(p.name) !== String(p.name).trim() ? '<p class="pl-name2">Voller Name: ' + esc(p.name) + '</p>' : '') +
-      '<div class="pl-stars s' + p.sterne + '">' + (p.sterne ? C.starsText(p.sterne) : '–') +
-        '<span>' + esc(st[String(p.sterne)] || '') + '</span></div>' +
+      (!tp && p.name2 ? '<p class="pl-name2">Deutsch: ' + esc(p.name2) + '</p>' : '') +
+      (!tp && C.displayName(p.name) !== String(p.name).trim() ? '<p class="pl-name2">Voller Name: ' + esc(p.name) + '</p>' : '') +
+      (tp ? '' : '<div class="pl-stars s' + p.sterne + '">' + (p.sterne ? C.starsText(p.sterne) : '–') +
+        '<span>' + esc(st[String(p.sterne)] || '') + '</span></div>') +
       '<p class="pl-meta">' + esc(meta) + '</p>' +
-      '<p class="pl-desc' + (kurzText(p) ? '' : ' none') + '" id="plDesc"' + (kurzText(p) || !p.wikipedia ? '' : ' hidden') + '>' + esc(kurzText(p) || (p.wikipedia ? '' : NODESC)) + kurzNote(p) + '</p>' +
-      (p.wikipedia ? '' : googleHtml(p)) + // no article: the Google buttons right under the text, else at the end
+      (tp ? '' : '<p class="pl-desc' + (kurzText(p) ? '' : ' none') + '" id="plDesc"' + (kurzText(p) || !p.wikipedia ? '' : ' hidden') + '>' + esc(kurzText(p) || (p.wikipedia ? '' : NODESC)) + kurzNote(p) + '</p>') +
+      (tp || p.wikipedia ? '' : googleHtml(p)) + // no article: the Google buttons right under the text, else at the end
       '<div class="tell">' +
         '<div class="seg" role="group" aria-label="Ausführlichkeit">' +
           [['kurz', 'kurz'], ['normal', 'normal'], ['ausfuehrlich', 'ausführlich']].map(function (x) {
@@ -2090,21 +2202,22 @@
           foci.map(function (f) { return '<option' + (settings.focus === f ? ' selected' : '') + '>' + esc(f) + '</option>'; }).join('') +
         '</select>' +
         '<button class="btn primary big" type="button" data-a="tell">' + esc((cfg.erzaehlen && cfg.erzaehlen.knopf) || '🎧 Audioguide') + '</button>' +
-        '<a class="btn big review-btn" data-g="review" href="' + esc(C.reviewGoogleUrl(p, GLOC[gKey(p)] || null, cfg)) + '" target="_blank" rel="noopener">' + esc((cfg.besucher && cfg.besucher.knopf) || 'Praktisches und Bewertung') + '</a>' +
+        (tp ? '' : '<a class="btn big review-btn" data-g="review" href="' + esc(C.reviewGoogleUrl(p, GLOC[gKey(p)] || null, cfg)) + '" target="_blank" rel="noopener">' + esc((cfg.besucher && cfg.besucher.knopf) || 'Praktisches und Bewertung') + '</a>') +
         '<div id="tellStatus" class="tell-status" hidden></div>' +
       '</div>' +
       '<div class="actions">' +
-        (p.wikipedia ? '<a class="btn" href="' + esc(C.wikipediaUrl(p)) + '" target="_blank" rel="noopener">Wikipedia (' + esc(String(p.wikipedia).split(':')[0]) + ')</a>' : '') +
-        '<a class="btn primary" href="' + esc(ml.name) + '"' + ml.target + '>' + ml.label + '</a>' +
-        '<button class="btn' + (p.wikipedia ? ' wide' : '') + (on ? ' on' : '') + '" type="button" data-a="merk">' + (on ? '★ Gemerkt' : '☆ Merken') + '</button>' +
+        (p.wikipedia ? '<a class="btn' + (tp ? ' primary' : '') + '" href="' + esc(C.wikipediaUrl(p) + (p.abschnitt ? '#' + encodeURIComponent(p.abschnitt.replace(/ /g, '_')) : '')) + '" target="_blank" rel="noopener">Wikipedia (' + esc(String(p.wikipedia).split(':')[0]) + ')</a>' : '') +
+        (tp ? '<button class="btn" type="button" data-a="ggback">← Gegend</button>' :
+          '<a class="btn primary" href="' + esc(ml.name) + '"' + ml.target + '>' + ml.label + '</a>' +
+          '<button class="btn' + (p.wikipedia ? ' wide' : '') + (on ? ' on' : '') + '" type="button" data-a="merk">' + (on ? '★ Gemerkt' : '☆ Merken') + '</button>') +
       '</div>' +
-      (p.wikipedia ? googleHtml(p) : '');
-    openSheet(C.displayName(p.name), html);
+      (!tp && p.wikipedia ? googleHtml(p) : '');
+    openSheet(tp ? p.name + (p.abschnitt ? ': ' + p.abschnitt : '') : C.displayName(p.name), html);
     $('sheetBody').setAttribute('data-place', p.id);
     $('sheetTitle').className = 'copyable'; // v0.13.3: long press on the name copies it
-    if (kurzNeeded(p.id)) { kurzQueue[p.id] = 1; scheduleKurz(); }
+    if (!tp && kurzNeeded(p.id)) { kurzQueue[p.id] = 1; scheduleKurz(); }
     prepareNarration(p);
-    googleLocate(p);
+    if (!tp) googleLocate(p);
   }
 
   // v0.13.0: what the window says when neither the package nor Wikipedia has a text; and the Google buttons.
@@ -2192,7 +2305,7 @@
     var level = settings.level, t0 = Date.now();
     setTellStatus('Lade Text …');
     articleFor(level).catch(function () { return null; }).then(function (art) {
-      var pr = C.buildPrompt(p, { article: art, level: level, schwerpunkt: settings.focus, distance: distanceForPrompt(p) }, cfg);
+      var pr = C.buildPrompt(p, { article: art, level: level, schwerpunkt: settings.focus, distance: p.thema ? null : distanceForPrompt(p) }, cfg);
       handOver(pr, (pr.truncated ? ', Quelltext gekürzt' : '') + (art ? '' : ', ohne Wikipedia-Text'), t0);
     });
   }
@@ -2673,6 +2786,8 @@
     $('btnLocate').addEventListener('click', locate);
     $('btnList').addEventListener('click', function () { setListOff(!settings.listeAus); });
     $('btnRoute').addEventListener('click', routeSheet);
+    $('btnGegend').addEventListener('click', gegendSheet);
+    $('sheetBody').addEventListener('submit', function (e) { if (e.target.closest && e.target.closest('form.gg-form')) { e.preventDefault(); gegSearch(); } });
     $('sheetBody').addEventListener('keydown', function (e) {
       var inp = e.target.closest && e.target.closest('.rt-in');
       if (inp && e.key === 'Enter') { e.preventDefault(); routeSearch(inp.getAttribute('data-rt')); }
@@ -2857,6 +2972,14 @@
           toast(PAKET.builtErr && !Object.keys(PAKET.built).length ? 'Liste: ' + PAKET.builtErr : Object.keys(PAKET.built).length + ' Länder gebaut', 3000);
           if (!$('sheet').hidden && $('sheetBody').getAttribute('data-view') === 'data') dataSheet();
         });
+      } else if (a === 'ggtopic') {
+        gegTopic(GEG.items[parseInt(el.getAttribute('data-i'), 10)]);
+      } else if (a === 'ggplace') {
+        gegendOpen(GEG.alts[parseInt(el.getAttribute('data-i'), 10)]);
+      } else if (a === 'ggback') {
+        gegRender();
+      } else if (a === 'ggretry' || a === 'ggreload') {
+        gegendOpen(GEG.place, true);
       } else if (a === 'baubuild') {
         var bd = paketList().filter(function (d) { return d.land === el.getAttribute('data-land'); })[0];
         if (bd) bauStart(bd);
