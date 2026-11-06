@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.22.0 – 06.11.2026 – Gegend: Knopf „KI-Überblick“ und „Wikipedia (de)“ an jedem Eintrag; Städtenamen in zwei Zeilen
+
+Wunsch Nutzer: An den Einträgen von „Gegend“ soll es die Google-KI-Suche geben (für einen schnellen guten Überblick) und den deutschen Wikipedia-Artikel, wenn er lang genug ist. Dazu die Rückmeldung zum Kartenbild (Zoom 10): „Bad Homburg vor der Höhe“ steht in einer Zeile.
+
+- **KI-Überblick**: Unter jedem Eintrag (Ort, Abschnitte, Themen, „Weiteres“, „Erwähnt in“, Persönlichkeiten, Suchtreffer) ein Knopf mit immer demselben Namen, dazu im Fenster eines Themas. Er öffnet die Google-KI-Suche mit einem kurzen Prompt (`gegend.ki.vorlage`): „Reiseführer: Gib mir einen guten Überblick über „{Thema}“ (in {Ort}, {Region}). Nutze aktuelle, verlässliche Quellen und nenne sie, nichts raten. Gliedere kurz: …“. Bei einem Abschnitt heißt das Thema „Abschnitt – Artikel“; beim Ortsartikel selbst entfällt „in {Ort}“. Die App liest die Antwort nicht.
+- **Wikipedia (de)**: nur, wenn es einen deutschen Artikel gibt und er mindestens 1500 Zeichen hat (`gegend.wikipedia_de_min_zeichen`). Ist die Liste auf Deutsch, kommt die Länge aus der Liste; sonst wird der deutsche Titel aus Wikidata geholt (dieselbe Abfrage wie die Art des Themas, nur mit Sitelinks) und die Länge mit einer Abfrage je 50 Titel bei de.wikipedia.org (eine zusätzliche Abfrage). Abschnitte, „Erwähnt in“ und Suchtreffer haben nur den KI-Knopf, weil dort keine eigene Artikellänge bekannt ist.
+- **Städtenamen** (Stadtebene bis Zoom 11): bis 20 Zeichen eine Zeile, längere in zwei Zeilen, an der Stelle, die beide Zeilen etwa gleich lang macht („Bad Homburg“ / „vor der Höhe“). `marker.stadt_beschriftung_max_zeichen`.
+- Alte gespeicherte Themenlisten werden durch die neue Version neu geladen (sie kennen den deutschen Artikel nicht).
+
+Annahmen/Abweichungen: „Zeichen“ ist die Seitengröße der Wikipedia (Wikitext, Bytes); die Anzeige „x Tsd. Zeichen“ zeigt dasselbe. Sie ist größer als der lesbare Text, 1500 ist also ein kleines Artikelchen. Nicht auf dem Handy geprüft: wie die KI-Suche das Thema verarbeitet (`udm=50` ist undokumentiert). Die Prüfung der Beschriftung im Kartenbild erfolgt nur über Test, nicht am echten Handybild. Die Messung zu Commons-Fotozahlen (`tools/commons-probe.mjs`, `commons-test.yml`) liegt nur als Werkzeug im Repo; in der App ist nichts davon.
+
 ## v0.21.2 – 06.11.2026 – Gegend: alte Listen verwerfen, Überschriften sichtbar von Einträgen getrennt
 
 Meldung Nutzer (Bild vom Handy): In „Gegend: Neuenrade“ standen noch „Bahnhof Fröndenberg“, „Bahnhof Menden“ und der Sport, und „Verkehr und Technik“ sah aus wie ein Eintrag.

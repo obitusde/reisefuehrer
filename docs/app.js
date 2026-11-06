@@ -1,8 +1,8 @@
-/* Reiseführer – app (v0.21.2). UI only; data logic lives in core.js. */
+/* Reiseführer – app (v0.22.0). UI only; data logic lives in core.js. */
 (function () {
   'use strict';
 
-  var VERSION = '0.21.2';
+  var VERSION = '0.22.0';
   var C = window.RF && window.RF.core;
 
   // ------------------------------------------------------------ storage
@@ -1204,9 +1204,14 @@
       });
     }).catch(function (e) { if (GEG.place !== pl) return; GEG.busy = ''; GEG.err = (e && e.message) || 'Fehler'; gegRender(); });
   }
+  // v0.22.0: every entry has the button "KI-Überblick" (Google AI search); "Wikipedia (de)" only where a German article of at least wikipedia_de_min_zeichen exists
   function gegRow(t, sub) {
     GEG.items.push(t);
-    return '<li><button class="gg-item" type="button" data-a="ggtopic" data-i="' + (GEG.items.length - 1) + '"><b>' + esc(t.show || t.title) + '</b>' + (sub ? '<span class="small">' + esc(sub) + '</span>' : '') + '</button></li>';
+    var g = cfg.gegend || {}, k = g.ki || {}, loc = GEG.place ? GLOC[gKey(GEG.place)] || GEG.place.loc || null : null;
+    var de = t.de && t.de.len >= (g.wikipedia_de_min_zeichen || 1500) ? t.de : null;
+    return '<li><button class="gg-item" type="button" data-a="ggtopic" data-i="' + (GEG.items.length - 1) + '"><b>' + esc(t.show || t.title) + '</b>' + (sub ? '<span class="small">' + esc(sub) + '</span>' : '') + '</button>' +
+      '<div class="gg-act"><a class="gg-a ki" href="' + esc(C.topicGoogleUrl(t, GEG.place, loc, cfg)) + '" target="_blank" rel="noopener">' + esc(k.knopf || 'KI-Überblick') + '</a>' +
+      (de ? '<a class="gg-a" href="https://de.m.wikipedia.org/wiki/' + encodeURIComponent(de.title.replace(/ /g, '_')) + '" target="_blank" rel="noopener">Wikipedia (de)</a>' : '') + '</div></li>';
   }
   function gegSize(n) { return n >= 1000 ? Math.round(n / 100) / 10 + ' Tsd. Zeichen' : n + ' Zeichen'; }
   function gegHitsHtml() {
@@ -1233,14 +1238,14 @@
     if (GEG.busy) html += '<p class="small">⏳ ' + esc(GEG.busy) + '</p>';
     if (GEG.err) html += '<p class="small gg-err">' + esc(GEG.err) + '</p><div class="actions"><button class="btn" type="button" data-a="ggretry">Nochmal versuchen</button></div>';
     if (r) {
-      html += '<h4 class="gg-h">Der Ort</h4><ul class="gg-list">' + gegRow({ title: r.title }, 'Der ganze Artikel') + '</ul>';
+      html += '<h4 class="gg-h">Der Ort</h4><ul class="gg-list">' + gegRow({ title: r.title, de: r.de }, 'Der ganze Artikel') + '</ul>';
       if (r.sections.length) html += '<h4 class="gg-h">Aus dem Ortsartikel</h4><ul class="gg-list">' + r.sections.map(function (s) { return gegRow({ title: r.title, abschnitt: s.name, show: s.name }, 'Abschnitt · ' + gegSize(s.size)); }).join('') + '</ul>';
       r.groups.forEach(function (g) {
-        html += '<h4 class="gg-h">' + esc(g.label) + '</h4><ul class="gg-list">' + g.items.map(function (i) { return gegRow({ title: i.title, lab: String(i.lab).split(' / ')[0], ctx: i.ctx }, [String(i.lab).split(' / ')[0], gegSize(i.len)].filter(Boolean).join(' · ')); }).join('') + '</ul>';
+        html += '<h4 class="gg-h">' + esc(g.label) + '</h4><ul class="gg-list">' + g.items.map(function (i) { return gegRow({ title: i.title, lab: String(i.lab).split(' / ')[0], ctx: i.ctx, de: i.de }, [String(i.lab).split(' / ')[0], gegSize(i.len)].filter(Boolean).join(' · ')); }).join('') + '</ul>';
       });
-      if (r.more.length) html += '<details class="why gg-more"><summary class="gg-h">Weiteres (' + r.more.length + ')</summary><ul class="gg-list">' + r.more.map(function (i) { return gegRow({ title: i.title, lab: String(i.lab).split(' / ')[0], ctx: i.ctx }, String(i.lab).split(' / ')[0]); }).join('') + '</ul></details>';
+      if (r.more.length) html += '<details class="why gg-more"><summary class="gg-h">Weiteres (' + r.more.length + ')</summary><ul class="gg-list">' + r.more.map(function (i) { return gegRow({ title: i.title, lab: String(i.lab).split(' / ')[0], ctx: i.ctx, de: i.de }, String(i.lab).split(' / ')[0]); }).join('') + '</ul></details>';
       if (r.mentioned.length) html += '<h4 class="gg-h">Erwähnt in</h4><ul class="gg-list">' + r.mentioned.map(function (i) { return gegRow({ title: i.title }, i.wordcount + ' Wörter'); }).join('') + '</ul>';
-      if (r.people.length) html += '<h4 class="gg-h">Persönlichkeiten</h4><ul class="gg-list">' + r.people.map(function (i) { return gegRow({ title: i.title, lab: 'Person', ctx: i.ctx }, 'Person'); }).join('') + '</ul>';
+      if (r.people.length) html += '<h4 class="gg-h">Persönlichkeiten</h4><ul class="gg-list">' + r.people.map(function (i) { return gegRow({ title: i.title, lab: 'Person', ctx: i.ctx, de: i.de }, 'Person'); }).join('') + '</ul>';
       html += '<p class="small">Stand ' + esc(dateText(GEG.stand)) + ' · die Liste entsteht aus dem Ortsartikel und seinen Verweisen (ohne Ortsteile und Verwaltung). <button class="btn small" type="button" data-a="ggreload">Aktualisieren</button></p>';
     }
     var title = 'Gegend: ' + pl.name;
@@ -1444,7 +1449,7 @@
       var inView = C.inBbox(x, b), tier = !inView ? 'name' : cDrawn < cTop ? 'top' : cDrawn < cNamed ? 'name' : 'dot';
       if (inView) cDrawn++;
       var px = (it.k === 'c' && it.s >= 2 ? 13 : 12) + (tier === 'top' ? 2 : 0);
-      var ml = it.k === 'o' ? C.mapLabel(x.name, '', (cfg.marker && cfg.marker.beschriftung_max_zeichen) || 16, (cfg.marker && cfg.marker.beschriftung_zeilen) || 2) : [C.displayName(x.name)];
+      var ml = it.k === 'o' ? C.mapLabel(x.name, '', (cfg.marker && cfg.marker.beschriftung_max_zeichen) || 16, (cfg.marker && cfg.marker.beschriftung_zeilen) || 2) : C.cityLabel(x.name, (cfg.marker && cfg.marker.stadt_beschriftung_max_zeichen) || 20);
       var w = Math.max.apply(null, ml.map(function (l) { return textWidth(l, px); })) + 4, lh = px * 0.6 * ml.length + px * 0.15;
       var right = { x1: pt.x + hw + 2, y1: pt.y - lh, x2: pt.x + hw + 2 + w, y2: pt.y + lh };
       var left = { x1: pt.x - hw - 2 - w, y1: right.y1, x2: pt.x - hw - 2, y2: right.y2 };
@@ -2203,7 +2208,7 @@
           foci.map(function (f) { return '<option' + (settings.focus === f ? ' selected' : '') + '>' + esc(f) + '</option>'; }).join('') +
         '</select>' +
         '<button class="btn primary big" type="button" data-a="tell">' + esc((cfg.erzaehlen && cfg.erzaehlen.knopf) || '🎧 Audioguide') + '</button>' +
-        (tp ? '' : '<a class="btn big review-btn" data-g="review" href="' + esc(C.reviewGoogleUrl(p, GLOC[gKey(p)] || null, cfg)) + '" target="_blank" rel="noopener">' + esc((cfg.besucher && cfg.besucher.knopf) || 'Praktisches und Bewertung') + '</a>') +
+        (tp ? '<a class="btn big review-btn" href="' + esc(C.topicGoogleUrl({ title: p.name, abschnitt: p.abschnitt }, GEG.place, GEG.place ? GLOC[gKey(GEG.place)] || GEG.place.loc || null : null, cfg)) + '" target="_blank" rel="noopener">' + esc(((cfg.gegend || {}).ki || {}).knopf || 'KI-Überblick') + '</a>' : '<a class="btn big review-btn" data-g="review" href="' + esc(C.reviewGoogleUrl(p, GLOC[gKey(p)] || null, cfg)) + '" target="_blank" rel="noopener">' + esc((cfg.besucher && cfg.besucher.knopf) || 'Praktisches und Bewertung') + '</a>') +
         '<div id="tellStatus" class="tell-status" hidden></div>' +
       '</div>' +
       '<div class="actions">' +

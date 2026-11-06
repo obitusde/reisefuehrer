@@ -615,7 +615,7 @@ eq(core.iconFor('sonstiges', cfg), '', 'other: plain dot');
           }
         }
         if (u.hostname === 'www.wikidata.org') {
-          if (a.get('props') === 'claims') return J({ entities: { Q11: { claims: { P31: [{ mainsnak: { datavalue: { value: { id: 'C11' } } } }] } }, Q1: { claims: { P31: [{ mainsnak: { datavalue: { value: { id: 'C1' } } } }] } }, Q3: { claims: { P31: [{ mainsnak: { datavalue: { value: { id: 'C2' } } } }] } } } });
+          if (/claims/.test(a.get('props') || '')) return J({ entities: { Q11: { claims: { P31: [{ mainsnak: { datavalue: { value: { id: 'C11' } } } }] } }, Q1: { claims: { P31: [{ mainsnak: { datavalue: { value: { id: 'C1' } } } }] } }, Q3: { claims: { P31: [{ mainsnak: { datavalue: { value: { id: 'C2' } } } }] } } } });
           if (a.get('props') === 'labels') return J({ entities: { C11: { labels: { de: { value: 'Flugplatz' } } }, C1: { labels: { de: { value: 'Fluss' } } }, C2: { labels: { en: { value: 'Stadt in Deutschland' } } } } });
         }
         return { ok: false, status: 404, json: async () => ({}) };
@@ -624,6 +624,33 @@ eq(core.iconFor('sonstiges', cfg), '', 'other: plain dot');
       const gl = await core.loadGegend('Werdohl', 'de', f, cfg, (s) => steps.push(s));
       ok(gl.title === 'Werdohl' && gl.groups.length === 2 && gl.groups[0].items[0].title === 'Lenne (Ruhr)' && gl.groups[0].items[0].views === 2 && gl.groups[1].items[0].title === 'Flugplatz Werdohl-Küntrop' && gl.sections.length === 3 && gl.mentioned.length === 0 &&
         !JSON.stringify(gl).includes('Nur hin') && !JSON.stringify(gl).includes('Fremd') && steps.length >= 3 && gl.url === 'https://de.wikipedia.org/wiki/Werdohl', 'v0.20.0/v0.21.1 loadGegend: links in both directions plus search hits with the town name in the title (the railway), reading numbers over two portions (120/60 = 2 a day), steps: ' + JSON.stringify(gl).slice(0, 200) + ' | ' + steps.join(' / '));
+      // v0.22.0: German article of the topics (own length in German; else the German title via Wikidata and its length from de.wikipedia)
+      ok(gl.groups[0].items[0].de && gl.groups[0].items[0].de.title === 'Lenne (Ruhr)' && gl.groups[0].items[0].de.len === 30000 && gl.groups[1].items[0].de.len === 8000, 'v0.22.0 loadGegend (de): each topic carries its German article and length');
+      const fr = async (url) => {
+        const u = new URL(url), a = u.searchParams, J = (o) => ({ ok: true, status: 200, json: async () => o });
+        if (u.hostname === 'fr.wikipedia.org') {
+          if (a.get('list') === 'backlinks') return J({ query: { backlinks: [{ title: 'Château de Morges' }, { title: 'Quai Igor-Stravinsky' }] } });
+          if (a.get('list') === 'search') return J({ query: { search: [] } });
+          if (a.get('prop') === 'links') return J({ query: { pages: [{ title: 'Morges', links: [{ title: 'Château de Morges' }, { title: 'Quai Igor-Stravinsky' }] }] } });
+          if (/extracts/.test(a.get('prop') || '')) return J({ query: { pages: [{ title: 'Morges', length: 90000, pageprops: { wikibase_item: 'Q68' }, extract: 'Morges est une commune.\n\n== Histoire ==\n' + 'x'.repeat(900) }] } });
+          if (/pageviews/.test(a.get('prop') || '')) return J({ query: { pages: [{ title: 'Château de Morges', length: 40000, pageprops: { wikibase_item: 'Q21' }, pageviews: { '2026-01-01': 60 } }, { title: 'Quai Igor-Stravinsky', length: 900, pageprops: { wikibase_item: 'Q22' }, pageviews: { '2026-01-01': 6 } }] } });
+        }
+        if (u.hostname === 'de.wikipedia.org' && a.get('prop') === 'info') return J({ query: { pages: [{ title: 'Schloss Morges', length: 7000 }, { title: 'Morges', length: 52000 }] } });
+        if (u.hostname === 'www.wikidata.org') {
+          if (/claims/.test(a.get('props') || '')) return J({ entities: { Q68: { sitelinks: { dewiki: { title: 'Morges' } } }, Q21: { claims: { P31: [{ mainsnak: { datavalue: { value: { id: 'C5' } } } }] }, sitelinks: { dewiki: { title: 'Schloss Morges' } } }, Q22: { claims: { P31: [{ mainsnak: { datavalue: { value: { id: 'C5' } } } }] } } } });
+          if (a.get('props') === 'labels') return J({ entities: { C5: { labels: { de: { value: 'Bauwerk' } } } } });
+        }
+        return { ok: false, status: 404, json: async () => ({}) };
+      };
+      const gf = await core.loadGegend('Morges', 'fr', fr, cfg);
+      const gfi = gf.groups.reduce((acc, x) => acc.concat(x.items), []);
+      ok(gf.de && gf.de.title === 'Morges' && gf.de.len === 52000 && gfi.find((i) => i.title === 'Château de Morges').de.title === 'Schloss Morges' && gfi.find((i) => i.title === 'Château de Morges').de.len === 7000 && !gfi.find((i) => i.title === 'Quai Igor-Stravinsky').de, 'v0.22.0 loadGegend (fr): German title via Wikidata, length from de.wikipedia, none where no German article: ' + JSON.stringify(gfi.map((i) => i.title + ':' + JSON.stringify(i.de))));
+      // KI-Überblick link and town label
+      const ku = new URL(core.topicGoogleUrl({ title: 'Schloss Morges' }, { name: 'Morges' }, { state: 'Waadt' }, cfg)), kq = ku.searchParams.get('q');
+      ok(ku.host === 'www.google.com' && ku.searchParams.get('udm') === '50' && kq.startsWith('Reiseführer: Gib mir einen guten Überblick über „Schloss Morges“ (in Morges, Waadt).') && kq.endsWith('ohne Rückfrage am Ende'), 'v0.22.0 KI-Überblick link: ' + kq.slice(0, 120));
+      ok(new URL(core.topicGoogleUrl({ title: 'Morges' }, { name: 'Morges' }, { state: 'Waadt' }, cfg)).searchParams.get('q').includes('über „Morges“ (Waadt).') && new URL(core.topicGoogleUrl({ title: 'Morges', abschnitt: 'Geschichte' }, { name: 'Morges' }, null, cfg)).searchParams.get('q').includes('„Geschichte – Morges“.'), 'v0.22.0 KI-Überblick: town itself and its sections without "in Morges", section with its article, no region without lookup');
+      eq(JSON.stringify(core.cityLabel('Bad Homburg vor der Höhe', 20)), '["Bad Homburg","vor der Höhe"]', 'v0.22.0 town label: two balanced lines');
+      eq(JSON.stringify(core.cityLabel('Frankfurt am Main', 20)) + JSON.stringify(core.cityLabel('Garbsen', 20)), '["Frankfurt am Main"]["Garbsen"]', 'v0.22.0 town label: short names stay in one line');
       ok((await core.wikiTitleFor('Q5575', ['fr', 'de', 'en'], async () => ({ ok: true, status: 200, json: async () => ({ entities: { Q5575: { sitelinks: { dewiki: { title: 'Werdohl' }, enwiki: { title: 'Werdohl' } } } } }) }))).lang === 'de', 'v0.20.0 article language: the first available of the list');
       const sh = await core.searchTopics('Reformation Neuenrade', 'de', async () => ({ ok: true, status: 200, json: async () => ({ query: { search: [{ title: 'Geschichte Westfalens', sectiontitle: 'Reformation und Gegenreformation', wordcount: 12584, snippet: 'in <span class="searchmatch">Neuenrade</span>, Plettenberg' }] } }) }), cfg);
       ok(sh[0].section === 'Reformation und Gegenreformation' && sh[0].snippet === 'in Neuenrade, Plettenberg', 'v0.20.0 topic search: hit with section and clean snippet');

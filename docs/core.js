@@ -1,5 +1,5 @@
 /*
- * Reiseführer – core logic (v0.21.2)
+ * Reiseführer – core logic (v0.22.0)
  * Shared by the app (index.html), the diagnostics page (diag.html) and Node tests.
  * No DOM access here. Network access only through the injected fetch function.
  */
@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var CORE_VERSION = '0.21.2';
+  var CORE_VERSION = '0.22.0';
 
   // ---------------------------------------------------------------- helpers
 
@@ -1218,6 +1218,35 @@
       '&q=' + encodeURIComponent(buildReviewPrompt(p, cfg, loc).text);
   }
 
+  /**
+   * v0.22.0: "KI-Überblick" for a topic of the area: link to the Google AI search with a short overview prompt (config gegend.ki.vorlage).
+   * t = {title, abschnitt?}; place = the town ({name}); loc = reverse lookup of the place (region) or null.
+   */
+  function topicGoogleUrl(t, place, loc, cfg) {
+    var g = cfg.google || {}, k = (cfg.gegend && cfg.gegend.ki) || {};
+    var thema = t.abschnitt ? t.abschnitt + ' – ' + t.title : t.title;
+    var ort = place && place.name || '', region = (loc && loc.state) || '';
+    var teile = [ort && String(t.title).toLowerCase() !== ort.toLowerCase() ? 'in ' + ort : '', region].filter(Boolean);
+    var vars = { thema: thema, ort: ort, region: region, wo: teile.length ? ' (' + teile.join(', ') + ')' : '' };
+    var text = String(k.vorlage || 'Reiseführer: Gib mir einen guten Überblick über „{thema}“{wo}.').replace(/\{(\w+)\}/g, function (m, n) { return vars[n] != null ? vars[n] : ''; });
+    return 'https://www.google.com/search?hl=' + encodeURIComponent(g.sprache || 'de') + (g.ki_param ? '&' + g.ki_param : '') + '&q=' + encodeURIComponent(text);
+  }
+
+  /** v0.22.0: label of a town on the map: one line up to `max` characters, longer names in two balanced lines ("Bad Homburg" / "vor der Höhe"). */
+  function cityLabel(name, max) {
+    var s = displayName(name);
+    max = max || 20;
+    if (s.length <= max) return [s];
+    var words = s.split(/\s+/);
+    if (words.length < 2) return [s];
+    var best = null;
+    for (var i = 1; i < words.length; i++) {
+      var a = words.slice(0, i).join(' '), b = words.slice(i).join(' '), w = Math.max(a.length, b.length);
+      if (!best || w < best.w) best = { w: w, l: [a, b] };
+    }
+    return best.l;
+  }
+
   function claudeNewUrl(prompt) { return 'claude://claude.ai/new?q=' + encodeURIComponent(prompt); }
 
   // ---------------------------------------------- "Gegend": topics of a place from its Wikipedia article (v0.21.2)
@@ -1292,7 +1321,7 @@
     var maxM = (g.max_km || 8) * 1000, ctr = data.center;
     Object.keys(data.info || {}).forEach(function (t) {
       var x = data.info[t], labels = (data.p31[x.q] || []).map(function (c) { return data.clsLabel[c] || ''; }), lab = labels.join(' / ');
-      var item = { title: x.title || t, lab: lab, views: x.views || 0, len: x.len || 0, score: Math.log10(1 + (x.views || 0)) * 2 + Math.log10(1 + (x.len || 0) / 1000) };
+      var item = { title: x.title || t, lab: lab, de: x.de, views: x.views || 0, len: x.len || 0, score: Math.log10(1 + (x.views || 0)) * 2 + Math.log10(1 + (x.len || 0) / 1000) };
       if (labels.some(function (l) { return person.test(l); })) { people.push(item); return; }
       var grp = groups.filter(function (gr) { return gr.re && labels.some(function (l) { return gr.re.test(l); }); })[0];
       // far from the place (a station of the next town): not a topic of this place; nature (rivers have their coordinates anywhere) stays
@@ -1321,7 +1350,7 @@
     var step = function (t) { if (onStep) onStep(t); };
     var wp = function (o) { return getJsonRetry(base + qs(Object.assign({ format: 'json', formatversion: 2, origin: '*' }, o)), f, delays); };
     var wd = function (o) { return getJsonRetry('https://www.wikidata.org/w/api.php?' + qs(Object.assign({ format: 'json', origin: '*' }, o)), f, delays); };
-    var data = { lang: lang, title: title, extract: '', both: [], info: {}, p31: {}, clsLabel: {}, hits: [] };
+    var data = { lang: lang, title: title, extract: '', both: [], info: {}, p31: {}, clsLabel: {}, hits: [], dewiki: {} };
     function pages(prop, key, cont, acc) {
       return wp(Object.assign({ action: 'query', titles: title, prop: prop, [key + 'limit']: 500, [key + 'namespace']: 0 }, cont || {})).then(function (d) {
         var p = (d.query.pages || [])[0] || {};
@@ -1353,10 +1382,12 @@
       return req();
     }
     step('Lade den Ortsartikel …');
-    return wp({ action: 'query', prop: 'extracts|pageprops|coordinates', coprimary: 'primary', colimit: 1, explaintext: 1, exsectionformat: 'wiki', redirects: 1, titles: title }).then(function (d) {
+    return wp({ action: 'query', prop: 'extracts|pageprops|coordinates|info', coprimary: 'primary', colimit: 1, explaintext: 1, exsectionformat: 'wiki', redirects: 1, titles: title }).then(function (d) {
       var pg = (d.query.pages || [])[0] || {};
       if (pg.missing || !pg.extract) throw new Error('Kein Artikel „' + title + '“ (' + lang + ')');
       data.title = pg.title; data.extract = pg.extract;
+      if (pg.pageprops && pg.pageprops.wikibase_item) data.townQ = pg.pageprops.wikibase_item;
+      data.townLen = pg.length || 0;
       if (pg.coordinates && pg.coordinates[0]) data.center = { lat: pg.coordinates[0].lat, lon: pg.coordinates[0].lon };
       title = pg.title;
       step('Lade Verweise …');
@@ -1381,11 +1412,14 @@
         });
       });
       var qs2 = Object.keys(data.info).map(function (t) { return data.info[t].q; }).filter(Boolean), jobs = [];
+      if (data.townQ && qs2.indexOf(data.townQ) < 0) qs2.push(data.townQ);
       for (var i = 0; i < qs2.length; i += 50) jobs.push(qs2.slice(i, i + 50));
       step('Bestimme die Art der Themen …');
       return Promise.all(jobs.map(function (ids) {
-        return wd({ action: 'wbgetentities', ids: ids.join('|'), props: 'claims' }).then(function (d) {
+        return wd({ action: 'wbgetentities', ids: ids.join('|'), props: 'claims|sitelinks', sitefilter: 'dewiki' }).then(function (d) {
           Object.keys(d.entities || {}).forEach(function (q) {
+            var sl = (d.entities[q].sitelinks || {}).dewiki;
+            if (sl && sl.title) data.dewiki[q] = sl.title;
             data.p31[q] = (((d.entities[q].claims || {}).P31) || []).map(function (c) { return c.mainsnak && c.mainsnak.datavalue && c.mainsnak.datavalue.value && c.mainsnak.datavalue.value.id; }).filter(Boolean);
           });
         });
@@ -1401,7 +1435,26 @@
         });
       }));
     }).then(function () {
+      // v0.22.0: German article of each topic (title and length) for the "Wikipedia (de)" button
+      var deLen = {}, tl = [];
+      if (lang === 'de') return deLen;
+      Object.keys(data.dewiki).forEach(function (q) { tl.push(data.dewiki[q]); });
+      var jobs = [];
+      for (var i = 0; i < tl.length; i += 50) jobs.push(tl.slice(i, i + 50));
+      return Promise.all(jobs.map(function (b) {
+        return getJsonRetry('https://de.wikipedia.org/w/api.php?' + qs({ action: 'query', format: 'json', formatversion: 2, origin: '*', prop: 'info', titles: b.join('|') }), f, delays).then(function (d) {
+          ((d.query || {}).pages || []).forEach(function (p) { if (!p.missing && p.length) deLen[p.title] = p.length; });
+        });
+      })).then(function () { return deLen; });
+    }).then(function (deLen) {
+      var deOf = function (title, len, q) {
+        if (lang === 'de') return len ? { title: title, len: len } : undefined;
+        var dt = q && data.dewiki[q];
+        return dt && deLen[dt] ? { title: dt, len: deLen[dt] } : undefined;
+      };
+      Object.keys(data.info).forEach(function (t) { var x = data.info[t]; x.de = deOf(x.title || t, x.len, x.q); });
       var res = gegendTopics(data, cfg);
+      res.de = deOf(data.title, data.townLen, data.townQ);
       // what the town article says about each topic goes into its Audioguide prompt
       res.groups.forEach(function (gr) { gr.items.forEach(function (i) { i.ctx = topicContext(data.extract, i.title) || undefined; }); });
       res.more.concat(res.people).forEach(function (i) { i.ctx = topicContext(data.extract, i.title) || undefined; });
@@ -2522,7 +2575,7 @@
     dropLocation: dropLocation, shortInfo: shortInfo, splitSentences: splitSentences,
     articleFor: articleFor, loadIntros: loadIntros, translate: translate,
     cleanArticle: cleanArticle, cutAtSentence: cutAtSentence, loadArticle: loadArticle,
-    buildPrompt: buildPrompt, buildReviewPrompt: buildReviewPrompt, reviewGoogleUrl: reviewGoogleUrl, claudeNewUrl: claudeNewUrl,
+    buildPrompt: buildPrompt, buildReviewPrompt: buildReviewPrompt, reviewGoogleUrl: reviewGoogleUrl, topicGoogleUrl: topicGoogleUrl, cityLabel: cityLabel, claudeNewUrl: claudeNewUrl,
     _setFetchTimeout: function (ms) { FETCH_TIMEOUT = ms; },
     tileKeys: tileKeys, overpassQuery: overpassQuery, compactOsm: compactOsm, loadOsm: loadOsm,
     nameSimilarity: nameSimilarity, mergeOsm: mergeOsm, osmFacts: osmFacts,
