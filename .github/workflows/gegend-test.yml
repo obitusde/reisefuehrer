@@ -1,0 +1,40 @@
+# Einmaliger Test (nur Messung): Wikipedia-Artikel zu einem Ort auch ohne Koordinaten (Abschnitte, Wikidata-Beziehungen, Suche, Verweise). Schreibt nichts ins Repository.
+name: Gegend-Test (Ort)
+on:
+  workflow_dispatch:
+    inputs:
+      ort:
+        description: 'Artikeltitel des Ortes'
+        default: 'Neuenrade'
+      sprache:
+        description: 'Wikipedia-Sprache'
+        default: 'de'
+      thema:
+        description: 'Suchwörter zum Thema'
+        default: 'Neuenrade Reformation Protestanten Katholiken'
+      stichwort:
+        description: 'Regex für Textstellen im Ortsartikel'
+        default: 'Reformation|evangelisch|katholisch|Protestant|Konfession|Gegenreformation'
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ORT: ${{ inputs.ort }}
+      SPRACHE: ${{ inputs.sprache }}
+      THEMA: ${{ inputs.thema }}
+      STICHWORT: ${{ inputs.stichwort }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Eingaben prüfen
+        run: |
+          for v in "$ORT" "$SPRACHE" "$THEMA" "$STICHWORT"; do
+            if ! [[ "$v" =~ ^[^[:cntrl:]]{0,200}$ ]]; then echo "Ungültig"; exit 1; fi
+          done
+      - name: Abfragen
+        run: node tools/gegend-probe.mjs
