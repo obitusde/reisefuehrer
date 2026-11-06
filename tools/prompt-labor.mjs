@@ -16,27 +16,31 @@ const VAR = (E.VARIANTE || 'gegend-v2').replace(/[^a-z0-9_-]/gi, '');
 let tpl = JSON.parse(fs.readFileSync(path.join(ROOT, 'tools/prompt-labor', VAR + '.json'), 'utf8'));
 if (!Array.isArray(tpl)) tpl = tpl.vorlage;
 
-// Wikitext des Ortsartikels: Sätze, die auf das Thema verlinken ([[Titel|Anzeige]] oder [[Titel]])
+// Wikitext des Ortsartikels: Sätze, die auf das Thema verlinken ([[Titel|Anzeige]] oder [[Titel]]), auch unter den Namen, unter denen es Weiterleitungen gibt (z. B. „Hönnetalbahn“)
 async function ortbezug() {
-  const url = 'https://' + L + '.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&prop=revisions&rvprop=content&rvslots=main&redirects=1&titles=' + encodeURIComponent(ORT);
-  const d = await (await f(url)).json();
+  const api = (o) => f('https://' + L + '.wikipedia.org/w/api.php?' + new URLSearchParams({ format: 'json', formatversion: '2', ...o })).then((r) => r.json());
+  const rd = await api({ action: 'query', prop: 'redirects', rdlimit: '50', rdnamespace: '0', titles: THEMA });
+  const names = [THEMA, ...((((rd.query || {}).pages || [])[0] || {}).redirects || []).map((x) => x.title)];
+  console.log('Namen des Themas: ' + names.join(' | '));
+  const d = await api({ action: 'query', prop: 'revisions', rvprop: 'content', rvslots: 'main', redirects: '1', titles: ORT });
   const wt = (((d.query.pages[0] || {}).revisions || [])[0] || {}).slots.main.content || '';
-  const esc = THEMA.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/[ _]/g, '[ _]');
-  const re = new RegExp('\\[\\[' + esc.charAt(0) + '?' + esc.slice(esc.length > 1 ? 0 : 0) + '(#[^\\]|]*)?(\\|[^\\]]*)?\\]\\]', 'i');
+  const rx = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/[ _]/g, '[ _]');
+  const re = new RegExp('\\[\\[\\s*(' + names.map(rx).join('|') + ')\\s*(#[^\\]|]*)?(\\|[^\\]]*)?\\]\\]', 'i');
   const clean = (s) => s.replace(/<ref[\s\S]*?(<\/ref>|\/>)/gi, '').replace(/\{\{[^{}]*\}\}/g, '').replace(/\[\[(?:[^\]|]*\|)?([^\]]*)\]\]/g, '$1').replace(/'{2,}/g, '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
   const out = [];
   let section = '';
   for (const line of wt.split('\n')) {
     const h = /^=+\s*(.*?)\s*=+\s*$/.exec(line);
     if (h) { section = clean(h[1]); continue; }
-    if (!re.test(line)) continue;
-    const text = clean(line);
-    const sents = text.split(/(?<=[.!?])\s+(?=[A-ZÄÖÜ„"])/);
-    const alias = (re.exec(line) || [])[2] ? clean('[[x' + re.exec(line)[2] + ']]') : '';
-    const i = sents.findIndex((s) => (alias && s.includes(alias)) || s.includes(THEMA.replace(/ \(.*\)$/, '')));
-    const pick = (i >= 0 ? sents.slice(Math.max(0, i), i + 2) : sents.slice(0, 2)).join(' ');
+    const m = re.exec(line);
+    if (!m) continue;
+    const label = m[3] ? clean('[[x' + m[3] + ']]') : m[1];
+    const sents = clean(line).split(/(?<=[.!?])\s+(?=[A-ZÄÖÜ„"])/);
+    const i = sents.findIndex((s) => s.includes(label) || names.some((n) => s.includes(n)));
+    const pick = (i >= 0 ? sents.slice(i, i + 2) : sents.slice(0, 2)).join(' ');
     if (pick && out.length < 3) out.push((section ? '[' + section + '] ' : '') + pick.slice(0, 500));
   }
+  if (!out.length) console.log('Zeilen mit dem ersten Namen im Wikitext: ' + wt.split('\n').filter((l) => l.includes(names[names.length - 1]) || l.includes(THEMA.split(' ')[0])).slice(0, 4).map((l) => l.slice(0, 220)).join(' || '));
   return out.join(' / ');
 }
 const bezug = await ortbezug();
