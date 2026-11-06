@@ -83,3 +83,24 @@ for (const name of ['Matterhorn', 'Château de Chillon', 'Rheinfall', 'Kapellbr�
     console.log('  ' + pad(name, 24) + ' ' + id + ' ' + pad(c || '–', 40) + ' Dateien ' + (z.files != null ? z.files : '–') + ', Unterkategorien ' + (z.subcats != null ? z.subcats : '–'));
   } catch (e) { console.log('  ' + name + ': Fehler ' + e.message); }
 }
+
+// ---- Vergleichswerte mit Unterkategorien (bis Tiefe 2): die Dateien liegen meist in Unterkategorien
+async function subcats(c) {
+  const d = await j('https://commons.wikimedia.org/w/api.php?' + q({ action: 'query', format: 'json', formatversion: 2, list: 'categorymembers', cmtitle: c, cmtype: 'subcat', cmlimit: 200 }));
+  return ((d.query || {}).categorymembers || []).map((x) => x.title);
+}
+async function deep(c, depth) {
+  const own = (await sizes([c]))[c] || { files: 0, subcats: 0 }, subs = depth > 0 ? await subcats(c) : [];
+  let total = own.files, n = 1;
+  if (subs.length) {
+    const sz = await sizes(subs);
+    for (const s of subs) total += (sz[s] || { files: 0 }).files;
+    n += subs.length;
+    if (depth > 1) for (const s of subs.slice(0, 60)) { const r = await deep(s, depth - 1); total += r.total - ((sz[s] || { files: 0 }).files); n += r.n - 1; }
+  }
+  return { total, n };
+}
+console.log('\n=== Vergleichswerte mit Unterkategorien (Tiefe 2, höchstens 200 Unterkategorien je Ebene, Dateien aller gefundenen Kategorien)');
+for (const c of ['Category:Matterhorn', 'Category:Château de Chillon', 'Category:Rhine Falls', 'Category:Eiffel Tower', 'Category:Cologne Cathedral', 'Category:Neuschwanstein Castle', 'Category:Cathédrale de Lausanne', 'Category:Palais de Rumine', 'Category:Musée cantonal des Beaux-Arts de Lausanne', 'Category:Collection de l\'Art Brut']) {
+  try { const r = await deep(c, 2); console.log('  ' + pad(c.replace('Category:', ''), 44) + ' Dateien insgesamt (Tiefe 2): ' + r.total + ' in ' + r.n + ' Kategorien'); } catch (e) { console.log('  ' + c + ': Fehler ' + e.message); }
+}
