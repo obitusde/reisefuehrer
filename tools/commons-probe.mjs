@@ -44,6 +44,7 @@ async function sizes(titles) {
 }
 async function geo(lat, lon) {
   const d = await j('https://commons.wikimedia.org/w/api.php?' + q({ action: 'query', format: 'json', formatversion: 2, list: 'geosearch', gscoord: lat + '|' + lon, gsradius: 150, gsnamespace: 6, gslimit: 500 }));
+  if (!d.query) { if (!geo.warned) { geo.warned = true; console.log('  (geosearch: ' + JSON.stringify(d.error || d).slice(0, 200) + ')'); } return null; }
   return (d.query.geosearch || []).length;
 }
 
